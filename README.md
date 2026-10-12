@@ -1,7 +1,7 @@
 # HỆ THỐNG QUẢN LÝ PHÒNG KHÁM TƯ NHÂN (C# WinForms - SQL Server)
 
 ## 1. Thông tin CSDL & Tài khoản truy cập
-- **Tên CSDL:** `QL_PhongKham`
+- **Tên CSDL:** `doanhbtlc#`
 - **Tài khoản SA mặc định:**
   - **User:** `sa`
   - **Password:** `123456789`

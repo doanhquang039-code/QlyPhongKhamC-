@@ -11,7 +11,7 @@ namespace QlyPhongKham.DAL
         private static string _connectionString = string.Empty;
 
         public static string ServerIp { get; set; } = "127.0.0.1";
-        public static string DatabaseName { get; set; } = "QL_PhongKham";
+        public static string DatabaseName { get; set; } = "doanhbtlc#";
         public static string Username { get; set; } = "sa";
         public static string Password { get; set; } = "123456789";
 

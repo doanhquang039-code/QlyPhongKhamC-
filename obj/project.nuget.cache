@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "ahzKsaIMqhg=",
+  "dgSpecHash": "mTqHqvWGFRc=",
   "success": true,
   "projectFilePath": "D:\\QlyPhongKhamDesktop\\QlyPhongKham.csproj",
   "expectedPackageFiles": [
@@ -22,6 +22,7 @@
     "C:\\Users\\admoi\\.nuget\\packages\\microsoft.identitymodel.protocols.openidconnect\\8.16.0\\microsoft.identitymodel.protocols.openidconnect.8.16.0.nupkg.sha512",
     "C:\\Users\\admoi\\.nuget\\packages\\microsoft.identitymodel.tokens\\8.16.0\\microsoft.identitymodel.tokens.8.16.0.nupkg.sha512",
     "C:\\Users\\admoi\\.nuget\\packages\\microsoft.sqlserver.server\\1.0.0\\microsoft.sqlserver.server.1.0.0.nupkg.sha512",
+    "C:\\Users\\admoi\\.nuget\\packages\\microsoft.visualbasic\\10.3.0\\microsoft.visualbasic.10.3.0.nupkg.sha512",
     "C:\\Users\\admoi\\.nuget\\packages\\system.configuration.configurationmanager\\9.0.18\\system.configuration.configurationmanager.9.0.18.nupkg.sha512",
     "C:\\Users\\admoi\\.nuget\\packages\\system.diagnostics.eventlog\\9.0.18\\system.diagnostics.eventlog.9.0.18.nupkg.sha512",
     "C:\\Users\\admoi\\.nuget\\packages\\system.identitymodel.tokens.jwt\\8.16.0\\system.identitymodel.tokens.jwt.8.16.0.nupkg.sha512",

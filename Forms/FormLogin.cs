@@ -76,8 +76,8 @@ namespace QlyPhongKham.Forms
                 "-- Tự nhập tài khoản --",
                 "Quản trị viên (admin / 123456)",
                 "Bác sĩ khám (bacsi_nam / 123456)",
-                "Lễ tân tiếp đón (letan / 123456)",
-                "Thu ngân viện phí (thungan / 123456)"
+                "Lễ tân & Thu ngân (letan / 123456)",
+                "Lễ tân & Thu ngân (thungan / 123456)"
             });
             cboQuickPick.SelectedIndex = 1;
             cboQuickPick.SelectedIndexChanged += CboQuickPick_SelectedIndexChanged;

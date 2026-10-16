@@ -161,8 +161,7 @@ namespace QlyPhongKham.Forms
         {
             "Admin" => "Quản trị viên",
             "BacSi" => "Bác sĩ khám bệnh",
-            "ThuNgan" => "Thu ngân viên",
-            "LeTan" => "Lễ tân tiếp đón",
+            "LeTan" => "Lễ tân & Thu ngân",
             _ => quyen
         };
 
@@ -204,21 +203,12 @@ namespace QlyPhongKham.Forms
                 btnMenuThongKe.Enabled = false;
                 ShowKhamBenhView();
             }
-            else if (SessionState.IsReceptionist)
+            else if (SessionState.IsReceptionist) // LeTan: tiếp đón + thu ngân
             {
                 btnMenuKhamBenh.Enabled = false;
-                btnMenuThuNgan.Enabled = false;
                 btnMenuNhanVien.Enabled = false;
                 btnMenuThongKe.Enabled = false;
                 ShowTiepDonView();
-            }
-            else if (SessionState.IsCashier)
-            {
-                btnMenuBenhNhan.Enabled = false;
-                btnMenuTiepDon.Enabled = false;
-                btnMenuKhamBenh.Enabled = false;
-                btnMenuNhanVien.Enabled = false;
-                ShowThuNganView();
             }
             else // Admin
             {
@@ -1166,7 +1156,7 @@ namespace QlyPhongKham.Forms
             var txtMa = new TextBox { Location = new Point(135, 18), Size = new Size(100, 26), ReadOnly = nv != null, BackColor = nv != null ? Color.FromArgb(245, 245, 245) : Color.White, Text = nv?.MaNV ?? ClinicDAL.SinhMaNhanVien() };
             var txtHoTen = new TextBox { Location = new Point(135, 53), Size = new Size(300, 26), Text = nv?.HoTen ?? "" };
             var cboCV = new ComboBox { Location = new Point(135, 88), Size = new Size(140, 26), DropDownStyle = ComboBoxStyle.DropDownList };
-            cboCV.Items.AddRange(new object[] { "Admin", "BacSi", "ThuNgan", "LeTan" });
+            cboCV.Items.AddRange(new object[] { "Admin", "BacSi", "LeTan" });
             cboCV.SelectedItem = nv?.ChucVu ?? "LeTan";
             var txtCK = new TextBox { Location = new Point(135, 123), Size = new Size(250, 26), Text = nv?.ChuyenKhoa ?? "" };
             var txtSDT = new TextBox { Location = new Point(135, 158), Size = new Size(180, 26), Text = nv?.SoDienThoai ?? "" };
@@ -1212,7 +1202,7 @@ namespace QlyPhongKham.Forms
             var txtMK = new TextBox { Location = new Point(150, 90), Size = new Size(220, 26), UseSystemPasswordChar = true };
             var txtMK2 = new TextBox { Location = new Point(150, 125), Size = new Size(220, 26), UseSystemPasswordChar = true };
             var cboQ = new ComboBox { Location = new Point(150, 160), Size = new Size(160, 26), DropDownStyle = ComboBoxStyle.DropDownList };
-            cboQ.Items.AddRange(new object[] { "Admin", "BacSi", "ThuNgan", "LeTan" });
+            cboQ.Items.AddRange(new object[] { "Admin", "BacSi", "LeTan" });
             cboQ.SelectedItem = chucVu;
 
             Controls.AddRange(new Control[] {

@@ -33,7 +33,7 @@ GO
 CREATE TABLE NhanVien (
     MaNV VARCHAR(10) PRIMARY KEY,
     HoTen NVARCHAR(100) NOT NULL,
-    ChucVu NVARCHAR(20) NOT NULL CONSTRAINT CK_NhanVien_ChucVu CHECK (ChucVu IN (N'Admin', N'BacSi', N'ThuNgan', N'LeTan')),
+    ChucVu NVARCHAR(20) NOT NULL CONSTRAINT CK_NhanVien_ChucVu CHECK (ChucVu IN (N'Admin', N'BacSi', N'LeTan')),
     ChuyenKhoa NVARCHAR(100) NULL,
     SoDienThoai VARCHAR(15) NULL,
     Email VARCHAR(100) NULL,
@@ -46,7 +46,7 @@ CREATE TABLE TaiKhoan (
     TenDangNhap VARCHAR(50) PRIMARY KEY,
     MatKhau VARCHAR(255) NOT NULL,
     MaNV VARCHAR(10) NOT NULL UNIQUE,
-    Quyen NVARCHAR(20) NOT NULL CONSTRAINT CK_TaiKhoan_Quyen CHECK (Quyen IN (N'Admin', N'BacSi', N'ThuNgan', N'LeTan')),
+    Quyen NVARCHAR(20) NOT NULL CONSTRAINT CK_TaiKhoan_Quyen CHECK (Quyen IN (N'Admin', N'BacSi', N'LeTan')),
     TrangThai BIT NOT NULL DEFAULT 1,
     CONSTRAINT FK_TaiKhoan_NhanVien FOREIGN KEY (MaNV) REFERENCES NhanVien(MaNV) ON DELETE CASCADE
 );
@@ -181,7 +181,7 @@ INSERT INTO NhanVien (MaNV, HoTen, ChucVu, ChuyenKhoa, SoDienThoai, Email, Trang
 ('NV001', N'Nguyễn Quản Trị', 'Admin', NULL, '0901234567', 'admin@phongkham.com', 1),
 ('NV002', N'BS. Trần Văn Nam', 'BacSi', N'Nội tổng quát', '0912345678', 'nam.tv@phongkham.com', 1),
 ('NV003', N'BS. Lê Thị Hoa', 'BacSi', N'Tai Mũi Họng', '0923456789', 'hoa.lt@phongkham.com', 1),
-('NV004', N'Phạm Thu Ngân', 'ThuNgan', NULL, '0934567890', 'ngan.pt@phongkham.com', 1),
+('NV004', N'Phạm Thu Ngân', 'LeTan', NULL, '0934567890', 'ngan.pt@phongkham.com', 1),
 ('NV005', N'Hoàng Lễ Tân', 'LeTan', NULL, '0945678901', 'tan.hl@phongkham.com', 1);
 
 -- Mật khẩu hash SHA256 cho '123' với Salt 'PhongKhamSecretKey':
@@ -191,7 +191,7 @@ INSERT INTO TaiKhoan (TenDangNhap, MatKhau, MaNV, Quyen, TrangThai) VALUES
 ('admin', '123456', 'NV001', 'Admin', 1),
 ('bacsi_nam', '123456', 'NV002', 'BacSi', 1),
 ('bacsi_hoa', '123456', 'NV003', 'BacSi', 1),
-('thungan', '123456', 'NV004', 'ThuNgan', 1),
+('thungan', '123456', 'NV004', 'LeTan', 1),
 ('letan', '123456', 'NV005', 'LeTan', 1);
 
 -- Bệnh nhân

@@ -6,7 +6,7 @@ namespace QlyPhongKham.Models
     {
         public string MaNV { get; set; } = string.Empty;
         public string HoTen { get; set; } = string.Empty;
-        public string ChucVu { get; set; } = string.Empty; // Admin, BacSi, ThuNgan, LeTan
+        public string ChucVu { get; set; } = string.Empty; // Admin, BacSi, LeTan (LeTan đảm nhận cả tiếp đón & thu ngân)
         public string? ChuyenKhoa { get; set; }
         public string? SoDienThoai { get; set; }
         public string? Email { get; set; }

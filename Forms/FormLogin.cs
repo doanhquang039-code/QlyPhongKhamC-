@@ -186,15 +186,16 @@ namespace QlyPhongKham.Forms
 
                 SessionState.CurrentUser = account;
 
-                this.Hide();
                 var mainForm = new FormMain();
                 mainForm.FormClosed += (s, args) => this.Close();
                 mainForm.Show();
+                this.Hide();
             }
             catch (Exception ex)
             {
-                lblError.Text = "Lỗi kết nối CSDL: " + ex.Message;
-                MessageBox.Show("Không thể kết nối đến SQL Server!\nVui lòng nhấn nút 'Máy chủ' để kiểm tra lại IP hoặc mật khẩu sa.\n\nChi tiết: " + ex.Message, "Lỗi kết nối", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                this.Show();
+                lblError.Text = "Lỗi: " + ex.Message;
+                MessageBox.Show("Lỗi khi mở giao diện:\n" + ex.Message + "\n\nChi tiết:\n" + ex.StackTrace, "Lỗi đăng nhập", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }

@@ -663,5 +663,243 @@ namespace QlyPhongKham.DAL
                 }) > 0;
             }
         }
+
+        // 13. DÀNH CHO ROLE BÁC SĨ (LỊCH KHÁM, HỒ SƠ BỆNH ÁN, TRA CỨU CHUYÊN MÔN)
+        public static (int tongPhanCong, int daHoanTat, int dangKham, int dangCho, string luotTiepTheo) LayThongKeBacSi(string? maBS)
+        {
+            try
+            {
+                string sql = @"
+                    SELECT 
+                        COUNT(*) AS Tong,
+                        SUM(CASE WHEN TrangThai = N'Đã khám xong' THEN 1 ELSE 0 END) AS DaHoanTat,
+                        SUM(CASE WHEN TrangThai = N'Đang khám' THEN 1 ELSE 0 END) AS DangKham,
+                        SUM(CASE WHEN TrangThai IN (N'Chờ khám', N'Chờ kết quả CLS') THEN 1 ELSE 0 END) AS DangCho
+                    FROM PhieuKham
+                    WHERE CAST(NgayKham AS DATE) = CAST(GETDATE() AS DATE)
+                      AND (@MaBS IS NULL OR MaNV_BacSi = @MaBS)";
+                var dt = DatabaseHelper.ExecuteQuery(sql, new[] { new SqlParameter("@MaBS", (object?)maBS ?? DBNull.Value) });
+                int tong = 0, daHoanTat = 0, dangKham = 0, dangCho = 0;
+                if (dt.Rows.Count > 0)
+                {
+                    var r = dt.Rows[0];
+                    tong = r["Tong"] != DBNull.Value ? Convert.ToInt32(r["Tong"]) : 0;
+                    daHoanTat = r["DaHoanTat"] != DBNull.Value ? Convert.ToInt32(r["DaHoanTat"]) : 0;
+                    dangKham = r["DangKham"] != DBNull.Value ? Convert.ToInt32(r["DangKham"]) : 0;
+                    dangCho = r["DangCho"] != DBNull.Value ? Convert.ToInt32(r["DangCho"]) : 0;
+                }
+
+                string sqlNext = @"
+                    SELECT TOP 1 FORMAT(pk.NgayKham, 'HH:mm') AS Gio, bn.HoTen, pk.MaBN
+                    FROM PhieuKham pk
+                    INNER JOIN BenhNhan bn ON pk.MaBN = bn.MaBN
+                    WHERE CAST(pk.NgayKham AS DATE) = CAST(GETDATE() AS DATE)
+                      AND pk.TrangThai IN (N'Chờ khám', N'Đang khám')
+                      AND (@MaBS IS NULL OR pk.MaNV_BacSi = @MaBS)
+                    ORDER BY pk.STT ASC";
+                var dtNext = DatabaseHelper.ExecuteQuery(sqlNext, new[] { new SqlParameter("@MaBS", (object?)maBS ?? DBNull.Value) });
+                string nextStr = "Chưa có";
+                if (dtNext.Rows.Count > 0)
+                {
+                    nextStr = $"{dtNext.Rows[0]["Gio"]} - {dtNext.Rows[0]["HoTen"]}";
+                }
+                return (tong, daHoanTat, dangKham, dangCho, nextStr);
+            }
+            catch
+            {
+                return (0, 0, 0, 0, "Chưa có");
+            }
+        }
+
+        public static DataTable LayDanhSachKhamBacSi(string? maBS, string keyword = "", string? trangThai = null)
+        {
+            string sql = @"
+                SELECT pk.MaPK, pk.STT, FORMAT(pk.NgayKham, 'HH:mm') AS GioKham,
+                       pk.MaBN, bn.HoTen AS TenBN, bn.GioiTinh,
+                       DATEDIFF(YEAR, bn.NgaySinh, GETDATE()) AS Tuoi,
+                       ISNULL(pk.TrieuChung, N'Khám sức khỏe tổng quát') AS LyDoKham,
+                       pk.TrangThai, nv.HoTen AS TenBacSi, bn.SoDienThoai
+                FROM PhieuKham pk
+                INNER JOIN BenhNhan bn ON pk.MaBN = bn.MaBN
+                INNER JOIN NhanVien nv ON pk.MaNV_BacSi = nv.MaNV
+                WHERE CAST(pk.NgayKham AS DATE) = CAST(GETDATE() AS DATE)
+                  AND (@MaBS IS NULL OR pk.MaNV_BacSi = @MaBS)
+                  AND (@Kw = '' OR bn.HoTen LIKE '%' + @Kw + '%' OR bn.MaBN LIKE '%' + @Kw + '%' OR pk.MaPK LIKE '%' + @Kw + '%')
+                  AND (@TrangThai IS NULL OR @TrangThai = '' OR @TrangThai = N'Tất cả trạng thái' OR pk.TrangThai = @TrangThai)
+                ORDER BY pk.STT ASC";
+            return DatabaseHelper.ExecuteQuery(sql, new[]
+            {
+                new SqlParameter("@MaBS", (object?)maBS ?? DBNull.Value),
+                new SqlParameter("@Kw", keyword),
+                new SqlParameter("@TrangThai", (object?)trangThai ?? DBNull.Value)
+            });
+        }
+
+        public static DataRow? LayChiTietPhieuKhamDayDu(string maPK)
+        {
+            string sql = @"
+                SELECT pk.MaPK, pk.STT, pk.NgayKham, pk.TrieuChung, pk.ChanDoan, pk.LoiDan, pk.TrangThai,
+                       bn.MaBN, bn.HoTen AS TenBN, bn.GioiTinh, bn.NgaySinh, bn.SoDienThoai, bn.DiaChi, bn.TienSuBenh,
+                       DATEDIFF(YEAR, bn.NgaySinh, GETDATE()) AS Tuoi,
+                       nv.MaNV AS MaBacSi, nv.HoTen AS TenBacSi, nv.ChuyenKhoa
+                FROM PhieuKham pk
+                INNER JOIN BenhNhan bn ON pk.MaBN = bn.MaBN
+                INNER JOIN NhanVien nv ON pk.MaNV_BacSi = nv.MaNV
+                WHERE pk.MaPK = @MaPK";
+            var dt = DatabaseHelper.ExecuteQuery(sql, new[] { new SqlParameter("@MaPK", maPK) });
+            return dt.Rows.Count > 0 ? dt.Rows[0] : null;
+        }
+
+        public static DataTable TraCuuChuyenMon(string keyword, string tab = "TatCa")
+        {
+            var dtResult = new DataTable();
+            dtResult.Columns.Add("Loai", typeof(string));
+            dtResult.Columns.Add("Ma", typeof(string));
+            dtResult.Columns.Add("TieuDe", typeof(string));
+            dtResult.Columns.Add("MoTa", typeof(string));
+            dtResult.Columns.Add("ChiTiet", typeof(string));
+
+            keyword = keyword.Trim().ToLower();
+
+            // 1. Thuốc
+            if (tab == "TatCa" || tab == "Thuoc")
+            {
+                var dtT = LayDanhSachThuoc(keyword);
+                foreach (DataRow r in dtT.Rows)
+                {
+                    dtResult.Rows.Add(
+                        "Thuốc tân dược",
+                        r["MaThuoc"].ToString(),
+                        $"{r["TenThuoc"]} ({r["DonViTinh"]})",
+                        $"Giá: {Convert.ToDecimal(r["DonGiaBan"]):N0} đ | Tồn kho: {r["SoLuongTon"]} {r["DonViTinh"]}",
+                        r["CachDungMacDinh"].ToString()
+                    );
+                }
+            }
+
+            // 2. Dịch vụ
+            if (tab == "TatCa" || tab == "DichVu")
+            {
+                string sqlDV = "SELECT MaDV, TenDV, DonGia, MoTa FROM DichVu WHERE @Kw = '' OR TenDV LIKE '%' + @Kw + '%' OR MaDV LIKE '%' + @Kw + '%'";
+                var dtDV = DatabaseHelper.ExecuteQuery(sqlDV, new[] { new SqlParameter("@Kw", keyword) });
+                foreach (DataRow r in dtDV.Rows)
+                {
+                    dtResult.Rows.Add(
+                        "Dịch vụ CLS",
+                        r["MaDV"].ToString(),
+                        r["TenDV"].ToString(),
+                        $"Đơn giá: {Convert.ToDecimal(r["DonGia"]):N0} đ",
+                        r["MoTa"].ToString()
+                    );
+                }
+            }
+
+            // 3. Bệnh án / Phiếu khám
+            if (tab == "TatCa" || tab == "BenhAn")
+            {
+                string sqlBA = @"
+                    SELECT TOP 20 pk.MaPK, pk.NgayKham, bn.HoTen AS TenBN, bn.MaBN, pk.ChanDoan, pk.TrieuChung, nv.HoTen AS TenBS
+                    FROM PhieuKham pk
+                    INNER JOIN BenhNhan bn ON pk.MaBN = bn.MaBN
+                    INNER JOIN NhanVien nv ON pk.MaNV_BacSi = nv.MaNV
+                    WHERE (@Kw = '' OR bn.HoTen LIKE '%' + @Kw + '%' OR pk.ChanDoan LIKE '%' + @Kw + '%' OR pk.MaPK LIKE '%' + @Kw + '%')
+                    ORDER BY pk.NgayKham DESC";
+                var dtBA = DatabaseHelper.ExecuteQuery(sqlBA, new[] { new SqlParameter("@Kw", keyword) });
+                foreach (DataRow r in dtBA.Rows)
+                {
+                    dtResult.Rows.Add(
+                        "Bệnh án / Phiếu khám",
+                        r["MaPK"].ToString(),
+                        $"Phiếu {r["MaPK"]} - {r["TenBN"]} ({r["MaBN"]})",
+                        $"Ngày: {Convert.ToDateTime(r["NgayKham"]):dd/MM/yyyy} | BS: {r["TenBS"]}",
+                        $"Chẩn đoán: {r["ChanDoan"]} | Triệu chứng: {r["TrieuChung"]}"
+                    );
+                }
+            }
+
+            // 4. Tài liệu & Phác đồ mẫu
+            if (tab == "TatCa" || tab == "TaiLieu")
+            {
+                var sampleDocs = new[]
+                {
+                    ("Hướng dẫn chẩn đoán và điều trị sốt xuất huyết Dengue", "Phác đồ Bộ Y Tế", "Theo dõi sát công thức máu và lượng tiểu cầu hằng ngày."),
+                    ("Phác đồ kiểm soát huyết áp cho người cao tuổi", "Khuyến cáo tim mạch", "Khởi đầu liều thấp, kiểm tra điện giải và chức năng thận."),
+                    ("Quy trình an toàn sử dụng kháng sinh dòng Beta-lactam", "Dược lâm sàng", "Luôn khai thác tiền sử dị ứng và test lẩy da khi cần thiết."),
+                    ("Quy chuẩn đọc kết quả công thức máu 18 thông số", "Xét nghiệm y khoa", "Đối chiếu Hemoglobin, Bạch cầu, Tiểu cầu và công thức bạch cầu.")
+                };
+
+                foreach (var doc in sampleDocs)
+                {
+                    if (string.IsNullOrEmpty(keyword) || doc.Item1.ToLower().Contains(keyword) || doc.Item2.ToLower().Contains(keyword))
+                    {
+                        dtResult.Rows.Add("Tài liệu & Phác đồ", "DOC-REF", doc.Item1, doc.Item2, doc.Item3);
+                    }
+                }
+            }
+
+            return dtResult;
+        }
+
+        public static void DamBaoDuLieuMauBacSi(string maBS)
+        {
+            try
+            {
+                // Kiểm tra xem hôm nay bác sĩ này đã có phiếu khám chưa
+                string sqlCheck = "SELECT COUNT(*) FROM PhieuKham WHERE CAST(NgayKham AS DATE) = CAST(GETDATE() AS DATE) AND MaNV_BacSi = @MaBS";
+                int count = Convert.ToInt32(DatabaseHelper.ExecuteScalar(sqlCheck, new[] { new SqlParameter("@MaBS", maBS) }));
+                if (count > 0) return;
+
+                // Lấy danh sách bệnh nhân có sẵn
+                var dtBN = LayDanhSachBenhNhan();
+                if (dtBN.Rows.Count == 0) return;
+
+                string[] sampleTrieuChung = {
+                    "Mệt mỏi trong vài ngày, kèm sốt nhẹ về chiều, đau nhức hốc mắt",
+                    "Khám sức khỏe tổng quát định kỳ",
+                    "Đau đầu từng cơn kèm hoa mắt, chóng mặt khi đổi tư thế",
+                    "Tái khám theo dõi huyết áp & rối loạn mỡ máu",
+                    "Đau vùng thượng vị sau khi ăn, đầy hơi khó tiêu",
+                    "Ho khan kéo dài 4 ngày, rát họng, không sốt"
+                };
+
+                string[] sampleTrangThai = {
+                    "Đã khám xong",
+                    "Đang khám",
+                    "Chờ khám",
+                    "Chờ khám",
+                    "Chờ kết quả CLS",
+                    "Chờ khám"
+                };
+
+                int stt = LaySTTTiepTheoTrongNgay();
+                for (int i = 0; i < Math.Min(6, dtBN.Rows.Count); i++)
+                {
+                    string maPK = SinhMaPhieuKham();
+                    string maBN = dtBN.Rows[i]["MaBN"].ToString()!;
+                    string tc = sampleTrieuChung[i % sampleTrieuChung.Length];
+                    string tt = sampleTrangThai[i % sampleTrangThai.Length];
+                    string cd = tt == "Đã khám xong" ? "Theo dõi viêm đường hô hấp trên / Sốt nhẹ" : (tt == "Đang khám" ? "Theo dõi sốt Dengue ngày thứ 3" : "");
+                    string ld = tt == "Đã khám xong" ? "Uống nhiều nước, nghỉ ngơi, uống thuốc theo đơn" : "";
+
+                    string sqlInsert = @"
+                        INSERT INTO PhieuKham (MaPK, STT, MaBN, MaNV_BacSi, NgayKham, TrieuChung, ChanDoan, LoiDan, TrangThai)
+                        VALUES (@MaPK, @STT, @MaBN, @MaBS, DATEADD(MINUTE, @Min, DATEADD(HOUR, 8, DATEADD(MINUTE, 30, CAST(CAST(GETDATE() AS DATE) AS DATETIME)))), @TC, @CD, @LD, @TT)";
+
+                    DatabaseHelper.ExecuteNonQuery(sqlInsert, new[]
+                    {
+                        new SqlParameter("@MaPK", maPK),
+                        new SqlParameter("@STT", stt++),
+                        new SqlParameter("@MaBN", maBN),
+                        new SqlParameter("@MaBS", maBS),
+                        new SqlParameter("@Min", i * 35),
+                        new SqlParameter("@TC", tc),
+                        new SqlParameter("@CD", cd),
+                        new SqlParameter("@LD", ld),
+                        new SqlParameter("@TT", tt)
+                    });
+                }
+            }
+            catch { }
+        }
     }
 }

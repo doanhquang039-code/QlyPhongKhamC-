@@ -23,7 +23,7 @@ namespace QlyPhongKham.Forms
             var txtMK2  = new TextBox { Location = new Point(150, 125), Size = new Size(220, 26), UseSystemPasswordChar = true };
             var cboQ    = new ComboBox { Location = new Point(150, 160), Size = new Size(160, 26), DropDownStyle = ComboBoxStyle.DropDownList };
             cboQ.Items.AddRange(new object[] { "Admin", "BacSi", "LeTan" });
-            cboQ.SelectedItem = chucVu;
+            cboQ.SelectedItem = chucVu == "ThuNgan" ? "LeTan" : chucVu;
 
             Controls.AddRange(new Control[] {
                 new Label { Text = "Mã nhân viên:", Location = new Point(20, 23), AutoSize = true }, txtMaNV,
@@ -54,7 +54,11 @@ namespace QlyPhongKham.Forms
                     MessageBox.Show("Mật khẩu phải ít nhất 4 ký tự!", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
-                ClinicDAL.LuuTaiKhoan(maNV, txtTDN.Text.Trim(), txtMK.Text, cboQ.SelectedItem?.ToString() ?? "LeTan", isNew);
+                if (!ClinicDAL.LuuTaiKhoan(maNV, txtTDN.Text.Trim(), txtMK.Text, cboQ.SelectedItem?.ToString() ?? "LeTan", isNew))
+                {
+                    MessageBox.Show("Không lưu được tài khoản. Vui lòng kiểm tra nhân viên và thử lại.", "Lỗi lưu tài khoản", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
                 MessageBox.Show("✅ Đã lưu tài khoản thành công!", "Thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 DialogResult = DialogResult.OK;
                 Close();

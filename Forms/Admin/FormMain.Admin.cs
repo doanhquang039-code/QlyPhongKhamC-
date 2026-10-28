@@ -18,7 +18,9 @@ namespace QlyPhongKham.Forms
             Panel pnlCD,
             DataGridView dgvCD,
             Panel pnlTH,
-            DataGridView dgvTH)
+            DataGridView dgvTH,
+            Panel pnlKhoaPhong,
+            DataGridView dgvKhoaPhong)
         {
             void LayoutSummary()
             {
@@ -26,6 +28,8 @@ namespace QlyPhongKham.Forms
                 pCards.Width = contentWidth;
                 pnlTH.Width = contentWidth;
                 dgvTH.Width = Math.Max(0, pnlTH.ClientSize.Width - 28);
+                pnlKhoaPhong.Width = contentWidth;
+                dgvKhoaPhong.Width = Math.Max(0, pnlKhoaPhong.ClientSize.Width - 28);
 
                 int cardWidth = Math.Max(0, (pCards.ClientSize.Width - 45) / 4);
                 for (int i = 0; i < pCards.Controls.Count; i++)
@@ -62,6 +66,7 @@ namespace QlyPhongKham.Forms
         // ═══════════════════════════════════════════════════════════
         private void ShowDashboard()
         {
+            SetRefreshPageAction(ShowDashboard);
             SetActiveNav(btnNavTongQuan);
             SetPageHeader("Quản trị viên  ›  Tổng quan", "Tổng quan phòng khám");
             panelContent.Controls.Clear();
@@ -108,9 +113,208 @@ namespace QlyPhongKham.Forms
             dgvTH.DataSource = ClinicDAL.LayThuocSapHet(30);
             pnlTH.Controls.Add(dgvTH);
 
-            wrapper.Controls.AddRange(new Control[] { pCards, pnlDT, pnlCD, pnlTH });
+            var pnlKhoaPhong = new Panel { Location = new Point(10, 665), Size = new Size(1080, 220), BackColor = C_Card };
+            pnlKhoaPhong.Paint += PaintCardBorder;
+            pnlKhoaPhong.Controls.Add(MakeLbl("LƯỢT KHÁM THEO KHOA / PHÒNG (7 NGÀY)", 14, 12, bold: true));
+            var dgvKhoaPhong = MakeGrid(DockStyle.None);
+            dgvKhoaPhong.Location = new Point(14, 38);
+            dgvKhoaPhong.Size = new Size(1052, 168);
+            if (ClinicDAL.CoSchemaKhoaPhong())
+            {
+                dgvKhoaPhong.DataSource = ClinicDAL.LayThongKeKhoaPhong(7);
+                pnlKhoaPhong.Controls.Add(dgvKhoaPhong);
+            }
+            else
+            {
+                var lblSchemaWarning = MakeLbl(
+                    "Database chưa có cấu trúc khoa/phòng. Hãy chạy seed_test_data.sql trên đúng database ứng dụng đang kết nối.",
+                    14, 48);
+                lblSchemaWarning.ForeColor = C_Red;
+                lblSchemaWarning.AutoSize = false;
+                lblSchemaWarning.Size = new Size(1040, 50);
+                pnlKhoaPhong.Controls.Add(lblSchemaWarning);
+            }
+
+            wrapper.Controls.AddRange(new Control[] { pCards, pnlDT, pnlCD, pnlTH, pnlKhoaPhong });
             panelContent.Controls.Add(wrapper);
-            ConfigureAdminSummaryLayout(wrapper, pCards, pnlDT, dgvDT, pnlCD, dgvCD, pnlTH, dgvTH);
+            ConfigureAdminSummaryLayout(wrapper, pCards, pnlDT, dgvDT, pnlCD, dgvCD, pnlTH, dgvTH, pnlKhoaPhong, dgvKhoaPhong);
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        //  ADMIN: DANH SÁCH PHIẾU KHÁM HÔM NAY
+        // ═══════════════════════════════════════════════════════════
+        private void ShowAdminClinicView()
+        {
+            SetRefreshPageAction(ShowAdminClinicView);
+            SetActiveNav(btnNavKhamBenh);
+            SetPageHeader("Quản trị viên  ›  Phiếu khám", "Danh sách phiếu khám hôm nay");
+            panelContent.Controls.Clear();
+
+            var wrapper = new Panel { Dock = DockStyle.Fill };
+            var toolPanel = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = C_Card, Padding = new Padding(12, 8, 12, 0) };
+            toolPanel.Paint += PaintCardBorder;
+
+            var txtSearch = MakeInput(12, 10, 280);
+            txtSearch.PlaceholderText = "Tìm bệnh nhân, mã phiếu...";
+            var btnRefresh = SecondaryBtn("↻ Làm mới", 302, 8, 110, 34);
+            var btnCancelVisit = SecondaryBtn("Hủy phiếu chờ khám", 422, 8, 155, 34, C_Red);
+            toolPanel.Controls.AddRange(new Control[] { txtSearch, btnRefresh, btnCancelVisit });
+
+            var contentPanel = new Panel { Dock = DockStyle.Fill, BackColor = C_Card, Padding = new Padding(10) };
+            contentPanel.Paint += PaintCardBorder;
+            var dgv = MakeGrid();
+            contentPanel.Controls.Add(dgv);
+
+            void LoadAppointments()
+            {
+                dgv.DataSource = ClinicDAL.LayDanhSachKhamBacSi(null, txtSearch.Text.Trim());
+            }
+
+            LoadAppointments();
+            txtSearch.TextChanged += (s, e) => LoadAppointments();
+            btnRefresh.Click += (s, e) => LoadAppointments();
+            btnCancelVisit.Click += (s, e) =>
+            {
+                if (dgv.SelectedRows.Count == 0)
+                {
+                    MessageBox.Show("Chọn phiếu khám cần hủy.", "Chưa chọn phiếu", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                string maPK = dgv.SelectedRows[0].Cells["MaPK"].Value?.ToString() ?? "";
+                if (MessageBox.Show(
+                        $"Hủy phiếu {maPK}? Chỉ phiếu đang chờ khám và chưa có hóa đơn mới được hủy.",
+                        "Xác nhận hủy phiếu",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning) != DialogResult.Yes)
+                    return;
+
+                if (!ClinicDAL.HuyPhieuKhamChoKham(maPK))
+                {
+                    MessageBox.Show("Không hủy được phiếu. Phiếu có thể đã bắt đầu khám, đã có hóa đơn hoặc trạng thái không còn phù hợp.",
+                        "Không thể hủy phiếu", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                LoadAppointments();
+            };
+
+            wrapper.Controls.Add(contentPanel);
+            wrapper.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 10 });
+            wrapper.Controls.Add(toolPanel);
+            panelContent.Controls.Add(wrapper);
+        }
+
+        private void ShowAdminAppointmentsView()
+        {
+            SetRefreshPageAction(ShowAdminAppointmentsView);
+            SetActiveNav(btnNavLichHen);
+            SetPageHeader("Quản trị viên  ›  Lịch hẹn", "Quản lý lịch hẹn");
+            panelContent.Controls.Clear();
+
+            var wrapper = new Panel { Dock = DockStyle.Fill };
+            var toolPanel = new Panel { Dock = DockStyle.Top, Height = 54, BackColor = C_Card, Padding = new Padding(12, 8, 12, 0) };
+            toolPanel.Paint += PaintCardBorder;
+
+            var txtSearch = MakeInput(12, 9, 230);
+            txtSearch.PlaceholderText = "Mã hẹn, bệnh nhân, bác sĩ...";
+            var cboStatus = new ComboBox
+            {
+                Location = new Point(252, 9),
+                Size = new Size(155, 30),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = F_Base
+            };
+            cboStatus.Items.AddRange(new object[] { "Tất cả trạng thái", "Chờ xác nhận", "Đã xác nhận", "Đã đến", "Đã hủy" });
+            cboStatus.SelectedIndex = 0;
+
+            var btnAdd = PrimaryBtn("Thêm lịch hẹn", 417, 8, 125, 34);
+            var btnEdit = SecondaryBtn("Sửa", 552, 8, 75, 34, C_Orange);
+            var btnCancel = SecondaryBtn("Hủy lịch", 635, 8, 95, 34, C_Red);
+            var btnRefresh = SecondaryBtn("Làm mới", 738, 8, 95, 34, C_Blue);
+            toolPanel.Controls.AddRange(new Control[] { txtSearch, cboStatus, btnAdd, btnEdit, btnCancel, btnRefresh });
+
+            var contentPanel = new Panel { Dock = DockStyle.Fill, BackColor = C_Card, Padding = new Padding(10) };
+            contentPanel.Paint += PaintCardBorder;
+            var dgv = MakeGrid();
+            contentPanel.Controls.Add(dgv);
+
+            void LoadAppointments()
+            {
+                string status = cboStatus.SelectedItem?.ToString() ?? "Tất cả trạng thái";
+                dgv.DataSource = ClinicDAL.LayDanhSachLichHen(
+                    txtSearch.Text.Trim(),
+                    status == "Tất cả trạng thái" ? null : status);
+            }
+
+            DataRow? GetSelectedAppointment()
+            {
+                if (dgv.SelectedRows.Count == 0 ||
+                    dgv.SelectedRows[0].DataBoundItem is not DataRowView rowView)
+                    return null;
+                return rowView.Row;
+            }
+
+            LoadAppointments();
+            txtSearch.TextChanged += (s, e) => LoadAppointments();
+            cboStatus.SelectedIndexChanged += (s, e) => LoadAppointments();
+            btnRefresh.Click += (s, e) => LoadAppointments();
+
+            btnAdd.Click += (s, e) =>
+            {
+                using var dialog = new FormThemSuaLichHen();
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                    LoadAppointments();
+            };
+
+            btnEdit.Click += (s, e) =>
+            {
+                DataRow? selected = GetSelectedAppointment();
+                if (selected == null)
+                {
+                    MessageBox.Show("Chọn lịch hẹn cần sửa.", "Chưa chọn lịch hẹn",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                if (selected["TrangThai"].ToString() == "Đã hủy")
+                {
+                    MessageBox.Show("Lịch đã hủy không thể sửa. Hãy tạo lịch hẹn mới nếu cần.",
+                        "Lịch đã hủy", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                using var dialog = new FormThemSuaLichHen(Convert.ToInt32(selected["MaLichHen"]), selected);
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                    LoadAppointments();
+            };
+
+            btnCancel.Click += (s, e) =>
+            {
+                DataRow? selected = GetSelectedAppointment();
+                if (selected == null)
+                {
+                    MessageBox.Show("Chọn lịch hẹn cần hủy.", "Chưa chọn lịch hẹn",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                int maLichHen = Convert.ToInt32(selected["MaLichHen"]);
+                if (MessageBox.Show($"Hủy lịch hẹn #{maLichHen} của {selected["TenBN"]}?",
+                        "Xác nhận hủy lịch", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+                    return;
+
+                if (!ClinicDAL.HuyLichHen(maLichHen))
+                {
+                    MessageBox.Show("Chỉ lịch đang chờ xác nhận hoặc đã xác nhận mới được hủy.",
+                        "Không thể hủy lịch", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                LoadAppointments();
+            };
+
+            wrapper.Controls.Add(contentPanel);
+            wrapper.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 10 });
+            wrapper.Controls.Add(toolPanel);
+            panelContent.Controls.Add(wrapper);
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -118,29 +322,69 @@ namespace QlyPhongKham.Forms
         // ═══════════════════════════════════════════════════════════
         private void ShowNhanVienView()
         {
+            SetRefreshPageAction(ShowNhanVienView);
             SetActiveNav(btnNavNhanVien);
             SetPageHeader("Quản trị viên  ›  Nhân sự", "Quản lý nhân viên & Phân quyền");
             panelContent.Controls.Clear();
 
             var wrapper = new Panel { Dock = DockStyle.Fill };
 
-            var toolPanel = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = C_Card, Padding = new Padding(12, 8, 12, 0) };
+            var toolPanel = new Panel { Dock = DockStyle.Top, Height = 92, BackColor = C_Card, Padding = new Padding(12, 8, 12, 0) };
             toolPanel.Paint += PaintCardBorder;
 
             var btnAddNV     = PrimaryBtn("➕ Thêm nhân viên", 12, 8, 155, 34);
             var btnEditNV    = SecondaryBtn("✏ Sửa thông tin", 177, 8, 140, 34, C_Orange);
             var btnDisableNV = SecondaryBtn("🚫 Vô hiệu hóa", 327, 8, 135, 34, C_Red);
             var btnCapTK     = SecondaryBtn("🔑 Cấp / Đổi MK", 472, 8, 160, 34, C_Blue);
-
-            toolPanel.Controls.AddRange(new Control[] { btnAddNV, btnEditNV, btnDisableNV, btnCapTK });
+            var btnAssignRoom = SecondaryBtn("🏥 Phân công phòng", 638, 8, 170, 34, C_Teal);
+            var btnRefreshNV = SecondaryBtn("↻ Làm mới", 482, 52, 105, 30, C_Blue);
+            var txtSearchNV  = MakeInput(12, 52, 280, false, "");
+            var cboRoleFilter = new ComboBox
+            {
+                Location = new Point(302, 52),
+                Size = new Size(170, 30),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = F_Base
+            };
+            cboRoleFilter.Items.AddRange(new object[] { "Tất cả chức vụ", "Admin", "BacSi", "LeTan" });
+            cboRoleFilter.SelectedIndex = 0;
+            toolPanel.Controls.AddRange(new Control[] { btnAddNV, btnEditNV, btnDisableNV, btnCapTK, btnAssignRoom, btnRefreshNV, txtSearchNV, cboRoleFilter });
 
             var contentPanel = new Panel { Dock = DockStyle.Fill, BackColor = C_Card, Padding = new Padding(10) };
             contentPanel.Paint += PaintCardBorder;
             var dgvNV = MakeGrid();
             contentPanel.Controls.Add(dgvNV);
 
-            void LoadNV() => dgvNV.DataSource = ClinicDAL.LayDanhSachNhanVien();
+            void LoadNV()
+            {
+                string role = cboRoleFilter.SelectedItem?.ToString() ?? "";
+                if (role == "Tất cả chức vụ") role = "";
+                dgvNV.DataSource = ClinicDAL.LayDanhSachNhanVien(txtSearchNV.Text.Trim(), role);
+            }
             LoadNV();
+            txtSearchNV.TextChanged += (s, e) => LoadNV();
+            cboRoleFilter.SelectedIndexChanged += (s, e) => LoadNV();
+            btnRefreshNV.Click += (s, e) => LoadNV();
+
+            btnAssignRoom.Click += (s, e) =>
+            {
+                if (dgvNV.SelectedRows.Count == 0)
+                {
+                    MessageBox.Show("Chọn nhân viên cần phân công phòng khám.", "Nhắc nhở", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                var row = dgvNV.SelectedRows[0];
+                string maNV = row.Cells["MaNV"].Value?.ToString() ?? "";
+                string chucVu = row.Cells["ChucVu"].Value?.ToString() ?? "";
+                if (chucVu is not ("BacSi" or "LeTan"))
+                {
+                    MessageBox.Show("Chỉ có thể phân công phòng cho bác sĩ hoặc lễ tân.", "Không phù hợp", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                using var dlg = new FormPhanCongPhong(maNV, row.Cells["HoTen"].Value?.ToString() ?? maNV);
+                if (dlg.ShowDialog(this) == DialogResult.OK)
+                    LoadNV();
+            };
 
             btnAddNV.Click += (s, e) =>
             {
@@ -180,8 +424,13 @@ namespace QlyPhongKham.Forms
                 }
                 if (MessageBox.Show("Vô hiệu hóa tài khoản nhân viên này?", "Xác nhận", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
                 {
-                    ClinicDAL.XoaNhanVien(maNV);
+                    if (!ClinicDAL.XoaNhanVien(maNV))
+                    {
+                        MessageBox.Show("Không thể vô hiệu hóa nhân viên. Vui lòng thử lại.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
                     LoadNV();
+                    MessageBox.Show("Đã vô hiệu hóa nhân viên.", "Thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             };
 
@@ -206,11 +455,195 @@ namespace QlyPhongKham.Forms
             panelContent.Controls.Add(wrapper);
         }
 
+        private void ShowKhoaPhongView()
+        {
+            SetRefreshPageAction(ShowKhoaPhongView);
+            SetActiveNav(btnNavKhoaPhong);
+            SetPageHeader("Quản trị viên  ›  Khoa / Phòng khám", "Quản lý chuyên khoa và phòng ban");
+            panelContent.Controls.Clear();
+
+            var wrapper = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 1,
+                Padding = new Padding(10),
+                BackColor = C_Bg
+            };
+            wrapper.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            wrapper.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            wrapper.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+            var departmentPanel = CreateSectionPanel("DANH SÁCH CHUYÊN KHOA");
+            var roomPanel = CreateSectionPanel("DANH SÁCH PHÒNG KHÁM");
+            var departments = MakeGrid(DockStyle.None);
+            var rooms = MakeGrid(DockStyle.None);
+            departmentPanel.Controls.Add(departments);
+            roomPanel.Controls.Add(rooms);
+            wrapper.Controls.Add(departmentPanel, 0, 0);
+            wrapper.Controls.Add(roomPanel, 1, 0);
+
+            void LayoutGrids()
+            {
+                foreach (var section in new[] { departmentPanel, roomPanel })
+                {
+                    var grid = section == departmentPanel ? departments : rooms;
+                    grid.Location = new Point(12, 88);
+                    grid.Size = new Size(Math.Max(0, section.ClientSize.Width - 24), Math.Max(0, section.ClientSize.Height - 100));
+                    grid.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+                }
+            }
+
+            departmentPanel.SizeChanged += (s, e) => LayoutGrids();
+            roomPanel.SizeChanged += (s, e) => LayoutGrids();
+
+            void LoadData()
+            {
+                departments.DataSource = ClinicDAL.LayDanhSachKhoaQuanTri();
+                rooms.DataSource = ClinicDAL.LayDanhSachPhongKhamQuanTri();
+                LayoutGrids();
+            }
+
+            void RunAdminAction(Action action)
+            {
+                try
+                {
+                    action();
+                    LoadData();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message, "Không thể cập nhật khoa / phòng",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+
+            var departmentButtons = new FlowLayoutPanel
+            {
+                Location = new Point(12, 42),
+                Size = new Size(510, 38),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                WrapContents = false
+            };
+            var addDepartment = PrimaryBtn("➕ Thêm", 0, 0, 105);
+            var editDepartment = SecondaryBtn("✏ Sửa", 0, 0, 95, 34, C_Orange);
+            var deleteDepartment = SecondaryBtn("🗑 Xóa", 0, 0, 95, 34, C_Red);
+            var refreshDepartments = SecondaryBtn("↻ Làm mới", 0, 0, 110, 34, C_Blue);
+            departmentButtons.Controls.AddRange(new Control[] { addDepartment, editDepartment, deleteDepartment, refreshDepartments });
+            departmentPanel.Controls.Add(departmentButtons);
+
+            var roomButtons = new FlowLayoutPanel
+            {
+                Location = new Point(12, 42),
+                Size = new Size(510, 38),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                WrapContents = false
+            };
+            var addRoom = PrimaryBtn("➕ Thêm", 0, 0, 105);
+            var editRoom = SecondaryBtn("✏ Sửa", 0, 0, 95, 34, C_Orange);
+            var deleteRoom = SecondaryBtn("🗑 Xóa", 0, 0, 95, 34, C_Red);
+            var refreshRooms = SecondaryBtn("↻ Làm mới", 0, 0, 110, 34, C_Blue);
+            roomButtons.Controls.AddRange(new Control[] { addRoom, editRoom, deleteRoom, refreshRooms });
+            roomPanel.Controls.Add(roomButtons);
+
+            DataRow? GetSelected(DataGridView grid)
+                => grid.SelectedRows.Count > 0 && grid.SelectedRows[0].DataBoundItem is DataRowView rowView
+                    ? rowView.Row
+                    : null;
+
+            addDepartment.Click += (s, e) =>
+            {
+                using var dialog = new FormThemSuaKhoaPhong(isRoom: false, isNew: true);
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                    RunAdminAction(() => ClinicDAL.LuuKhoa(dialog.Ma, dialog.Ten, isNew: true));
+            };
+            editDepartment.Click += (s, e) =>
+            {
+                DataRow? selected = GetSelected(departments);
+                if (selected == null)
+                {
+                    MessageBox.Show("Chọn chuyên khoa cần sửa.", "Chưa chọn dữ liệu",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                using var dialog = new FormThemSuaKhoaPhong(isRoom: false, isNew: false, selected);
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                    RunAdminAction(() => ClinicDAL.LuuKhoa(dialog.Ma, dialog.Ten, isNew: false));
+            };
+            deleteDepartment.Click += (s, e) =>
+            {
+                DataRow? selected = GetSelected(departments);
+                if (selected == null)
+                {
+                    MessageBox.Show("Chọn chuyên khoa cần xóa.", "Chưa chọn dữ liệu",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                string maKhoa = selected["MaKhoa"].ToString() ?? "";
+                if (MessageBox.Show($"Xóa chuyên khoa '{selected["TenKhoa"]}'?", "Xác nhận xóa",
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                    RunAdminAction(() => ClinicDAL.XoaKhoa(maKhoa));
+            };
+            refreshDepartments.Click += (s, e) => LoadData();
+
+            addRoom.Click += (s, e) =>
+            {
+                using var dialog = new FormThemSuaKhoaPhong(isRoom: true, isNew: true);
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                    RunAdminAction(() => ClinicDAL.LuuPhongKham(dialog.Ma, dialog.Ten, dialog.MaKhoa, isNew: true));
+            };
+            editRoom.Click += (s, e) =>
+            {
+                DataRow? selected = GetSelected(rooms);
+                if (selected == null)
+                {
+                    MessageBox.Show("Chọn phòng khám cần sửa.", "Chưa chọn dữ liệu",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                using var dialog = new FormThemSuaKhoaPhong(isRoom: true, isNew: false, selected);
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                    RunAdminAction(() => ClinicDAL.LuuPhongKham(dialog.Ma, dialog.Ten, dialog.MaKhoa, isNew: false));
+            };
+            deleteRoom.Click += (s, e) =>
+            {
+                DataRow? selected = GetSelected(rooms);
+                if (selected == null)
+                {
+                    MessageBox.Show("Chọn phòng khám cần xóa.", "Chưa chọn dữ liệu",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                string maPhong = selected["MaPhong"].ToString() ?? "";
+                if (MessageBox.Show($"Xóa phòng '{selected["TenPhong"]}'?", "Xác nhận xóa",
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                    RunAdminAction(() => ClinicDAL.XoaPhongKham(maPhong));
+            };
+            refreshRooms.Click += (s, e) => LoadData();
+
+            LoadData();
+            panelContent.Controls.Add(wrapper);
+        }
+
+        private static Panel CreateSectionPanel(string title)
+        {
+            var panel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Margin = new Padding(6),
+                BackColor = C_Card
+            };
+            panel.Paint += PaintCardBorder;
+            panel.Controls.Add(MakeLbl(title, 14, 13, bold: true));
+            return panel;
+        }
+
         // ═══════════════════════════════════════════════════════════
         //  ADMIN: BÁO CÁO & THỐNG KÊ
         // ═══════════════════════════════════════════════════════════
         private void ShowBaoCaoView()
         {
+            SetRefreshPageAction(ShowBaoCaoView);
             SetActiveNav(btnNavBaoCao);
             SetPageHeader("Quản trị viên  ›  Báo cáo", "Báo cáo thống kê hoạt động");
             panelContent.Controls.Clear();
@@ -222,7 +655,7 @@ namespace QlyPhongKham.Forms
 
             var pCards = new Panel { Location = new Point(10, 10), Size = new Size(1080, 115) };
             pCards.Controls.Add(MakeKpiCard("LƯỢT KHÁM HÔM NAY", $"{kham} lượt", "Phiếu khám đăng ký hôm nay", C_Teal, 0, 0, 250));
-            pCards.Controls.Add(MakeKpiCard("DOANH THU THỰC TẾ", $"{thu:N0} đ", "Tổng viện phí đã thu", C_Green, 265, 0, 250));
+            pCards.Controls.Add(MakeKpiCard("DOANH THU HÔM NAY", $"{thu:N0} đ", "Hóa đơn đã thanh toán hôm nay", C_Green, 265, 0, 250));
             pCards.Controls.Add(MakeKpiCard("TỔNG HỒ SƠ BN", $"{tongBN} hồ sơ", "Cơ sở dữ liệu bệnh nhân", C_Blue, 530, 0, 250));
             pCards.Controls.Add(MakeKpiCard("THUỐC CẦN NHẬP", $"{thuocSapHet} mục", "Số lượng tồn kho ≤ 30", C_Red, 795, 0, 250));
 
@@ -253,9 +686,31 @@ namespace QlyPhongKham.Forms
             dgvTH.DataSource = ClinicDAL.LayThuocSapHet(30);
             pnlTH.Controls.Add(dgvTH);
 
-            wrapper.Controls.AddRange(new Control[] { pCards, pnlDT, pnlCD, pnlTH });
+            var pnlKhoaPhong = new Panel { Location = new Point(10, 685), Size = new Size(1080, 220), BackColor = C_Card };
+            pnlKhoaPhong.Paint += PaintCardBorder;
+            pnlKhoaPhong.Controls.Add(MakeLbl("LƯỢT KHÁM THEO KHOA / PHÒNG (30 NGÀY)", 14, 12, bold: true));
+            var dgvKhoaPhong = MakeGrid(DockStyle.None);
+            dgvKhoaPhong.Location = new Point(14, 38);
+            dgvKhoaPhong.Size = new Size(1052, 168);
+            if (ClinicDAL.CoSchemaKhoaPhong())
+            {
+                dgvKhoaPhong.DataSource = ClinicDAL.LayThongKeKhoaPhong(30);
+                pnlKhoaPhong.Controls.Add(dgvKhoaPhong);
+            }
+            else
+            {
+                var lblSchemaWarning = MakeLbl(
+                    "Database chưa có cấu trúc khoa/phòng. Hãy chạy seed_test_data.sql trên đúng database ứng dụng đang kết nối.",
+                    14, 48);
+                lblSchemaWarning.ForeColor = C_Red;
+                lblSchemaWarning.AutoSize = false;
+                lblSchemaWarning.Size = new Size(1040, 50);
+                pnlKhoaPhong.Controls.Add(lblSchemaWarning);
+            }
+
+            wrapper.Controls.AddRange(new Control[] { pCards, pnlDT, pnlCD, pnlTH, pnlKhoaPhong });
             panelContent.Controls.Add(wrapper);
-            ConfigureAdminSummaryLayout(wrapper, pCards, pnlDT, dgvDT, pnlCD, dgvCD, pnlTH, dgvTH);
+            ConfigureAdminSummaryLayout(wrapper, pCards, pnlDT, dgvDT, pnlCD, dgvCD, pnlTH, dgvTH, pnlKhoaPhong, dgvKhoaPhong);
         }
     }
 }

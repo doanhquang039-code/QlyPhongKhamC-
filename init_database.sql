@@ -18,6 +18,7 @@ GO
 
 -- 1. BẢNG NHÂN VIÊN
 IF OBJECT_ID('TaiKhoan', 'U') IS NOT NULL DROP TABLE TaiKhoan;
+IF OBJECT_ID('TaiKhoanBenhNhan', 'U') IS NOT NULL DROP TABLE TaiKhoanBenhNhan;
 IF OBJECT_ID('ChiTietDonThuoc', 'U') IS NOT NULL DROP TABLE ChiTietDonThuoc;
 IF OBJECT_ID('DonThuoc', 'U') IS NOT NULL DROP TABLE DonThuoc;
 IF OBJECT_ID('HoaDon', 'U') IS NOT NULL DROP TABLE HoaDon;
@@ -27,6 +28,9 @@ IF OBJECT_ID('PhieuKham', 'U') IS NOT NULL DROP TABLE PhieuKham;
 IF OBJECT_ID('LichHen', 'U') IS NOT NULL DROP TABLE LichHen;
 IF OBJECT_ID('BenhNhan', 'U') IS NOT NULL DROP TABLE BenhNhan;
 IF OBJECT_ID('Thuoc', 'U') IS NOT NULL DROP TABLE Thuoc;
+IF OBJECT_ID('PhanCongPhong', 'U') IS NOT NULL DROP TABLE PhanCongPhong;
+IF OBJECT_ID('PhongKham', 'U') IS NOT NULL DROP TABLE PhongKham;
+IF OBJECT_ID('Khoa', 'U') IS NOT NULL DROP TABLE Khoa;
 IF OBJECT_ID('NhanVien', 'U') IS NOT NULL DROP TABLE NhanVien;
 GO
 
@@ -52,6 +56,31 @@ CREATE TABLE TaiKhoan (
 );
 GO
 
+-- 3. KHOA, PHÒNG KHÁM VÀ PHÂN CÔNG NHIỀU-NHIỀU
+CREATE TABLE Khoa (
+    MaKhoa VARCHAR(10) PRIMARY KEY,
+    TenKhoa NVARCHAR(100) NOT NULL UNIQUE
+);
+GO
+
+CREATE TABLE PhongKham (
+    MaPhong VARCHAR(10) PRIMARY KEY,
+    MaKhoa VARCHAR(10) NOT NULL,
+    TenPhong NVARCHAR(100) NOT NULL,
+    CONSTRAINT FK_PhongKham_Khoa FOREIGN KEY (MaKhoa) REFERENCES Khoa(MaKhoa)
+);
+GO
+
+CREATE TABLE PhanCongPhong (
+    MaNV VARCHAR(10) NOT NULL,
+    MaPhong VARCHAR(10) NOT NULL,
+    VaiTro NVARCHAR(20) NOT NULL CONSTRAINT CK_PhanCongPhong_VaiTro CHECK (VaiTro IN (N'BacSi', N'LeTan')),
+    CONSTRAINT PK_PhanCongPhong PRIMARY KEY (MaNV, MaPhong),
+    CONSTRAINT FK_PhanCongPhong_NhanVien FOREIGN KEY (MaNV) REFERENCES NhanVien(MaNV) ON DELETE CASCADE,
+    CONSTRAINT FK_PhanCongPhong_Phong FOREIGN KEY (MaPhong) REFERENCES PhongKham(MaPhong) ON DELETE CASCADE
+);
+GO
+
 -- 3. BẢNG BỆNH NHÂN
 CREATE TABLE BenhNhan (
     MaBN VARCHAR(10) PRIMARY KEY,
@@ -62,6 +91,15 @@ CREATE TABLE BenhNhan (
     DiaChi NVARCHAR(200) NULL,
     TienSuBenh NVARCHAR(MAX) NULL,
     NgayTao DATETIME DEFAULT GETDATE()
+);
+GO
+
+CREATE TABLE TaiKhoanBenhNhan (
+    TenDangNhap VARCHAR(50) PRIMARY KEY,
+    MatKhau VARCHAR(255) NOT NULL,
+    MaBN VARCHAR(10) NOT NULL UNIQUE,
+    TrangThai BIT NOT NULL DEFAULT 1,
+    CONSTRAINT FK_TaiKhoanBenhNhan_BenhNhan FOREIGN KEY (MaBN) REFERENCES BenhNhan(MaBN) ON DELETE CASCADE
 );
 GO
 
@@ -85,14 +123,18 @@ CREATE TABLE PhieuKham (
     STT INT NOT NULL,
     MaBN VARCHAR(10) NOT NULL,
     MaNV_BacSi VARCHAR(10) NOT NULL,
+    MaPhong VARCHAR(10) NULL,
     NgayKham DATETIME NOT NULL DEFAULT GETDATE(),
     TrieuChung NVARCHAR(255) NULL,
+    KhamLamSang NVARCHAR(MAX) NULL,
+    SinhHieu NVARCHAR(200) NULL,
     ChanDoan NVARCHAR(255) NULL,
     LoiDan NVARCHAR(500) NULL,
     TrangThai NVARCHAR(30) NOT NULL DEFAULT N'Chờ khám'
         CONSTRAINT CK_PhieuKham_TrangThai CHECK (TrangThai IN (N'Chờ khám', N'Đang khám', N'Chờ kết quả CLS', N'Đã khám xong', N'Đã hủy')),
     CONSTRAINT FK_PhieuKham_BenhNhan FOREIGN KEY (MaBN) REFERENCES BenhNhan(MaBN),
-    CONSTRAINT FK_PhieuKham_BacSi FOREIGN KEY (MaNV_BacSi) REFERENCES NhanVien(MaNV)
+    CONSTRAINT FK_PhieuKham_BacSi FOREIGN KEY (MaNV_BacSi) REFERENCES NhanVien(MaNV),
+    CONSTRAINT FK_PhieuKham_Phong FOREIGN KEY (MaPhong) REFERENCES PhongKham(MaPhong)
 );
 GO
 
@@ -194,11 +236,34 @@ INSERT INTO TaiKhoan (TenDangNhap, MatKhau, MaNV, Quyen, TrangThai) VALUES
 ('thungan', '123456', 'NV004', 'LeTan', 1),
 ('letan', '123456', 'NV005', 'LeTan', 1);
 
+INSERT INTO Khoa (MaKhoa, TenKhoa) VALUES
+('KNOI', N'Nội tổng quát'),
+('KTMH', N'Tai Mũi Họng'),
+('KNHI', N'Nhi khoa');
+
+INSERT INTO PhongKham (MaPhong, MaKhoa, TenPhong) VALUES
+('P101', 'KNOI', N'Phòng Nội 101'),
+('P102', 'KNOI', N'Phòng Nội 102'),
+('P201', 'KTMH', N'Phòng Tai Mũi Họng 201'),
+('P301', 'KNHI', N'Phòng Nhi 301');
+
+INSERT INTO PhanCongPhong (MaNV, MaPhong, VaiTro) VALUES
+('NV002', 'P101', N'BacSi'),
+('NV002', 'P102', N'BacSi'),
+('NV003', 'P201', N'BacSi'),
+('NV004', 'P101', N'LeTan'),
+('NV005', 'P201', N'LeTan');
+
 -- Bệnh nhân
 INSERT INTO BenhNhan (MaBN, HoTen, NgaySinh, GioiTinh, SoDienThoai, DiaChi, TienSuBenh) VALUES
 ('BN0001', N'Vũ Thị Mai', '1995-04-12', N'Nữ', '0988111222', N'Hà Nội', N'Dị ứng Penicillin'),
 ('BN0002', N'Đặng Văn Hùng', '1988-09-25', N'Nam', '0977333444', N'Hải Phòng', N'Tiểu đường type 2'),
 ('BN0003', N'Ngô Bảo Châu', '2002-01-18', N'Nam', '0966555666', N'Nam Định', N'Không');
+
+INSERT INTO TaiKhoanBenhNhan (TenDangNhap, MatKhau, MaBN, TrangThai) VALUES
+('benhnhan_mai', '123456', 'BN0001', 1),
+('benhnhan_hung', '123456', 'BN0002', 1),
+('benhnhan_chau', '123456', 'BN0003', 1);
 
 -- Dịch vụ
 INSERT INTO DichVu (MaDV, TenDV, DonGia, MoTa) VALUES

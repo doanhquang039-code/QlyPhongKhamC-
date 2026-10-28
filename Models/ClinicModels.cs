@@ -23,6 +23,13 @@ namespace QlyPhongKham.Models
         public string? HoTenNhanVien { get; set; }
     }
 
+    public class TaiKhoanBenhNhan
+    {
+        public string TenDangNhap { get; set; } = string.Empty;
+        public string MaBN { get; set; } = string.Empty;
+        public string HoTen { get; set; } = string.Empty;
+    }
+
     public class BenhNhan
     {
         public string MaBN { get; set; } = string.Empty;
@@ -41,6 +48,7 @@ namespace QlyPhongKham.Models
         public string MaBN { get; set; } = string.Empty;
         public string TenBN { get; set; } = string.Empty;
         public string MaNV_BacSi { get; set; } = string.Empty;
+        public string? MaPhong { get; set; }
         public string TenBacSi { get; set; } = string.Empty;
         public DateTime NgayKham { get; set; } = DateTime.Now;
         public string? TrieuChung { get; set; }

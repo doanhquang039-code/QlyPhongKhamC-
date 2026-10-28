@@ -98,11 +98,17 @@ namespace QlyPhongKham.Forms
         internal Button btnNavThuNgan   = null!;
         internal Button btnNavNhanVien  = null!;
         internal Button btnNavBaoCao    = null!;
+        internal Button btnNavKhoaPhong = null!;
         internal Panel  panelSidebar    = null!;
         internal Panel  panelContent    = null!;
+        private Panel _sidebarHeader = null!;
+        private Panel _sidebarNavigation = null!;
+        private Panel _sidebarFooter = null!;
         private  Label  lblPageTitle    = null!;
         private  Label  lblBreadcrumb   = null!;
         private  Panel  topBar          = null!;
+        private Button btnRefreshPage = null!;
+        private Action? _refreshPageAction;
 
         // ── Palette "An Tâm" ──
         internal static readonly Color C_Sidebar    = Color.FromArgb(15,  32,  54);
@@ -128,6 +134,9 @@ namespace QlyPhongKham.Forms
         public FormMain()
         {
             InitializeComponent();
+            ClinicDAL.EnsureClinicRoomSchema();
+            if (SessionState.CurrentUser?.Quyen == "ThuNgan")
+                SessionState.CurrentUser.Quyen = "LeTan";
             Resize += (s, e) => ApplyResponsiveLayout();
             ApplyRolePermissions();
         }
@@ -155,6 +164,9 @@ namespace QlyPhongKham.Forms
 
             // Combined Header: Logo (0..72) + User info card (72..144)
             var headerSidebar = new Panel { Dock = DockStyle.Top, Height = 144, BackColor = C_Sidebar };
+            _sidebarHeader = headerSidebar;
+            _sidebarNavigation = new Panel { Dock = DockStyle.Fill, BackColor = C_Sidebar, AutoScroll = true };
+            _sidebarFooter = new Panel { Dock = DockStyle.Bottom, Height = 92, BackColor = C_Sidebar };
 
             var logoPanel = new Panel { Location = new Point(0, 0), Size = new Size(240, 72), BackColor = C_Sidebar };
             logoPanel.Controls.Add(new Label { Text = "+",      Font = new Font("Segoe UI", 22f, FontStyle.Bold), ForeColor = C_Teal,   Location = new Point(18, 16), AutoSize = true });
@@ -176,57 +188,81 @@ namespace QlyPhongKham.Forms
             headerSidebar.Controls.AddRange(new Control[] { logoPanel, userCard });
 
             // Section label
-            var lblSection = new Label { Text = "MENU CHÍNH", Font = new Font("Segoe UI", 7.5f, FontStyle.Bold), ForeColor = Color.FromArgb(100, 116, 139), Location = new Point(16, 156), AutoSize = true };
+            var lblSection = new Label { Text = "MENU CHÍNH", Font = new Font("Segoe UI", 7.5f, FontStyle.Bold), ForeColor = Color.FromArgb(100, 116, 139), Location = new Point(16, 12), AutoSize = true };
 
             // Nav buttons
-            btnNavTongQuan  = CreateNavBtn("🏠", "Tổng quan",         176);
-            btnNavLichHen   = CreateNavBtn("📋", "Lịch hẹn hôm nay",  222);
-            btnNavBenhNhan  = CreateNavBtn("👤", "Bệnh nhân",          268);
-            btnNavKhamBenh  = CreateNavBtn("🩺", "Phòng khám",         314);
-            btnNavKhoThuoc  = CreateNavBtn("💊", "Kho thuốc",          360);
-            btnNavThuNgan   = CreateNavBtn("💰", "Thu ngân & HĐ",      406);
-            btnNavNhanVien  = CreateNavBtn("👥", "Nhân sự",             452);
-            btnNavBaoCao    = CreateNavBtn("📊", "Báo cáo",             498);
+            btnNavTongQuan  = CreateNavBtn("🏠", "Tổng quan",         32);
+            btnNavLichHen   = CreateNavBtn("📋", "Lịch hẹn hôm nay",  78);
+            btnNavBenhNhan  = CreateNavBtn("👤", "Bệnh nhân",         124);
+            btnNavKhamBenh  = CreateNavBtn("🩺", "Phòng khám",        170);
+            btnNavKhoThuoc  = CreateNavBtn("💊", "Kho thuốc",         216);
+            btnNavThuNgan   = CreateNavBtn("💰", "Thu ngân & HĐ",     262);
+            btnNavNhanVien  = CreateNavBtn("👥", "Nhân sự",            308);
+            btnNavBaoCao    = CreateNavBtn("📊", "Báo cáo",            354);
+            btnNavKhoaPhong = CreateNavBtn("🏥", "Khoa / Phòng khám",  400);
 
-            btnNavTongQuan.Click += (s, e) => ShowDashboard();
+            btnNavTongQuan.Click += (s, e) =>
+            {
+                if (SessionState.IsReceptionist) ShowLeTanDashboard();
+                else ShowDashboard();
+            };
             btnNavLichHen.Click  += (s, e) =>
             {
                 if (SessionState.IsDoctor) ShowBacSiLichKhamView();
-                else ShowTiepDonView();
+                else if (SessionState.IsAdmin) ShowAdminAppointmentsView();
+                else if (SessionState.IsReceptionist) ShowTiepDonView();
             };
             btnNavBenhNhan.Click += (s, e) =>
             {
                 if (SessionState.IsDoctor) ShowBacSiHoSoBenhAnView();
-                else ShowBenhNhanView();
+                else if (SessionState.IsReceptionist || SessionState.IsAdmin) ShowBenhNhanView();
             };
             btnNavKhamBenh.Click += (s, e) =>
             {
                 if (SessionState.IsDoctor) ShowBacSiKhamKeDonView();
-                else ShowKhamBenhView();
+                else if (SessionState.IsAdmin) ShowAdminClinicView();
+                else if (SessionState.IsReceptionist) ShowLeTanLichKhamView();
             };
             btnNavKhoThuoc.Click += (s, e) =>
             {
                 if (SessionState.IsDoctor) ShowBacSiTraCuuView();
-                else ShowKhoThuocView();
+                else if (SessionState.IsReceptionist || SessionState.IsAdmin) ShowKhoThuocView();
             };
-            btnNavThuNgan.Click  += (s, e) => ShowThuNganView();
+            btnNavThuNgan.Click  += (s, e) =>
+            {
+                if (SessionState.IsCashier || SessionState.IsAdmin)
+                    ShowThuNganView();
+            };
             btnNavNhanVien.Click += (s, e) => ShowNhanVienView();
             btnNavBaoCao.Click   += (s, e) => ShowBaoCaoView();
+            btnNavKhoaPhong.Click += (s, e) =>
+            {
+                if (SessionState.IsAdmin)
+                    ShowKhoaPhongView();
+            };
 
             // Logout & Config at bottom
-            var btnLogout = new Button { Text = "  🚪  Đăng xuất", Size = new Size(220, 40), BackColor = Color.FromArgb(39, 22, 22), ForeColor = Color.FromArgb(252, 165, 165), FlatStyle = FlatStyle.Flat, Font = F_Bold, TextAlign = ContentAlignment.MiddleLeft, Cursor = Cursors.Hand };
-            btnLogout.Location = new Point(10, 710);
-            btnLogout.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            var btnLogout = new Button { Text = "  🚪  Thoát tài khoản", Size = new Size(220, 38), Location = new Point(10, 6), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, BackColor = Color.FromArgb(39, 22, 22), ForeColor = Color.FromArgb(252, 165, 165), FlatStyle = FlatStyle.Flat, Font = F_Bold, TextAlign = ContentAlignment.MiddleLeft, Cursor = Cursors.Hand };
             btnLogout.FlatAppearance.BorderSize = 0;
-            btnLogout.Click += (s, e) => { SessionState.CurrentUser = null; this.Close(); };
+            btnLogout.Click += (s, e) =>
+            {
+                if (MessageBox.Show("Bạn muốn thoát tài khoản và quay lại màn hình đăng nhập?",
+                        "Thoát tài khoản", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                    return;
 
-            var btnCfg = new Button { Text = "  ⚙  Cấu hình máy chủ", Size = new Size(220, 36), BackColor = Color.Transparent, ForeColor = Color.FromArgb(100, 116, 139), FlatStyle = FlatStyle.Flat, Font = F_Small, TextAlign = ContentAlignment.MiddleLeft, Cursor = Cursors.Hand };
-            btnCfg.Location = new Point(10, 755);
-            btnCfg.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+                SessionState.CurrentUser = null;
+                this.Close();
+            };
+
+            var btnCfg = new Button { Text = "  ⚙  Cấu hình máy chủ", Size = new Size(220, 36), Location = new Point(10, 48), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, BackColor = Color.Transparent, ForeColor = Color.FromArgb(100, 116, 139), FlatStyle = FlatStyle.Flat, Font = F_Small, TextAlign = ContentAlignment.MiddleLeft, Cursor = Cursors.Hand };
             btnCfg.FlatAppearance.BorderSize = 0;
             btnCfg.Click += (s, e) => new FormConfigDb().ShowDialog();
 
-            panelSidebar.Controls.AddRange(new Control[] { headerSidebar, lblSection, btnNavTongQuan, btnNavLichHen, btnNavBenhNhan, btnNavKhamBenh, btnNavKhoThuoc, btnNavThuNgan, btnNavNhanVien, btnNavBaoCao, btnLogout, btnCfg });
+            _sidebarNavigation.Controls.AddRange(new Control[] { lblSection, btnNavTongQuan, btnNavLichHen, btnNavBenhNhan, btnNavKhamBenh, btnNavKhoThuoc, btnNavThuNgan, btnNavNhanVien, btnNavBaoCao, btnNavKhoaPhong });
+            _sidebarFooter.Controls.AddRange(new Control[] { btnLogout, btnCfg });
+            panelSidebar.Controls.Add(_sidebarNavigation);
+            panelSidebar.Controls.Add(_sidebarFooter);
+            panelSidebar.Controls.Add(headerSidebar);
             this.Controls.Add(panelSidebar);
         }
 
@@ -266,8 +302,21 @@ namespace QlyPhongKham.Forms
             lblDate.Location = new Point(topBar.Width - 220, 22);
             lblDate.Anchor   = AnchorStyles.Top | AnchorStyles.Right;
 
-            topBar.Controls.AddRange(new Control[] { lblBreadcrumb, lblPageTitle, lblDate });
+            btnRefreshPage = SecondaryBtn("↻ Làm mới", 0, 15, 100, 34, C_Blue);
+            btnRefreshPage.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnRefreshPage.Click += (s, e) => _refreshPageAction?.Invoke();
+            void PositionRefreshButton() => btnRefreshPage.Location = new Point(topBar.ClientSize.Width - 330, 15);
+            topBar.SizeChanged += (s, e) => PositionRefreshButton();
+            PositionRefreshButton();
+
+            topBar.Controls.AddRange(new Control[] { lblBreadcrumb, lblPageTitle, btnRefreshPage, lblDate });
             this.Controls.Add(topBar);
+        }
+
+        internal void SetRefreshPageAction(Action refreshAction)
+        {
+            _refreshPageAction = refreshAction;
+            btnRefreshPage.Enabled = true;
         }
 
         internal void SetPageHeader(string breadcrumb, string title)
@@ -302,17 +351,14 @@ namespace QlyPhongKham.Forms
                 Math.Max(0, ClientSize.Width - sidebarWidth),
                 Math.Max(0, ClientSize.Height - contentTop));
 
-            if (panelSidebar.Controls.Count == 0)
-                return;
-
-            if (panelSidebar.Controls[0] is Panel header)
+            if (_sidebarHeader != null)
             {
-                header.Width = sidebarWidth;
-                if (header.Controls.Count > 0)
-                    header.Controls[0].Size = new Size(sidebarWidth, 72);
-                if (header.Controls.Count > 1)
+                _sidebarHeader.Width = sidebarWidth;
+                if (_sidebarHeader.Controls.Count > 0)
+                    _sidebarHeader.Controls[0].Size = new Size(sidebarWidth, 72);
+                if (_sidebarHeader.Controls.Count > 1)
                 {
-                    var userCard = header.Controls[1];
+                    var userCard = _sidebarHeader.Controls[1];
                     userCard.Size = new Size(sidebarWidth, 72);
                     foreach (Control control in userCard.Controls)
                     {
@@ -322,16 +368,15 @@ namespace QlyPhongKham.Forms
                 }
             }
 
-            foreach (Control control in panelSidebar.Controls)
+            foreach (Control control in _sidebarNavigation.Controls)
             {
                 if (control is not Button button)
                     continue;
-
-                button.Width = button.Text.StartsWith("  🚪", StringComparison.Ordinal) ||
-                               button.Text.StartsWith("  ⚙", StringComparison.Ordinal)
-                    ? sidebarWidth - 20
-                    : sidebarWidth - 16;
+                button.Width = Math.Max(0, _sidebarNavigation.ClientSize.Width - 16);
             }
+            foreach (Control control in _sidebarFooter.Controls)
+                if (control is Button button)
+                    button.Width = Math.Max(0, _sidebarFooter.ClientSize.Width - 20);
         }
 
         // ════════════════════════════════════════════════════════
@@ -343,40 +388,55 @@ namespace QlyPhongKham.Forms
             {
                 ApplyResponsiveLayout();
 
-                if (SessionState.CurrentUser?.MaNV != null)
-                {
-                    ClinicDAL.DamBaoDuLieuMauBacSi(SessionState.CurrentUser.MaNV);
-                }
-
                 btnNavTongQuan.Visible = false;
                 btnNavThuNgan.Visible  = false;
                 btnNavNhanVien.Visible = false;
                 btnNavBaoCao.Visible   = false;
+                btnNavKhoaPhong.Visible = false;
 
                 btnNavLichHen.Visible  = true;
                 btnNavLichHen.Text     = "  📅  Lịch khám";
-                btnNavLichHen.Location = new Point(8, 164);
+                btnNavLichHen.Location = new Point(8, 78);
 
                 btnNavBenhNhan.Visible = true;
                 btnNavBenhNhan.Text    = "  👤  Bệnh nhân";
-                btnNavBenhNhan.Location = new Point(8, 210);
+                btnNavBenhNhan.Location = new Point(8, 124);
 
                 btnNavKhamBenh.Visible = true;
                 btnNavKhamBenh.Text    = "  🩺  Khám & Kê đơn";
-                btnNavKhamBenh.Location = new Point(8, 256);
+                btnNavKhamBenh.Location = new Point(8, 170);
 
                 btnNavKhoThuoc.Visible = true;
                 btnNavKhoThuoc.Text    = "  🔍  Tra cứu";
-                btnNavKhoThuoc.Location = new Point(8, 302);
+                btnNavKhoThuoc.Location = new Point(8, 216);
 
                 ShowBacSiLichKhamView();
             }
             else if (SessionState.IsReceptionist)
             {
-                btnNavKhamBenh.Visible = false;
+                btnNavTongQuan.Visible = true;
+                btnNavTongQuan.Text = "  🏠  Trang chủ";
+                btnNavTongQuan.Location = new Point(8, 32);
+                btnNavLichHen.Visible = true;
+                btnNavLichHen.Text = "  🧾  Tiếp nhận bệnh nhân";
+                btnNavLichHen.Location = new Point(8, 78);
+                btnNavBenhNhan.Visible = true;
+                btnNavBenhNhan.Text = "  👤  Bệnh nhân";
+                btnNavBenhNhan.Location = new Point(8, 124);
+                btnNavKhamBenh.Visible = true;
+                btnNavKhamBenh.Text = "  📅  Lịch khám";
+                btnNavKhamBenh.Location = new Point(8, 170);
+                btnNavKhoThuoc.Visible = true;
+                btnNavKhoThuoc.Text = "  💊  Kho thuốc";
+                btnNavKhoThuoc.Location = new Point(8, 216);
+                btnNavThuNgan.Visible = true;
+                btnNavThuNgan.Text = "  💳  Thanh toán";
+                btnNavThuNgan.Location = new Point(8, 262);
                 btnNavNhanVien.Visible = false;
                 btnNavBaoCao.Visible   = false;
-                ShowTiepDonView();
+                btnNavKhoaPhong.Visible = false;
+                ApplyResponsiveLayout();
+                ShowLeTanDashboard();
             }
             else // Admin
             {
@@ -384,10 +444,12 @@ namespace QlyPhongKham.Forms
                 btnNavLichHen.Visible = true;
                 btnNavBenhNhan.Visible = true;
                 btnNavKhamBenh.Visible = true;
+                btnNavKhamBenh.Text = "  🩺  Phiếu khám";
                 btnNavKhoThuoc.Visible = true;
                 btnNavThuNgan.Visible = true;
                 btnNavNhanVien.Visible = true;
                 btnNavBaoCao.Visible = true;
+                btnNavKhoaPhong.Visible = true;
                 ApplyResponsiveLayout();
                 ShowDashboard();
             }

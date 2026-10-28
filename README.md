@@ -1,7 +1,7 @@
 # HỆ THỐNG QUẢN LÝ PHÒNG KHÁM TƯ NHÂN (C# WinForms - SQL Server)
 
 ## 1. Thông tin CSDL & Tài khoản truy cập
-- **Tên CSDL:** `doanhbtlc#`
+- **Tên CSDL mặc định trong ứng dụng:** `doanhbtlc#` (có thể được ghi đè trong `dbconfig.txt`)
 - **Tài khoản SA mặc định:**
   - **User:** `sa`
   - **Password:** `123456789`
@@ -13,8 +13,10 @@
 | :--- | :--- | :--- | :--- |
 | **Quản trị viên (Admin)** | `admin` | `123456` | Toàn quyền tất cả các phân hệ, quản trị nhân sự |
 | **Bác sĩ khám** | `bacsi_nam` | `123456` | Xem hàng chờ theo STT, chẩn đoán, kê đơn thuốc |
-| **Lễ tân** | `letan` | `123456` | Đăng ký bệnh nhân mới, cấp STT hàng chờ trong ngày |
-| **Thu ngân** | `thungan` | `123456` | Tính chi phí khám + thuốc, xuất hóa đơn viện phí |
+| **Lễ tân (kiêm thu ngân)** | `letan` hoặc `thungan` | `123456` | Tiếp đón, quản lý bệnh nhân, tính chi phí và xuất hóa đơn |
+| **Bệnh nhân** | `benhnhan_mai` | `123456` | Xem hồ sơ, lịch sử khám, dịch vụ, đơn thuốc và hóa đơn của chính mình |
+
+Tại màn hình đăng nhập, chọn **Đăng ký tài khoản bệnh nhân** để tạo tài khoản cổng bệnh nhân mới. Đăng ký tạo hồ sơ bệnh nhân và tài khoản role Bệnh nhân trong cùng một giao dịch; tên đăng nhập phải chưa được tài khoản nhân viên hoặc bệnh nhân khác sử dụng.
 
 ---
 
@@ -69,3 +71,20 @@ Chạy lệnh trực tiếp từ thư mục `D:\QlyPhongKhamDesktop`:
 dotnet run
 ```
 Hoặc mở file `QlyPhongKham.csproj` bằng **Visual Studio 2022** và bấm **Start (F5)**.
+
+### Ghi chú cập nhật cơ sở dữ liệu
+- Phiếu khám lưu thêm **khám lâm sàng** và **sinh hiệu**. Khi mở chức năng khám trên cơ sở dữ liệu cũ, ứng dụng tự bổ sung hai cột `KhamLamSang` và `SinhHieu` vào bảng `PhieuKham`; tài khoản SQL cần quyền `ALTER TABLE`.
+- Khi mở ứng dụng, hệ thống tự bổ sung schema khoa/phòng/phân công còn thiếu và các phòng mẫu nếu chưa có. Tài khoản SQL cần quyền `CREATE TABLE` và `ALTER TABLE`; sau đó admin có thể gán nhân viên tại **Nhân sự → Phân công phòng**.
+- Không chạy lại `init_database.sql` trên cơ sở dữ liệu đang sử dụng vì script khởi tạo sẽ xóa và tạo lại các bảng.
+- Ứng dụng mặc định kết nối database `doanhbtlc#`; nếu có file `dbconfig.txt` cạnh file chạy, giá trị `database=` trong file đó mới là database thực tế. `init_database.sql` lại khởi tạo database `QL_PhongKham`. Hãy kiểm tra cấu hình ứng dụng trước khi chạy script, để tránh cập nhật nhầm database.
+- Để thêm khoa/phòng và phân công vào database cũ, mở [`seed_test_data.sql`](./seed_test_data.sql) trong SQL Server Management Studio, chọn đúng database ứng dụng đang kết nối rồi chạy. Script chỉ thêm dữ liệu chưa có, có thể chạy lại và không xóa dữ liệu hiện có.
+- Tài khoản test nhân viên: `test_admin`, `test_bs`, `test_bs2`, `test_letan`; tài khoản bệnh nhân: `test_bn01`, `test_bn04`, `test_bn05`. Mật khẩu các tài khoản test là `123456`.
+- Admin phân công bác sĩ/lễ tân vào một hoặc nhiều phòng tại **Nhân sự → Phân công phòng**. Mỗi bác sĩ chỉ có một chuyên khoa chính và chỉ được gán vào các phòng thuộc khoa đó; lễ tân có thể được gán vào nhiều phòng thuộc nhiều khoa. Lễ tân chỉ thấy các phòng được phân công và chỉ cấp phiếu cho bác sĩ cùng phòng. Bác sĩ chỉ xem hồ sơ bệnh nhân từng được phân công khám cho mình.
+- Admin quản lý danh mục chuyên khoa và phòng khám tại menu **Khoa / Phòng khám**: thêm, sửa, xóa và làm mới danh sách. Không thể xóa khoa/phòng đang được sử dụng; không thể chuyển phòng đã có lịch sử khám sang chuyên khoa khác để giữ nguyên dữ liệu báo cáo.
+- Các màn hình trong ứng dụng có nút **Làm mới** ở thanh trên cùng để tải lại dữ liệu của màn hình hiện tại; báo cáo/tổng quan chỉ xem và làm mới vì đây là số liệu tổng hợp. Menu được quyết định theo role tài khoản, không phải theo phòng được phân công; thay đổi role có hiệu lực từ lần đăng nhập tiếp theo.
+- Admin quản lý lịch hẹn tại **Lịch hẹn hôm nay** (thêm, sửa, hủy mềm và làm mới). Lễ tân và thu ngân dùng chung role **LeTan**, với cùng các menu tiếp đón, hồ sơ bệnh nhân, kho và thanh toán. Khi mở ứng dụng, role **ThuNgan** cũ được chuẩn hóa sang **LeTan**. Phân công phòng chỉ dành cho nhân viên có role **BacSi** hoặc **LeTan**.
+- Trong hộp thoại phân công phòng, có thể bỏ chọn từng phòng rồi lưu hoặc dùng **Hủy toàn bộ phân công** để gỡ hết phòng của nhân viên. Phiếu chỉ hủy được khi còn chờ khám; hóa đơn đã thanh toán và hồ sơ khám đã thực hiện được giữ nguyên để bảo toàn lịch sử.
+- Tài khoản bệnh nhân đăng nhập vào cổng riêng, chỉ xem hồ sơ, lịch sử khám, chỉ định dịch vụ, đơn thuốc và hóa đơn gắn với mã bệnh nhân của tài khoản đó.
+- Cổng bệnh nhân WinForms có menu riêng **Lịch hẹn**, **Đặt lịch khám**, **Hồ sơ khám bệnh**, viện phí và trợ lý hướng dẫn. Trong **Đặt lịch khám**, bệnh nhân có thể thêm yêu cầu, sửa lịch còn tương lai đang chờ xác nhận, xem chi tiết và hủy lịch; thao tác xóa là hủy mềm để lưu lịch sử. Bệnh nhân chọn chuyên khoa, bác sĩ, ngày giờ và lý do khám để gửi yêu cầu; lịch mới ở trạng thái chờ xác nhận. Hồ sơ khám bệnh hiển thị lịch sử khám, dịch vụ cận lâm sàng, đơn thuốc và thông tin cá nhân. Khung giờ đã qua trong ngày không được chọn; thanh toán hóa đơn thực hiện tại quầy thu ngân.
+- Lịch hẹn bệnh nhân hiển thị cột **Trạng thái duyệt**. Lễ tân/thu ngân được phân công cùng phòng có thể duyệt lịch chờ xác nhận tại menu **Lịch khám**; lịch sau khi duyệt chuyển sang **Đã xác nhận** và xuất hiện trong mục **Lịch đã duyệt** của bác sĩ phụ trách để bác sĩ làm mới/tra cứu theo ngày.
+- Không chạy lại `init_database.sql` trên cơ sở dữ liệu đang sử dụng vì script khởi tạo sẽ xóa và tạo lại các bảng. Chạy seed trên môi trường test nếu cần thêm các bản ghi kiểm thử.

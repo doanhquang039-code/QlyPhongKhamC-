@@ -1,5 +1,11 @@
 # HỆ THỐNG QUẢN LÝ PHÒNG KHÁM TƯ NHÂN (C# WinForms - SQL Server)
 
+## Tải ứng dụng cho Windows
+
+[Tải QlyPhongKham bản mới nhất (.zip)](https://github.com/doanhquang039-code/QlyPhongKhamC-/releases/latest/download/QlyPhongKham-win-x64.zip) — không cần clone repository. Tải ZIP về, giải nén, rồi chạy `QlyPhongKham.exe`.
+
+Link tải này có hiệu lực sau khi bản GitHub Release đầu tiên được phát hành. Workflow sẽ tự đóng gói và đính kèm ZIP khi đẩy một tag có dạng `v*` (ví dụ `v1.0.0`). Trình duyệt tải file ZIP; người dùng vẫn cần giải nén file trên máy.
+
 ## 1. Thông tin CSDL & Tài khoản truy cập
 - **Tên CSDL mặc định trong ứng dụng:** `QL_PhongKham`
 - **Máy chủ mặc định:** SQL Server Express cài trên máy (`.\SQLEXPRESS`)

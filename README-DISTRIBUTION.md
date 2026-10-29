@@ -1,5 +1,9 @@
 # Chạy ứng dụng An Tâm trên Windows
 
+## Tải ứng dụng
+
+Tải [QlyPhongKham bản mới nhất (.zip)](https://github.com/doanhquang039-code/QlyPhongKhamC-/releases/latest/download/QlyPhongKham-win-x64.zip), giải nén rồi chạy `QlyPhongKham.exe`. Không cần clone repository, cài Visual Studio hay chạy `dotnet run`.
+
 ## Máy người dùng
 
 1. Cài SQL Server Express/Database Engine và bật SQL Server Authentication (Mixed Mode), đặt mật khẩu riêng. Tên instance có thể khác nhau giữa các máy.

@@ -1,0 +1,4 @@
+dbconfig.txt
+artifacts/
+bin/Release/
+obj/Release/

@@ -255,8 +255,20 @@ namespace QlyPhongKham.Forms
             catch (Exception ex)
             {
                 this.Show();
-                lblError.Text = "Lỗi: " + ex.Message;
-                MessageBox.Show("Lỗi khi mở giao diện:\n" + ex.Message + "\n\nChi tiết:\n" + ex.StackTrace, "Lỗi đăng nhập", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                lblError.Text = "Không kết nối được cơ sở dữ liệu. Kiểm tra cấu hình máy chủ SQL.";
+                var openSettings = MessageBox.Show(
+                    this,
+                    $"Không kết nối được cơ sở dữ liệu.\n\n{ex.Message}\n\n" +
+                    "Hãy kiểm tra SQL Server đã cài và đang chạy, tên instance đúng, " +
+                    "và database đã được tạo bằng init_database.sql.\n\nMở cấu hình máy chủ ngay?",
+                    "Không kết nối được SQL Server",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+                if (openSettings == DialogResult.Yes)
+                {
+                    using var dialog = new FormConfigDb();
+                    dialog.ShowDialog(this);
+                }
             }
         }
 

@@ -13,7 +13,7 @@ foreach ($b in $batches) {
         $cmd.CommandText = $trimmed
         try {
             [void]$cmd.ExecuteNonQuery()
-        } catch {
+        } catch {za
             Write-Error "Error executing batch: $($_.Exception.Message)"
             Write-Host "Batch snippet: $($trimmed.Substring(0, [Math]::Min(100, $trimmed.Length)))"
         }

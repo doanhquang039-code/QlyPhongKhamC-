@@ -1,11 +1,9 @@
 # HỆ THỐNG QUẢN LÝ PHÒNG KHÁM TƯ NHÂN (C# WinForms - SQL Server)
 
 ## 1. Thông tin CSDL & Tài khoản truy cập
-- **Tên CSDL mặc định trong ứng dụng:** `doanhbtlc#` (có thể được ghi đè trong `dbconfig.txt`)
-- **Tài khoản SA mặc định:**
-  - **User:** `sa`
-  - **Password:** `123456789`
-  - **Cổng kết nối:** `1433` (TCP/IP)
+- **Tên CSDL mặc định trong ứng dụng:** `QL_PhongKham`
+- **Máy chủ mặc định:** SQL Server Express cài trên máy (`.\SQLEXPRESS`)
+- **Thông tin đăng nhập SQL Server:** cấu hình riêng trên từng máy tại nút **⚙ Máy chủ**; ứng dụng không đặt sẵn mật khẩu.
 - **File script tạo CSDL:** `init_database.sql`
 
 ### Danh sách tài khoản đăng nhập mẫu vào phần mềm:
@@ -41,12 +39,11 @@ Khi làm đồ án nhóm, một máy tính sẽ làm **Máy chủ CSDL (Host)** 
 
 ### Bước 2: Kết nối từ các MÁY LAPTOP KHÁC (Client)
 1. Copy thư mục `QlyPhongKham` sang laptop client.
-2. Mở phần mềm -> Tại màn hình Đăng nhập, bấm nút **⚙ Máy chủ** (hoặc mở file `dbconfig.txt`).
+2. Mở phần mềm -> Tại màn hình Đăng nhập, bấm nút **⚙ Máy chủ**.
 3. Điền các thông tin:
    - **Máy chủ (IP / Host):** Nhập IP của máy chủ (VD: `192.168.1.15`).
    - **Tên CSDL:** `QL_PhongKham`
-   - **Tài khoản:** `sa`
-   - **Mật khẩu:** `123456789`
+   - **Tài khoản / mật khẩu:** dùng thông tin SQL Server đã cấu hình trên máy chủ.
 4. Bấm **"Kiểm tra kết nối"** -> Khi hiện thông báo màu xanh `✓ Kết nối thành công` -> Bấm **"Lưu cấu hình"**.
 5. Đăng nhập và sử dụng bình thường!
 
@@ -65,18 +62,32 @@ Khi làm đồ án nhóm, một máy tính sẽ làm **Máy chủ CSDL (Host)** 
 
 ---
 
-## 4. Cách chạy dự án
+## 4. Chạy từ mã nguồn
 Chạy lệnh trực tiếp từ thư mục `D:\QlyPhongKhamDesktop`:
 ```powershell
 dotnet run
 ```
 Hoặc mở file `QlyPhongKham.csproj` bằng **Visual Studio 2022** và bấm **Start (F5)**.
 
+## 5. Đóng gói và chạy ứng dụng trên Windows
+
+Người dùng cuối không cần cài Visual Studio, .NET SDK hoặc chạy `dotnet run`. Tải file ZIP phát hành từ mục **Releases** trên GitHub, giải nén vào thư mục người dùng có quyền ghi, rồi chạy `QlyPhongKham.exe`.
+
+Mỗi máy cần có SQL Server Database Engine và database riêng:
+
+1. Cài SQL Server Express/Database Engine, bật SQL Server Authentication (Mixed Mode) và đặt mật khẩu riêng. Tên instance có thể khác nhau trên mỗi máy.
+2. Trong ứng dụng, vào **⚙ Máy chủ** và bấm **Tìm cục bộ**, hoặc nhập Server Name đúng như trong SSMS. Điền tài khoản SQL và bấm **Kiểm tra SQL Server**. Bước này kiểm tra máy chủ/tài khoản, độc lập với tên database.
+3. Trong SSMS mở `init_database.sql`, bật **Query → SQLCMD Mode**, rồi bấm Execute/F5. Dùng tên database `QL_PhongKham` trong cấu hình ứng dụng để khớp dòng `:setvar DatabaseName "QL_PhongKham"` trong script. Nếu muốn tên khác, chỉ sửa giá trị ở dòng `:setvar` và nhập đúng tên đó trong cấu hình ứng dụng. Script tạo database nếu chưa có và nạp dữ liệu mẫu.
+4. Quay lại ứng dụng, lưu cấu hình rồi đăng nhập. Nếu đăng nhập khi SQL chưa kết nối được, chọn **Yes** ở thông báo để mở cấu hình máy chủ.
+5. Cấu hình lưu riêng trên máy tại `%LOCALAPPDATA%\QlyPhongKham\dbconfig.txt`; không chia sẻ file này vì có thể chứa thông tin đăng nhập.
+
+Để tạo gói phát hành tại máy phát triển, chạy `.\publish.ps1` bằng PowerShell (yêu cầu .NET 9 SDK). Gói ZIP được tạo trong `artifacts\QlyPhongKham-win-x64.zip`. GitHub Actions tự đóng gói khi đẩy mã lên `master`; khi tạo tag dạng `v*`, workflow tạo GitHub Release kèm file ZIP.
+
 ### Ghi chú cập nhật cơ sở dữ liệu
 - Phiếu khám lưu thêm **khám lâm sàng** và **sinh hiệu**. Khi mở chức năng khám trên cơ sở dữ liệu cũ, ứng dụng tự bổ sung hai cột `KhamLamSang` và `SinhHieu` vào bảng `PhieuKham`; tài khoản SQL cần quyền `ALTER TABLE`.
 - Khi mở ứng dụng, hệ thống tự bổ sung schema khoa/phòng/phân công còn thiếu và các phòng mẫu nếu chưa có. Tài khoản SQL cần quyền `CREATE TABLE` và `ALTER TABLE`; sau đó admin có thể gán nhân viên tại **Nhân sự → Phân công phòng**.
 - Không chạy lại `init_database.sql` trên cơ sở dữ liệu đang sử dụng vì script khởi tạo sẽ xóa và tạo lại các bảng.
-- Ứng dụng mặc định kết nối database `doanhbtlc#`; nếu có file `dbconfig.txt` cạnh file chạy, giá trị `database=` trong file đó mới là database thực tế. `init_database.sql` lại khởi tạo database `QL_PhongKham`. Hãy kiểm tra cấu hình ứng dụng trước khi chạy script, để tránh cập nhật nhầm database.
+- Tên database phải bắt đầu bằng chữ cái và chỉ gồm chữ cái, chữ số hoặc dấu gạch dưới; không dùng tên database hệ thống của SQL Server.
 - Để thêm khoa/phòng và phân công vào database cũ, mở [`seed_test_data.sql`](./seed_test_data.sql) trong SQL Server Management Studio, chọn đúng database ứng dụng đang kết nối rồi chạy. Script chỉ thêm dữ liệu chưa có, có thể chạy lại và không xóa dữ liệu hiện có.
 - Tài khoản test nhân viên: `test_admin`, `test_bs`, `test_bs2`, `test_letan`; tài khoản bệnh nhân: `test_bn01`, `test_bn04`, `test_bn05`. Mật khẩu các tài khoản test là `123456`.
 - Admin phân công bác sĩ/lễ tân vào một hoặc nhiều phòng tại **Nhân sự → Phân công phòng**. Mỗi bác sĩ chỉ có một chuyên khoa chính và chỉ được gán vào các phòng thuộc khoa đó; lễ tân có thể được gán vào nhiều phòng thuộc nhiều khoa. Lễ tân chỉ thấy các phòng được phân công và chỉ cấp phiếu cho bác sĩ cùng phòng. Bác sĩ chỉ xem hồ sơ bệnh nhân từng được phân công khám cho mình.

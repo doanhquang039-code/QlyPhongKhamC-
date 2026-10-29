@@ -1,19 +1,29 @@
 -- =============================================
 -- HỆ THỐNG QUẢN LÝ PHÒNG KHÁM
 -- SCRIPT KHỞI TẠO CSDL VÀ DỮ LIỆU MẪU
--- Tương thích: SQL Server (sa / 123456789)
+-- Chạy trong SSMS với Query > SQLCMD Mode được bật.
+-- Để đổi tên database, chỉ sửa giá trị ở dòng :setvar bên dưới.
+-- Yêu cầu SQL Server đã cài đặt và tài khoản có quyền tạo cơ sở dữ liệu.
 -- =============================================
+
+:setvar DatabaseName "QL_PhongKham"
 
 USE master;
 GO
 
-IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'QL_PhongKham')
+IF N'$(DatabaseName)' IN (N'master', N'model', N'msdb', N'tempdb')
+    THROW 50001, N'Khong duoc dung ten database he thong.', 1;
+GO
+
+IF DB_ID(N'$(DatabaseName)') IS NULL
 BEGIN
-    CREATE DATABASE QL_PhongKham;
+    DECLARE @CreateDatabaseSql NVARCHAR(MAX) =
+        N'CREATE DATABASE ' + QUOTENAME(N'$(DatabaseName)');
+    EXEC sp_executesql @CreateDatabaseSql;
 END
 GO
 
-USE QL_PhongKham;
+USE [$(DatabaseName)];
 GO
 
 -- 1. BẢNG NHÂN VIÊN
@@ -281,4 +291,4 @@ INSERT INTO Thuoc (MaThuoc, TenThuoc, DonViTinh, DonGiaBan, SoLuongTon, CachDung
 ('TH05', N'Berberin 100mg', N'Viên', 1500, 400, N'Uống 2 viên x 2 lần/ngày');
 GO
 
-PRINT N'Khởi tạo Cơ sở dữ liệu QL_PhongKham thành công!';
+PRINT N'Khởi tạo cơ sở dữ liệu $(DatabaseName) thành công!';

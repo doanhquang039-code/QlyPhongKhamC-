@@ -5,6 +5,7 @@ using System.Windows.Forms;
 using QlyPhongKham.DAL;
 using QlyPhongKham.Models;
 using QlyPhongKham.Forms;
+using QlyPhongKham.Helpers;
 
 namespace QlyPhongKham.Forms
 {
@@ -653,13 +654,28 @@ namespace QlyPhongKham.Forms
             var (kham, thu, thuocSapHet) = ClinicDAL.LayThongKeTongQuan();
             int tongBN = ClinicDAL.LayDanhSachBenhNhan().Rows.Count;
 
-            var pCards = new Panel { Location = new Point(10, 10), Size = new Size(1080, 115) };
+            var pnlTopBar = new Panel { Location = new Point(10, 10), Size = new Size(1080, 45) };
+            var btnExportBaoCao = SecondaryBtn("📊 Xuất Excel Báo cáo Doanh thu", 0, 4, 250, 36, C_Green);
+            btnExportBaoCao.Click += (s, e) =>
+            {
+                var dt = ClinicDAL.LayDoanhThu7Ngay();
+                ExcelHelper.ExportToExcel(dt, "DoanhThu7Ngay", "BÁO CÁO DOANH THU 7 NGÀY GẦN NHẤT", $"BaoCaoDoanhThu_{DateTime.Now:yyyyMMdd}.xlsx");
+            };
+            var btnExportThuocSapHet = SecondaryBtn("💊 Xuất Excel Thuốc cần nhập", 260, 4, 240, 36, C_Orange);
+            btnExportThuocSapHet.Click += (s, e) =>
+            {
+                var dt = ClinicDAL.LayThuocSapHet(30);
+                ExcelHelper.ExportToExcel(dt, "DuocPhamCanNhap", "DANH SÁCH DƯỢC PHẨM CẦN BỔ SUNG GẤP", $"DuocPhamCanNhap_{DateTime.Now:yyyyMMdd}.xlsx");
+            };
+            pnlTopBar.Controls.AddRange(new Control[] { btnExportBaoCao, btnExportThuocSapHet });
+
+            var pCards = new Panel { Location = new Point(10, 60), Size = new Size(1080, 115) };
             pCards.Controls.Add(MakeKpiCard("LƯỢT KHÁM HÔM NAY", $"{kham} lượt", "Phiếu khám đăng ký hôm nay", C_Teal, 0, 0, 250));
             pCards.Controls.Add(MakeKpiCard("DOANH THU HÔM NAY", $"{thu:N0} đ", "Hóa đơn đã thanh toán hôm nay", C_Green, 265, 0, 250));
             pCards.Controls.Add(MakeKpiCard("TỔNG HỒ SƠ BN", $"{tongBN} hồ sơ", "Cơ sở dữ liệu bệnh nhân", C_Blue, 530, 0, 250));
             pCards.Controls.Add(MakeKpiCard("THUỐC CẦN NHẬP", $"{thuocSapHet} mục", "Số lượng tồn kho ≤ 30", C_Red, 795, 0, 250));
 
-            var pnlDT = new Panel { Location = new Point(10, 135), Size = new Size(525, 290), BackColor = C_Card };
+            var pnlDT = new Panel { Location = new Point(10, 185), Size = new Size(525, 290), BackColor = C_Card };
             pnlDT.Paint += PaintCardBorder;
             pnlDT.Controls.Add(MakeLbl("DOANH THU 7 NGÀY GẦN NHẤT", 14, 12, bold: true));
             var dgvDT = MakeGrid(DockStyle.None);
@@ -668,7 +684,7 @@ namespace QlyPhongKham.Forms
             dgvDT.DataSource = ClinicDAL.LayDoanhThu7Ngay();
             pnlDT.Controls.Add(dgvDT);
 
-            var pnlCD = new Panel { Location = new Point(550, 135), Size = new Size(540, 290), BackColor = C_Card };
+            var pnlCD = new Panel { Location = new Point(550, 185), Size = new Size(540, 290), BackColor = C_Card };
             pnlCD.Paint += PaintCardBorder;
             pnlCD.Controls.Add(MakeLbl("TOP 10 CHẨN ĐOÁN THƯỜNG GẶP", 14, 12, bold: true));
             var dgvCD = MakeGrid(DockStyle.None);
@@ -677,7 +693,7 @@ namespace QlyPhongKham.Forms
             dgvCD.DataSource = ClinicDAL.LayTopChanDoan(10);
             pnlCD.Controls.Add(dgvCD);
 
-            var pnlTH = new Panel { Location = new Point(10, 435), Size = new Size(1080, 250), BackColor = C_Card };
+            var pnlTH = new Panel { Location = new Point(10, 485), Size = new Size(1080, 250), BackColor = C_Card };
             pnlTH.Paint += PaintCardBorder;
             pnlTH.Controls.Add(MakeLbl("DANH SÁCH DƯỢC PHẨM CẦN BỔ SUNG (TỒN KHO ≤ 30)", 14, 12, bold: true));
             var dgvTH = MakeGrid(DockStyle.None);
@@ -686,7 +702,7 @@ namespace QlyPhongKham.Forms
             dgvTH.DataSource = ClinicDAL.LayThuocSapHet(30);
             pnlTH.Controls.Add(dgvTH);
 
-            var pnlKhoaPhong = new Panel { Location = new Point(10, 685), Size = new Size(1080, 220), BackColor = C_Card };
+            var pnlKhoaPhong = new Panel { Location = new Point(10, 745), Size = new Size(1080, 220), BackColor = C_Card };
             pnlKhoaPhong.Paint += PaintCardBorder;
             pnlKhoaPhong.Controls.Add(MakeLbl("LƯỢT KHÁM THEO KHOA / PHÒNG (30 NGÀY)", 14, 12, bold: true));
             var dgvKhoaPhong = MakeGrid(DockStyle.None);
@@ -708,7 +724,7 @@ namespace QlyPhongKham.Forms
                 pnlKhoaPhong.Controls.Add(lblSchemaWarning);
             }
 
-            wrapper.Controls.AddRange(new Control[] { pCards, pnlDT, pnlCD, pnlTH, pnlKhoaPhong });
+            wrapper.Controls.AddRange(new Control[] { pnlTopBar, pCards, pnlDT, pnlCD, pnlTH, pnlKhoaPhong });
             panelContent.Controls.Add(wrapper);
             ConfigureAdminSummaryLayout(wrapper, pCards, pnlDT, dgvDT, pnlCD, dgvCD, pnlTH, dgvTH, pnlKhoaPhong, dgvKhoaPhong);
         }

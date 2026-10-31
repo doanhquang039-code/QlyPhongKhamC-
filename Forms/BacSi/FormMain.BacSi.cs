@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using QlyPhongKham.DAL;
 using QlyPhongKham.Models;
+using QlyPhongKham.Helpers;
 
 namespace QlyPhongKham.Forms
 {
@@ -1278,9 +1279,31 @@ namespace QlyPhongKham.Forms
                 }
             };
 
-            var btnPrintDon = SecondaryBtn("🖨 In đơn thuốc", 134, cardDon.Height - 48, 120, 34, C_Blue);
+            var btnPrintDon = SecondaryBtn("🖨 In / Lưu PDF Đơn thuốc", 134, cardDon.Height - 48, 190, 34, C_Blue);
             btnPrintDon.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            btnPrintDon.Click += (s, e) => MessageBox.Show("Chức năng in đơn thuốc chưa được triển khai.", "In đơn thuốc", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            btnPrintDon.Click += (s, e) =>
+            {
+                if (string.IsNullOrEmpty(_currentDoctorMaPK))
+                {
+                    MessageBox.Show("Chưa chọn phiếu khám nào!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                var dtThuoc = ClinicDAL.LayChiTietDonThuocTheoPK(_currentDoctorMaPK);
+                if (dtThuoc.Rows.Count == 0)
+                {
+                    MessageBox.Show("Đơn thuốc hiện đang trống, vui lòng thêm thuốc trước khi in!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                string tenBN = drPK?["TenBN"]?.ToString() ?? "Bệnh nhân";
+                string gioiTinh = drPK?["GioiTinh"]?.ToString() ?? "";
+                string tuoi = drPK?["Tuoi"]?.ToString() ?? "";
+                string chanDoan = drPK?["ChanDoan"]?.ToString() ?? "Khám bệnh";
+                string loiDan = txtLoiDan.Text.Trim();
+                string tenBS = SessionState.CurrentUser?.HoTenNhanVien ?? "Bác sĩ điều trị";
+
+                PdfPrintHelper.InDonThuoc(_currentDoctorMaPK, tenBN, gioiTinh, tuoi, chanDoan, loiDan, tenBS, dtThuoc);
+            };
 
             var btnNextStep = PrimaryBtn("Tiếp theo: Kết quả & Hoàn tất  ➔", cardDon.Width - 270, cardDon.Height - 48, 250, 34);
             btnNextStep.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;

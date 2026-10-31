@@ -221,3 +221,10 @@ C:\Users\admoi\AppData\Local\Temp\QlyPhongKham-approval-build\QlyPhongKham.deps.
 C:\Users\admoi\AppData\Local\Temp\QlyPhongKham-approval-build\QlyPhongKham.runtimeconfig.json
 C:\Users\admoi\AppData\Local\Temp\QlyPhongKham-approval-build\QlyPhongKham.dll
 C:\Users\admoi\AppData\Local\Temp\QlyPhongKham-approval-build\QlyPhongKham.pdb
+D:\QlyPhongKhamDesktop\bin\Debug\net9.0-windows\ClosedXML.dll
+D:\QlyPhongKhamDesktop\bin\Debug\net9.0-windows\ClosedXML.Parser.dll
+D:\QlyPhongKhamDesktop\bin\Debug\net9.0-windows\DocumentFormat.OpenXml.dll
+D:\QlyPhongKhamDesktop\bin\Debug\net9.0-windows\DocumentFormat.OpenXml.Framework.dll
+D:\QlyPhongKhamDesktop\bin\Debug\net9.0-windows\ExcelNumberFormat.dll
+D:\QlyPhongKhamDesktop\bin\Debug\net9.0-windows\RBush.dll
+D:\QlyPhongKhamDesktop\bin\Debug\net9.0-windows\SixLabors.Fonts.dll

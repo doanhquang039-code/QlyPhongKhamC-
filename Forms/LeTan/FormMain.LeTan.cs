@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows.Forms;
 using QlyPhongKham.DAL;
 using QlyPhongKham.Models;
+using QlyPhongKham.Helpers;
 
 namespace QlyPhongKham.Forms
 {
@@ -683,16 +684,18 @@ namespace QlyPhongKham.Forms
             var toolPanel = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = C_Card, Padding = new Padding(12, 8, 12, 0) };
             toolPanel.Paint += PaintCardBorder;
 
-            var txtSearch  = MakeInput(90, 8, 220);
-            var btnSearch  = SecondaryBtn("🔍 Tìm", 320, 8, 70, 34, C_Blue);
-            var btnAdd     = PrimaryBtn("➕ Thêm BN mới", 400, 8, 140, 34);
-            var btnEdit    = SecondaryBtn("✏ Sửa", 550, 8, 85, 34, C_Orange);
-            var btnDelete  = SecondaryBtn("🗑 Xóa", 645, 8, 85, 34, C_Red);
-            var btnHistory = SecondaryBtn("📋 Lịch sử khám", 740, 8, 145, 34, C_Purple);
+            var txtSearch  = MakeInput(90, 8, 180);
+            var btnSearch  = SecondaryBtn("🔍 Tìm", 280, 8, 65, 34, C_Blue);
+            var btnAdd     = PrimaryBtn("➕ Thêm BN mới", 355, 8, 130, 34);
+            var btnEdit    = SecondaryBtn("✏ Sửa", 495, 8, 75, 34, C_Orange);
+            var btnDelete  = SecondaryBtn("🗑 Xóa", 580, 8, 75, 34, C_Red);
+            var btnHistory = SecondaryBtn("📋 Lịch sử khám", 665, 8, 125, 34, C_Purple);
+            var btnExportBN = SecondaryBtn("📥 Xuất Excel", 800, 8, 110, 34, C_Green);
+            var btnImportBN = SecondaryBtn("📤 Nhập Excel", 920, 8, 115, 34, C_Teal);
 
             toolPanel.Controls.AddRange(new Control[] {
                 MakeLbl("Tìm kiếm:", 14, 15),
-                txtSearch, btnSearch, btnAdd, btnEdit, btnDelete, btnHistory
+                txtSearch, btnSearch, btnAdd, btnEdit, btnDelete, btnHistory, btnExportBN, btnImportBN
             });
 
             var contentPanel = new Panel { Dock = DockStyle.Fill, BackColor = C_Card, Padding = new Padding(10) };
@@ -767,6 +770,61 @@ namespace QlyPhongKham.Forms
                 dlg.ShowDialog();
             };
 
+            btnExportBN.Click += (s, e) =>
+            {
+                var dt = ClinicDAL.LayDanhSachBenhNhan(txtSearch.Text.Trim());
+                ExcelHelper.ExportToExcel(dt, "DanhSachBenhNhan", "DANH SÁCH BỆNH NHÂN", $"DanhSachBenhNhan_{DateTime.Now:yyyyMMdd}.xlsx");
+            };
+
+            btnImportBN.Click += (s, e) =>
+            {
+                var dtExcel = ExcelHelper.ImportFromExcel("Chọn file Excel danh sách bệnh nhân");
+                if (dtExcel == null || dtExcel.Rows.Count == 0) return;
+
+                int success = 0;
+                int failed = 0;
+                foreach (DataRow r in dtExcel.Rows)
+                {
+                    try
+                    {
+                        string hoTen = r.Table.Columns.Contains("HoTen") ? r["HoTen"]?.ToString() ?? "" : r[0]?.ToString() ?? "";
+                        if (string.IsNullOrWhiteSpace(hoTen)) continue;
+
+                        string gioiTinh = r.Table.Columns.Contains("GioiTinh") ? r["GioiTinh"]?.ToString() ?? "Nam" : "Nam";
+                        string sdt = r.Table.Columns.Contains("SoDienThoai") ? r["SoDienThoai"]?.ToString() ?? "" : "";
+                        string diaChi = r.Table.Columns.Contains("DiaChi") ? r["DiaChi"]?.ToString() ?? "" : "";
+                        string tienSu = r.Table.Columns.Contains("TienSuBenh") ? r["TienSuBenh"]?.ToString() ?? "" : "";
+                        DateTime? ns = null;
+                        if (r.Table.Columns.Contains("NgaySinh") && DateTime.TryParse(r["NgaySinh"]?.ToString(), out var parsedNs))
+                            ns = parsedNs;
+
+                        var bn = new BenhNhan
+                        {
+                            MaBN = ClinicDAL.SinhMaBenhNhan(),
+                            HoTen = hoTen.Trim(),
+                            GioiTinh = gioiTinh.Trim(),
+                            NgaySinh = ns,
+                            SoDienThoai = string.IsNullOrWhiteSpace(sdt) ? null : sdt.Trim(),
+                            DiaChi = string.IsNullOrWhiteSpace(diaChi) ? null : diaChi.Trim(),
+                            TienSuBenh = string.IsNullOrWhiteSpace(tienSu) ? null : tienSu.Trim()
+                        };
+
+                        if (ClinicDAL.LuuBenhNhan(bn, isNew: true))
+                            success++;
+                        else
+                            failed++;
+                    }
+                    catch
+                    {
+                        failed++;
+                    }
+                }
+
+                MessageBox.Show($"Hoàn tất nhập dữ liệu từ Excel!\n- Thành công: {success} bệnh nhân\n- Lỗi/Bỏ qua: {failed}",
+                    "Kết quả nhập Excel", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                LoadBN();
+            };
+
             wrapper.Controls.Add(contentPanel);
             wrapper.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 10 });
             wrapper.Controls.Add(toolPanel);
@@ -789,17 +847,19 @@ namespace QlyPhongKham.Forms
             var toolPanel = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = C_Card, Padding = new Padding(12, 8, 12, 0) };
             toolPanel.Paint += PaintCardBorder;
 
-            var txtSearch  = MakeInput(95, 8, 180);
-            var btnSearch  = SecondaryBtn("🔍 Tìm", 285, 8, 75, 34, C_Blue);
-            var btnAddT    = PrimaryBtn("➕ Thêm thuốc", 370, 8, 125, 34);
-            var btnEditT   = SecondaryBtn("✏ Sửa", 505, 8, 80, 34, C_Orange);
-            var btnDeleteT = SecondaryBtn("🗑 Xóa", 595, 8, 80, 34, C_Red);
-            var btnNhapKho = SecondaryBtn("📦 Nhập kho", 685, 8, 115, 34, C_Green);
-            var btnCanhBao = SecondaryBtn("⚠ Sắp hết", 810, 8, 105, 34, C_Orange);
+            var txtSearch  = MakeInput(95, 8, 160);
+            var btnSearch  = SecondaryBtn("🔍 Tìm", 265, 8, 70, 34, C_Blue);
+            var btnAddT    = PrimaryBtn("➕ Thêm thuốc", 345, 8, 115, 34);
+            var btnEditT   = SecondaryBtn("✏ Sửa", 470, 8, 70, 34, C_Orange);
+            var btnDeleteT = SecondaryBtn("🗑 Xóa", 550, 8, 70, 34, C_Red);
+            var btnNhapKho = SecondaryBtn("📦 Nhập kho", 630, 8, 105, 34, C_Green);
+            var btnCanhBao = SecondaryBtn("⚠ Sắp hết", 745, 8, 95, 34, C_Orange);
+            var btnExportT = SecondaryBtn("📥 Xuất Excel", 850, 8, 105, 34, C_Teal);
+            var btnImportT = SecondaryBtn("📤 Nhập Excel", 965, 8, 105, 34, Color.FromArgb(79, 70, 229));
 
             toolPanel.Controls.AddRange(new Control[] {
                 MakeLbl("Tên thuốc:", 12, 15),
-                txtSearch, btnSearch, btnAddT, btnEditT, btnDeleteT, btnNhapKho, btnCanhBao
+                txtSearch, btnSearch, btnAddT, btnEditT, btnDeleteT, btnNhapKho, btnCanhBao, btnExportT, btnImportT
             });
 
             var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 640 };
@@ -915,6 +975,66 @@ namespace QlyPhongKham.Forms
 
             btnCanhBao.Click += (s, e) => dgvCB.DataSource = ClinicDAL.LayThuocSapHet(30);
 
+            btnExportT.Click += (s, e) =>
+            {
+                var dt = ClinicDAL.LayDanhSachThuoc(txtSearch.Text.Trim());
+                ExcelHelper.ExportToExcel(dt, "DanhMucThuoc", "DANH MỤC THUỐC VÀ TỒN KHO DƯỢC", $"KhoThuoc_{DateTime.Now:yyyyMMdd}.xlsx");
+            };
+
+            btnImportT.Click += (s, e) =>
+            {
+                var dtExcel = ExcelHelper.ImportFromExcel("Chọn file Excel danh mục thuốc");
+                if (dtExcel == null || dtExcel.Rows.Count == 0) return;
+
+                int success = 0;
+                int failed = 0;
+                foreach (DataRow r in dtExcel.Rows)
+                {
+                    try
+                    {
+                        string tenThuoc = r.Table.Columns.Contains("TenThuoc") ? r["TenThuoc"]?.ToString() ?? "" : r[0]?.ToString() ?? "";
+                        if (string.IsNullOrWhiteSpace(tenThuoc)) continue;
+
+                        string dvt = r.Table.Columns.Contains("DonViTinh") ? r["DonViTinh"]?.ToString() ?? "Viên" : "Viên";
+                        decimal giaNhap = 0;
+                        if (r.Table.Columns.Contains("DonGiaNhap") && decimal.TryParse(r["DonGiaNhap"]?.ToString(), out var gn))
+                            giaNhap = gn;
+                        decimal giaBan = 0;
+                        if (r.Table.Columns.Contains("DonGiaBan") && decimal.TryParse(r["DonGiaBan"]?.ToString(), out var gb))
+                            giaBan = gb;
+                        int slTon = 0;
+                        if (r.Table.Columns.Contains("SoLuongTon") && int.TryParse(r["SoLuongTon"]?.ToString(), out var sl))
+                            slTon = sl;
+                        string cachDung = r.Table.Columns.Contains("CachDungMacDinh") ? r["CachDungMacDinh"]?.ToString() ?? "" : "";
+
+                        string maThuocMoi = "TH" + DateTime.Now.ToString("HHmmss") + (success % 100).ToString("D2");
+                        var thuoc = new Thuoc
+                        {
+                            MaThuoc = maThuocMoi,
+                            TenThuoc = tenThuoc.Trim(),
+                            DonViTinh = string.IsNullOrWhiteSpace(dvt) ? "Viên" : dvt.Trim(),
+                            DonGiaBan = giaBan > 0 ? giaBan : 10000m,
+                            SoLuongTon = slTon,
+                            CachDungMacDinh = string.IsNullOrWhiteSpace(cachDung) ? null : cachDung.Trim()
+                        };
+
+                        if (ClinicDAL.LuuThuoc(thuoc, isNew: true))
+                            success++;
+                        else
+                            failed++;
+                    }
+                    catch
+                    {
+                        failed++;
+                    }
+                }
+
+                MessageBox.Show($"Hoàn tất nhập dữ liệu từ Excel!\n- Thành công: {success} thuốc\n- Lỗi/Bỏ qua: {failed}",
+                    "Kết quả nhập thuốc Excel", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                LoadThuoc();
+                dgvCB.DataSource = ClinicDAL.LayThuocSapHet(30);
+            };
+
             wrapper.Controls.Add(split);
             wrapper.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 10 });
             wrapper.Controls.Add(toolPanel);
@@ -956,9 +1076,11 @@ namespace QlyPhongKham.Forms
             status.SelectedIndex = 0;
             var refresh = SecondaryBtn("Làm mới", 440, 59, 100, 32, C_Blue);
             var pay = PrimaryBtn("Thanh toán", 550, 59, 120, 32);
-            var details = SecondaryBtn("Chi tiết hóa đơn", 680, 59, 150, 32, C_Teal);
-            var cancelInvoice = SecondaryBtn("Hủy HĐ", 840, 59, 95, 32, C_Red);
-            header.Controls.AddRange(new Control[] { search, status, refresh, pay, details, cancelInvoice });
+            var details = SecondaryBtn("Chi tiết hóa đơn", 680, 59, 140, 32, C_Teal);
+            var printInvoice = SecondaryBtn("🖨 In/Lưu PDF", 830, 59, 120, 32, Color.FromArgb(10, 80, 160));
+            var exportInvoices = SecondaryBtn("📥 Xuất Excel", 960, 59, 110, 32, C_Green);
+            var cancelInvoice = SecondaryBtn("Hủy HĐ", 1080, 59, 85, 32, C_Red);
+            header.Controls.AddRange(new Control[] { search, status, refresh, pay, details, printInvoice, exportInvoices, cancelInvoice });
 
             var grid = MakeGrid();
             var bottom = new Panel { Dock = DockStyle.Bottom, Height = 250, Padding = new Padding(0, 8, 0, 0) };
@@ -1027,6 +1149,37 @@ namespace QlyPhongKham.Forms
                     return;
                 }
                 ShowInvoiceDetails(invoice);
+            };
+
+            printInvoice.Click += (s, e) =>
+            {
+                DataRow? invoice = SelectedInvoice();
+                if (invoice == null)
+                {
+                    MessageBox.Show("Vui lòng chọn một hóa đơn để in / xuất PDF!", "Chưa chọn hóa đơn", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                string maHD = invoice["MaHD"]?.ToString() ?? "";
+                string maPK = invoice["MaPK"]?.ToString() ?? "";
+                string tenBN = invoice["TenBN"]?.ToString() ?? "";
+                decimal tienDV = Convert.ToDecimal(invoice["TienDichVu"]);
+                decimal tienThuoc = Convert.ToDecimal(invoice["TienThuoc"]);
+                decimal giamGia = Convert.ToDecimal(invoice["GiamGia"]);
+                decimal tongTien = Convert.ToDecimal(invoice["TongTien"]);
+                string hinhThucTT = invoice["HinhThucTT"]?.ToString() ?? "Tiền mặt";
+                string chanDoan = invoice.Table.Columns.Contains("ChanDoan") ? invoice["ChanDoan"]?.ToString() ?? "Khám bệnh" : "Khám bệnh tổng quát";
+                string nguoiLap = SessionState.CurrentUser?.HoTenNhanVien ?? "Thu ngân";
+
+                PdfPrintHelper.InHoaDon(maHD, maPK, tenBN, chanDoan, hinhThucTT, tienDV, tienThuoc, giamGia, tongTien, nguoiLap);
+            };
+
+            exportInvoices.Click += (s, e) =>
+            {
+                if (grid.DataSource is DataTable dt)
+                {
+                    ExcelHelper.ExportToExcel(dt, "DanhSachHoaDon", "DANH SÁCH HÓA ĐƠN VIỆN PHÍ", $"HoaDonVienPhi_{DateTime.Now:yyyyMMdd}.xlsx");
+                }
             };
             pay.Click += (s, e) =>
             {

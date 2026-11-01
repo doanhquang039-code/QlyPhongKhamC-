@@ -166,12 +166,13 @@ namespace QlyPhongKham.Forms
             var dgv = MakeGrid();
             contentPanel.Controls.Add(dgv);
 
-            void LoadAppointments()
-            {
-                dgv.DataSource = ClinicDAL.LayDanhSachKhamBacSi(null, txtSearch.Text.Trim());
-            }
+            GridPageController? pageController = null;
+            void LoadAppointments() => pageController?.Reload();
 
-            LoadAppointments();
+            pageController = GridPageController.Attach(
+                dgv,
+                (offset, pageSize) => ClinicDAL.LayDanhSachKhamBacSi(
+                    null, txtSearch.Text.Trim(), null, offset, pageSize));
             txtSearch.TextChanged += (s, e) => LoadAppointments();
             btnRefresh.Click += (s, e) => LoadAppointments();
             btnCancelVisit.Click += (s, e) =>
@@ -239,13 +240,8 @@ namespace QlyPhongKham.Forms
             var dgv = MakeGrid();
             contentPanel.Controls.Add(dgv);
 
-            void LoadAppointments()
-            {
-                string status = cboStatus.SelectedItem?.ToString() ?? "Tất cả trạng thái";
-                dgv.DataSource = ClinicDAL.LayDanhSachLichHen(
-                    txtSearch.Text.Trim(),
-                    status == "Tất cả trạng thái" ? null : status);
-            }
+            GridPageController? pageController = null;
+            void LoadAppointments() => pageController?.Reload();
 
             DataRow? GetSelectedAppointment()
             {
@@ -255,7 +251,15 @@ namespace QlyPhongKham.Forms
                 return rowView.Row;
             }
 
-            LoadAppointments();
+            pageController = GridPageController.Attach(dgv, (offset, pageSize) =>
+            {
+                string status = cboStatus.SelectedItem?.ToString() ?? "Tất cả trạng thái";
+                return ClinicDAL.LayDanhSachLichHen(
+                    txtSearch.Text.Trim(),
+                    status == "Tất cả trạng thái" ? null : status,
+                    offset,
+                    pageSize);
+            });
             txtSearch.TextChanged += (s, e) => LoadAppointments();
             cboStatus.SelectedIndexChanged += (s, e) => LoadAppointments();
             btnRefresh.Click += (s, e) => LoadAppointments();
@@ -354,15 +358,74 @@ namespace QlyPhongKham.Forms
             var contentPanel = new Panel { Dock = DockStyle.Fill, BackColor = C_Card, Padding = new Padding(10) };
             contentPanel.Paint += PaintCardBorder;
             var dgvNV = MakeGrid();
+            var employeeAvatars = new System.Collections.Generic.List<Image>();
+            dgvNV.RowTemplate.Height = 50;
+            dgvNV.DataBindingComplete += (sender, args) =>
+            {
+                if (!dgvNV.Columns.Contains("AnhDaiDien"))
+                    return;
+
+                var avatarColumn = (DataGridViewImageColumn)dgvNV.Columns["AnhDaiDien"]!;
+                avatarColumn.HeaderText = "Ảnh";
+                avatarColumn.Width = 58;
+                avatarColumn.MinimumWidth = 58;
+                avatarColumn.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+                avatarColumn.ImageLayout = DataGridViewImageCellLayout.Zoom;
+                avatarColumn.SortMode = DataGridViewColumnSortMode.NotSortable;
+                avatarColumn.DisplayIndex = 0;
+                foreach (DataGridViewRow row in dgvNV.Rows)
+                    row.Height = 50;
+            };
             contentPanel.Controls.Add(dgvNV);
 
-            void LoadNV()
+            DataTable LoadEmployeePage(int offset, int pageSize)
             {
+                dgvNV.DataSource = null;
+                foreach (Image image in employeeAvatars)
+                    image.Dispose();
+                employeeAvatars.Clear();
+
                 string role = cboRoleFilter.SelectedItem?.ToString() ?? "";
                 if (role == "Tất cả chức vụ") role = "";
-                dgvNV.DataSource = ClinicDAL.LayDanhSachNhanVien(txtSearchNV.Text.Trim(), role);
+                DataTable employees = ClinicDAL.LayDanhSachNhanVien(
+                    txtSearchNV.Text.Trim(), role, offset, pageSize);
+                DataColumn? imageColumn = employees.Columns["AnhDaiDien"];
+                if (imageColumn is null)
+                    throw new InvalidOperationException("Danh sách nhân viên không có cột ảnh đại diện.");
+
+                var imageValues = new object[employees.Rows.Count];
+                for (int index = 0; index < employees.Rows.Count; index++)
+                {
+                    DataRow employee = employees.Rows[index];
+                    byte[]? imageBytes = employee[imageColumn] as byte[];
+                    var avatar = ProfileImageHelper.CreateAvatar(
+                        imageBytes,
+                        employee["HoTen"]?.ToString() ?? "",
+                        40);
+                    employeeAvatars.Add(avatar);
+                    imageValues[index] = avatar;
+                }
+
+                employees.Columns.Remove(imageColumn);
+                var displayImageColumn = new DataColumn("AnhDaiDien", typeof(Image))
+                {
+                    Caption = "Ảnh"
+                };
+                employees.Columns.Add(displayImageColumn);
+                displayImageColumn.SetOrdinal(0);
+                for (int index = 0; index < employees.Rows.Count; index++)
+                    employees.Rows[index][displayImageColumn] = imageValues[index];
+
+                return employees;
             }
-            LoadNV();
+            GridPageController? employeePageController = null;
+            void LoadNV() => employeePageController?.Reload();
+            FormClosed += (s, e) =>
+            {
+                foreach (Image image in employeeAvatars)
+                    image.Dispose();
+            };
+            employeePageController = GridPageController.Attach(dgvNV, LoadEmployeePage);
             txtSearchNV.TextChanged += (s, e) => LoadNV();
             cboRoleFilter.SelectedIndexChanged += (s, e) => LoadNV();
             btnRefreshNV.Click += (s, e) => LoadNV();
@@ -408,7 +471,8 @@ namespace QlyPhongKham.Forms
                     ChucVu = r.Cells["ChucVu"].Value?.ToString() ?? "LeTan",
                     ChuyenKhoa = r.Cells["ChuyenKhoa"].Value?.ToString(),
                     SoDienThoai = r.Cells["SoDienThoai"].Value?.ToString(),
-                    Email = r.Cells["Email"].Value?.ToString()
+                    Email = r.Cells["Email"].Value?.ToString(),
+                    AnhDaiDien = ClinicDAL.LayAnhNhanVien(r.Cells["MaNV"].Value?.ToString() ?? "")
                 };
                 var dlg = new FormThemSuaNhanVien(nv);
                 if (dlg.ShowDialog() == DialogResult.OK) LoadNV();

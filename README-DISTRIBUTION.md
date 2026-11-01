@@ -16,6 +16,10 @@ Tải [QlyPhongKham bản mới nhất (.zip)](https://github.com/doanhquang039-
 
 Mỗi máy trong hướng dẫn này có database riêng; dữ liệu không tự đồng bộ giữa các máy. Không dùng tài khoản `sa` trong môi trường có dữ liệu thật; hãy tạo tài khoản SQL riêng với quyền phù hợp.
 
+Form hồ sơ bệnh nhân và nhân viên cho phép chọn ảnh đại diện (JPG, PNG, BMP hoặc GIF, tối đa 10 MB). Ứng dụng tự thu nhỏ/nén ảnh trước khi lưu vào SQL Server; database cũ được bổ sung cột ảnh tự động khi thêm hoặc sửa hồ sơ. Danh sách nhân sự Admin có cột avatar; Admin, bác sĩ và lễ tân mở hồ sơ của mình bằng thẻ **Hồ sơ cá nhân** ở cuối sidebar.
+
+Các màn hình danh sách chính có phân trang theo kích thước vùng hiển thị và khung chi tiết dòng được chọn. Để bổ sung dữ liệu demo cho database đã khởi tạo, chạy tùy chọn `seed_test_data.sql` trong SSMS sau khi chọn đúng database. File này thêm nhân viên, bệnh nhân, lịch hẹn, phiếu khám, hóa đơn, thuốc và dịch vụ demo; tài khoản demo dùng mật khẩu `123456`. Chỉ chạy trên database thử nghiệm, không dùng cho dữ liệu phòng khám thật.
+
 ## Lưu ý về dữ liệu
 
 Trong SSMS, mở `init_database.sql`, bật **Query → SQLCMD Mode**, rồi chạy bằng **Execute/F5**. Tên mặc định trong script là `QL_PhongKham`; hãy đặt tên database trong cấu hình ứng dụng giống hệt tên ở dòng đầu `:setvar DatabaseName "QL_PhongKham"`. Nếu muốn dùng tên khác, chỉ sửa giá trị trong dấu ngoặc kép ở dòng `:setvar` (ví dụ `:setvar DatabaseName "QLPhongKham123"`) và nhập đúng tên đó trong ứng dụng. Script tạo database nếu chưa có và nạp dữ liệu mẫu. Script xóa và tạo lại các bảng nghiệp vụ, nên chỉ chạy trên database cài mới; chạy lại trên database đang sử dụng sẽ xóa dữ liệu hiện có.
@@ -24,4 +28,4 @@ Thông tin kết nối được lưu riêng trên máy tại `%LOCALAPPDATA%\Qly
 
 ## Tự đóng gói từ mã nguồn
 
-Máy đóng gói cần Windows và .NET 9 SDK. Chạy `.\publish.ps1` từ PowerShell tại thư mục dự án. File ZIP được tạo tại `artifacts\QlyPhongKham-win-x64.zip`.
+Máy đóng gói cần Windows và .NET 9 SDK. Chạy `.\publish.ps1` từ PowerShell tại thư mục dự án. File ZIP được tạo tại `artifacts\QlyPhongKham-win-x64.zip`; gói gồm ứng dụng, script khởi tạo database, script seed demo và hướng dẫn.

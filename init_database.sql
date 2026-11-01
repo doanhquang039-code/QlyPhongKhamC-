@@ -51,6 +51,7 @@ CREATE TABLE NhanVien (
     ChuyenKhoa NVARCHAR(100) NULL,
     SoDienThoai VARCHAR(15) NULL,
     Email VARCHAR(100) NULL,
+    AnhDaiDien VARBINARY(MAX) NULL,
     TrangThai BIT NOT NULL DEFAULT 1
 );
 GO
@@ -100,6 +101,7 @@ CREATE TABLE BenhNhan (
     SoDienThoai VARCHAR(15) NULL,
     DiaChi NVARCHAR(200) NULL,
     TienSuBenh NVARCHAR(MAX) NULL,
+    AnhDaiDien VARBINARY(MAX) NULL,
     NgayTao DATETIME DEFAULT GETDATE()
 );
 GO

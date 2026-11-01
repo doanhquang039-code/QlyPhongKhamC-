@@ -29,6 +29,7 @@ if (Test-Path -LiteralPath (Join-Path $publishDir "dbconfig.txt")) {
 }
 
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "init_database.sql") -Destination $publishDir
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "seed_test_data.sql") -Destination $publishDir
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "README-DISTRIBUTION.md") -Destination $publishDir
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "README.md") -Destination $publishDir
 

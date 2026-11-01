@@ -2,8 +2,11 @@ using System;
 using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
+using Microsoft.Data.SqlClient;
 using QlyPhongKham.DAL;
+using QlyPhongKham.Helpers;
 
 namespace QlyPhongKham.Forms
 {
@@ -104,6 +107,7 @@ namespace QlyPhongKham.Forms
         private Panel _sidebarHeader = null!;
         private Panel _sidebarNavigation = null!;
         private Panel _sidebarFooter = null!;
+        private Bitmap? _sidebarProfileAvatar;
         private  Label  lblPageTitle    = null!;
         private  Label  lblBreadcrumb   = null!;
         private  Panel  topBar          = null!;
@@ -166,7 +170,7 @@ namespace QlyPhongKham.Forms
             var headerSidebar = new Panel { Dock = DockStyle.Top, Height = 144, BackColor = C_Sidebar };
             _sidebarHeader = headerSidebar;
             _sidebarNavigation = new Panel { Dock = DockStyle.Fill, BackColor = C_Sidebar, AutoScroll = true };
-            _sidebarFooter = new Panel { Dock = DockStyle.Bottom, Height = 92, BackColor = C_Sidebar };
+            _sidebarFooter = new Panel { Dock = DockStyle.Bottom, Height = 150, BackColor = C_Sidebar };
 
             var logoPanel = new Panel { Location = new Point(0, 0), Size = new Size(240, 72), BackColor = C_Sidebar };
             logoPanel.Controls.Add(new Label { Text = "+",      Font = new Font("Segoe UI", 22f, FontStyle.Bold), ForeColor = C_Teal,   Location = new Point(18, 16), AutoSize = true });
@@ -241,8 +245,57 @@ namespace QlyPhongKham.Forms
                     ShowKhoaPhongView();
             };
 
-            // Logout & Config at bottom
-            var btnLogout = new Button { Text = "  🚪  Thoát tài khoản", Size = new Size(220, 38), Location = new Point(10, 6), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, BackColor = Color.FromArgb(39, 22, 22), ForeColor = Color.FromArgb(252, 165, 165), FlatStyle = FlatStyle.Flat, Font = F_Bold, TextAlign = ContentAlignment.MiddleLeft, Cursor = Cursors.Hand };
+            var profileCard = new Panel
+            {
+                Location = new Point(10, 6),
+                Size = new Size(220, 52),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                BackColor = C_SidebarSub,
+                Cursor = Cursors.Hand
+            };
+            _sidebarProfileAvatar = ProfileImageHelper.CreateAvatar(
+                ClinicDAL.LayAnhNhanVien(SessionState.CurrentUser?.MaNV ?? ""),
+                SessionState.CurrentUser?.HoTenNhanVien ?? "Người dùng",
+                38);
+            var profileAvatar = new PictureBox
+            {
+                Image = _sidebarProfileAvatar,
+                Location = new Point(8, 7),
+                Size = new Size(38, 38),
+                SizeMode = PictureBoxSizeMode.Zoom,
+                BackColor = C_SidebarSub
+            };
+            profileCard.Controls.Add(profileAvatar);
+            profileCard.Controls.Add(new Label
+            {
+                Text = "Hồ sơ cá nhân",
+                Location = new Point(56, 8),
+                Size = new Size(145, 19),
+                ForeColor = Color.White,
+                Font = F_Bold,
+                AutoEllipsis = true,
+                Cursor = Cursors.Hand
+            });
+            profileCard.Controls.Add(new Label
+            {
+                Text = "Xem thông tin của bạn  ›",
+                Location = new Point(56, 28),
+                Size = new Size(155, 16),
+                ForeColor = Color.FromArgb(148, 163, 184),
+                Font = F_Small,
+                Cursor = Cursors.Hand
+            });
+            profileCard.MouseEnter += (s, e) => profileCard.BackColor = Color.FromArgb(30, 58, 84);
+            profileCard.MouseLeave += (s, e) => profileCard.BackColor = C_SidebarSub;
+            foreach (Control control in profileCard.Controls)
+            {
+                control.MouseEnter += (s, e) => profileCard.BackColor = Color.FromArgb(30, 58, 84);
+                control.MouseLeave += (s, e) => profileCard.BackColor = C_SidebarSub;
+                control.Click += (s, e) => ShowEmployeeProfile();
+            }
+            profileCard.Click += (s, e) => ShowEmployeeProfile();
+
+            var btnLogout = new Button { Text = "  🚪  Thoát tài khoản", Size = new Size(220, 38), Location = new Point(10, 64), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, BackColor = Color.FromArgb(39, 22, 22), ForeColor = Color.FromArgb(252, 165, 165), FlatStyle = FlatStyle.Flat, Font = F_Bold, TextAlign = ContentAlignment.MiddleLeft, Cursor = Cursors.Hand };
             btnLogout.FlatAppearance.BorderSize = 0;
             btnLogout.Click += (s, e) =>
             {
@@ -254,16 +307,39 @@ namespace QlyPhongKham.Forms
                 this.Close();
             };
 
-            var btnCfg = new Button { Text = "  ⚙  Cấu hình máy chủ", Size = new Size(220, 36), Location = new Point(10, 48), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, BackColor = Color.Transparent, ForeColor = Color.FromArgb(100, 116, 139), FlatStyle = FlatStyle.Flat, Font = F_Small, TextAlign = ContentAlignment.MiddleLeft, Cursor = Cursors.Hand };
+            var btnCfg = new Button { Text = "  ⚙  Cấu hình máy chủ", Size = new Size(220, 34), Location = new Point(10, 106), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, BackColor = Color.Transparent, ForeColor = Color.FromArgb(100, 116, 139), FlatStyle = FlatStyle.Flat, Font = F_Small, TextAlign = ContentAlignment.MiddleLeft, Cursor = Cursors.Hand };
             btnCfg.FlatAppearance.BorderSize = 0;
             btnCfg.Click += (s, e) => new FormConfigDb().ShowDialog();
 
             _sidebarNavigation.Controls.AddRange(new Control[] { lblSection, btnNavTongQuan, btnNavLichHen, btnNavBenhNhan, btnNavKhamBenh, btnNavKhoThuoc, btnNavThuNgan, btnNavNhanVien, btnNavBaoCao, btnNavKhoaPhong });
-            _sidebarFooter.Controls.AddRange(new Control[] { btnLogout, btnCfg });
+            _sidebarFooter.Controls.AddRange(new Control[] { profileCard, btnLogout, btnCfg });
             panelSidebar.Controls.Add(_sidebarNavigation);
             panelSidebar.Controls.Add(_sidebarFooter);
             panelSidebar.Controls.Add(headerSidebar);
             this.Controls.Add(panelSidebar);
+            FormClosed += (s, e) => _sidebarProfileAvatar?.Dispose();
+        }
+
+        private void ShowEmployeeProfile()
+        {
+            string maNV = SessionState.CurrentUser?.MaNV ?? "";
+            if (string.IsNullOrWhiteSpace(maNV))
+            {
+                MessageBox.Show(this, "Không xác định được mã nhân viên đang đăng nhập.",
+                    "Không thể mở hồ sơ", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            try
+            {
+                using var dialog = new FormEmployeeProfile(maNV);
+                dialog.ShowDialog(this);
+            }
+            catch (Exception exception) when (exception is SqlException or InvalidOperationException or ArgumentException or ExternalException)
+            {
+                MessageBox.Show(this, $"Không thể tải hồ sơ cá nhân.\n\n{exception.Message}",
+                    "Lỗi tải hồ sơ", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         internal Button CreateNavBtn(string icon, string label, int top)

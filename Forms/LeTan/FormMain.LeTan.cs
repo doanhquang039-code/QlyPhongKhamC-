@@ -167,46 +167,23 @@ namespace QlyPhongKham.Forms
             var gridPanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(10) };
             gridPanel.Paint += PaintCardBorder;
             var grid = MakeGrid();
+            grid.DataBindingComplete += (sender, args) =>
+            {
+                if (grid.Columns.Contains("TrangThai"))
+                    grid.Columns["TrangThai"]!.Visible = false;
+                if (grid.Columns.Contains("TrangThaiDuyet"))
+                    grid.Columns["TrangThaiDuyet"]!.HeaderText = "Trạng thái";
+            };
             gridPanel.Controls.Add(grid);
 
+            GridPageController? appointmentPageController = null;
             void LoadAppointments()
             {
-                string selectedStatus = statusFilter.SelectedItem?.ToString() ?? "Tất cả trạng thái";
-                var all = ClinicDAL.LayDanhSachLichHen(search.Text.Trim());
-                var allowedDoctors = ClinicDAL.LayDanhSachBacSiTheoNhanVien(
-                    SessionState.CurrentUser?.MaNV ?? "").AsEnumerable()
-                    .Select(row => row["MaNV"].ToString() ?? "")
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
-                var filtered = all.Clone();
-                filtered.Columns.Add("TrangThaiDuyet", typeof(string));
-                foreach (DataRow row in all.Rows)
-                    if (row.Field<DateTime>("NgayHen").Date == datePicker.Value.Date
-                        && allowedDoctors.Contains(row["MaNV_BacSi"].ToString() ?? "")
-                        && (selectedStatus == "Tất cả trạng thái" || row["TrangThai"].ToString() == selectedStatus))
-                    {
-                        DataRow displayed = filtered.NewRow();
-                        foreach (DataColumn column in all.Columns)
-                            displayed[column.ColumnName] = row[column];
-                        displayed["TrangThaiDuyet"] = row["TrangThai"].ToString() switch
-                        {
-                            "Chờ xác nhận" => "Chờ duyệt",
-                            "Đã xác nhận" => "Đã duyệt",
-                            _ => row["TrangThai"].ToString() ?? ""
-                        };
-                        filtered.Rows.Add(displayed);
-                    }
-                grid.DataSource = filtered;
-                int waitingCount = all.AsEnumerable().Count(row =>
-                    row.Field<DateTime>("NgayHen").Date == datePicker.Value.Date
-                    && allowedDoctors.Contains(row["MaNV_BacSi"].ToString() ?? "")
-                    && row["TrangThai"].ToString() == "Chờ xác nhận");
+                appointmentPageController?.Reload();
+                int waitingCount = ClinicDAL.LaySoLichHenChoDuyetLeTan(
+                    SessionState.CurrentUser?.MaNV ?? "",
+                    datePicker.Value.Date);
                 pendingCount.Text = $"Chờ duyệt: {waitingCount}";
-                DataGridViewColumn? rawStatusColumn = grid.Columns["TrangThai"];
-                if (rawStatusColumn != null)
-                    rawStatusColumn.Visible = false;
-                DataGridViewColumn? statusColumn = grid.Columns["TrangThaiDuyet"];
-                if (statusColumn != null)
-                    statusColumn.HeaderText = "Trạng thái";
             }
 
             DataRow? SelectedAppointment()
@@ -316,7 +293,18 @@ namespace QlyPhongKham.Forms
             };
             panelContent.Controls.Add(gridPanel);
             panelContent.Controls.Add(toolbar);
-            LoadAppointments();
+            appointmentPageController = GridPageController.Attach(grid, (offset, pageSize) =>
+                ClinicDAL.LayDanhSachLichHenLeTan(
+                    SessionState.CurrentUser?.MaNV ?? "",
+                    datePicker.Value.Date,
+                    search.Text.Trim(),
+                    statusFilter.SelectedItem?.ToString(),
+                    offset,
+                    pageSize));
+            int waitingAppointments = ClinicDAL.LaySoLichHenChoDuyetLeTan(
+                SessionState.CurrentUser?.MaNV ?? "",
+                datePicker.Value.Date);
+            pendingCount.Text = $"Chờ duyệt: {waitingAppointments}";
         }
 
         private void OpenReceptionAppointment()
@@ -525,9 +513,8 @@ namespace QlyPhongKham.Forms
             fieldsGrid.Controls.Add(CreateField("TRIỆU CHỨNG", txtTC), 1, 2);
 
             var dgvHangCho = MakeGrid();
-            void LoadHangCho() => dgvHangCho.DataSource = ClinicDAL.LayHangChoKhamTrongNgay(
-                maPhong: cboPhong.SelectedValue?.ToString(),
-                maLeTan: maLeTan);
+            GridPageController? queuePageController = null;
+            void LoadHangCho() => queuePageController?.Reload();
 
             void UpdateRoomQueue()
             {
@@ -657,10 +644,15 @@ namespace QlyPhongKham.Forms
             };
 
             var pnlGridCho = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 30, 0, 0) };
-            LoadHangCho();
             pnlGridCho.Controls.Add(dgvHangCho);
             grpCho.Controls.Add(pnlGridCho);
             grpCho.Controls.Add(btnCancelTicket);
+            queuePageController = GridPageController.Attach(dgvHangCho, (offset, pageSize) =>
+                ClinicDAL.LayHangChoKhamTrongNgay(
+                    maPhong: cboPhong.SelectedValue?.ToString(),
+                    maLeTan: maLeTan,
+                    offset: offset,
+                    pageSize: pageSize));
 
             split.Panel1.Controls.Add(grp);
             split.Panel2.Controls.Add(grpCho);
@@ -703,8 +695,10 @@ namespace QlyPhongKham.Forms
             var dgvBN = MakeGrid();
             contentPanel.Controls.Add(dgvBN);
 
-            void LoadBN() => dgvBN.DataSource = ClinicDAL.LayDanhSachBenhNhan(txtSearch.Text.Trim());
-            LoadBN();
+            GridPageController? patientPageController = null;
+            void LoadBN() => patientPageController?.Reload();
+            patientPageController = GridPageController.Attach(dgvBN, (offset, pageSize) =>
+                ClinicDAL.LayDanhSachBenhNhan(txtSearch.Text.Trim(), offset, pageSize));
 
             btnSearch.Click += (s, e) => LoadBN();
             txtSearch.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) LoadBN(); };
@@ -731,6 +725,7 @@ namespace QlyPhongKham.Forms
                     SoDienThoai = row.Cells["SoDienThoai"].Value?.ToString(),
                     DiaChi      = row.Cells["DiaChi"].Value?.ToString(),
                     TienSuBenh  = row.Cells["TienSuBenh"].Value?.ToString(),
+                    AnhDaiDien  = ClinicDAL.LayAnhBenhNhan(row.Cells["MaBN"].Value?.ToString() ?? ""),
                 };
                 if (DateTime.TryParse(row.Cells["NgaySinh"].Value?.ToString(), out DateTime ns))
                     bn.NgaySinh = ns;
@@ -888,8 +883,10 @@ namespace QlyPhongKham.Forms
             };
             pnlT.Controls.Add(dgvT);
 
-            void LoadThuoc() => dgvT.DataSource = ClinicDAL.LayDanhSachThuoc(txtSearch.Text.Trim());
-            LoadThuoc();
+            GridPageController? medicinePageController = null;
+            void LoadThuoc() => medicinePageController?.Reload();
+            medicinePageController = GridPageController.Attach(dgvT, (offset, pageSize) =>
+                ClinicDAL.LayDanhSachThuoc(txtSearch.Text.Trim(), offset, pageSize));
             txtSearch.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) LoadThuoc(); };
             btnSearch.Click   += (s, e) => LoadThuoc();
             split.Panel1.Controls.Add(pnlT);
@@ -1083,6 +1080,13 @@ namespace QlyPhongKham.Forms
             header.Controls.AddRange(new Control[] { search, status, refresh, pay, details, printInvoice, exportInvoices, cancelInvoice });
 
             var grid = MakeGrid();
+            grid.DataBindingComplete += (sender, args) =>
+            {
+                if (grid.Columns.Contains("TongTien"))
+                    grid.Columns["TongTien"]!.DefaultCellStyle.Format = "N0";
+                if (grid.Columns.Contains("NgayLap"))
+                    grid.Columns["NgayLap"]!.DefaultCellStyle.Format = "dd/MM/yyyy HH:mm";
+            };
             var bottom = new Panel { Dock = DockStyle.Bottom, Height = 250, Padding = new Padding(0, 8, 0, 0) };
             var pendingTitle = MakeLbl("PHIẾU KHÁM CHỜ LẬP HÓA ĐƠN", 0, 0, bold: true);
             var createInvoice = PrimaryBtn("＋ Lập hóa đơn", 0, 0, 130, 30);
@@ -1097,34 +1101,17 @@ namespace QlyPhongKham.Forms
             invoicesPanel.Paint += PaintCardBorder;
             invoicesPanel.Controls.Add(grid);
 
-            DataTable allInvoices = new DataTable();
+            GridPageController? invoicePageController = null;
             void LoadInvoices()
             {
-                allInvoices = ClinicDAL.LayDanhSachHoaDon();
-                string keyword = search.Text.Trim();
-                string state = status.SelectedItem?.ToString() ?? "Tất cả trạng thái";
-                var filtered = allInvoices.Clone();
-                foreach (DataRow row in allInvoices.Rows)
-                {
-                    bool matchesKeyword = string.IsNullOrEmpty(keyword)
-                        || new[] { "MaHD", "MaPK", "TenBN" }.Any(column =>
-                            row[column]?.ToString()?.Contains(keyword, StringComparison.CurrentCultureIgnoreCase) == true);
-                    bool matchesStatus = state == "Tất cả trạng thái" || row["TrangThai"].ToString() == state;
-                    if (matchesKeyword && matchesStatus)
-                        filtered.ImportRow(row);
-                }
-                grid.DataSource = filtered;
-                DataGridViewColumnCollection? invoiceColumns = grid.Columns;
-                DataGridViewColumn? totalColumn = invoiceColumns?["TongTien"];
-                if (totalColumn != null)
-                    totalColumn.DefaultCellStyle.Format = "N0";
-                DataGridViewColumn? dateColumn = invoiceColumns?["NgayLap"];
-                if (dateColumn != null)
-                    dateColumn.DefaultCellStyle.Format = "dd/MM/yyyy HH:mm";
-
+                invoicePageController?.Reload();
                 var waiting = ClinicDAL.LayDanhSachChoThanhToan();
                 pendingGrid.DataSource = waiting;
-                summary.Text = $"Tổng {allInvoices.Rows.Count} hóa đơn  •  {waiting.Rows.Count} phiếu khám chờ lập hóa đơn";
+                int totalInvoices = grid.DataSource is DataTable invoices
+                    && invoices.ExtendedProperties["TotalCount"] is int count
+                    ? count
+                    : grid.Rows.Count;
+                summary.Text = $"Tổng {totalInvoices} hóa đơn  •  {waiting.Rows.Count} phiếu khám chờ lập hóa đơn";
             }
 
             DataRow? SelectedInvoice()
@@ -1176,10 +1163,11 @@ namespace QlyPhongKham.Forms
 
             exportInvoices.Click += (s, e) =>
             {
-                if (grid.DataSource is DataTable dt)
-                {
-                    ExcelHelper.ExportToExcel(dt, "DanhSachHoaDon", "DANH SÁCH HÓA ĐƠN VIỆN PHÍ", $"HoaDonVienPhi_{DateTime.Now:yyyyMMdd}.xlsx");
-                }
+                string state = status.SelectedItem?.ToString() ?? "Tất cả trạng thái";
+                DataTable dt = ClinicDAL.LayDanhSachHoaDon(
+                    search.Text.Trim(),
+                    state == "Tất cả trạng thái" ? null : state);
+                ExcelHelper.ExportToExcel(dt, "DanhSachHoaDon", "DANH SÁCH HÓA ĐƠN VIỆN PHÍ", $"HoaDonVienPhi_{DateTime.Now:yyyyMMdd}.xlsx");
             };
             pay.Click += (s, e) =>
             {
@@ -1250,6 +1238,15 @@ namespace QlyPhongKham.Forms
             wrapper.Controls.Add(bottom);
             wrapper.Controls.Add(header);
             panelContent.Controls.Add(wrapper);
+            invoicePageController = GridPageController.Attach(grid, (offset, pageSize) =>
+            {
+                string state = status.SelectedItem?.ToString() ?? "Tất cả trạng thái";
+                return ClinicDAL.LayDanhSachHoaDon(
+                    search.Text.Trim(),
+                    state == "Tất cả trạng thái" ? null : state,
+                    offset,
+                    pageSize);
+            });
             LoadInvoices();
         }
 

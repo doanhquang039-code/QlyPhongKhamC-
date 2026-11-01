@@ -22,6 +22,8 @@ Link tải này có hiệu lực sau khi bản GitHub Release đầu tiên đư�
 
 Tại màn hình đăng nhập, chọn **Đăng ký tài khoản bệnh nhân** để tạo tài khoản cổng bệnh nhân mới. Đăng ký tạo hồ sơ bệnh nhân và tài khoản role Bệnh nhân trong cùng một giao dịch; tên đăng nhập phải chưa được tài khoản nhân viên hoặc bệnh nhân khác sử dụng.
 
+Hồ sơ bệnh nhân và nhân viên hỗ trợ ảnh đại diện. Ảnh được tự thu nhỏ/nén và lưu trực tiếp trong SQL Server; với database cũ, ứng dụng tự bổ sung cột ảnh khi người dùng thêm hoặc sửa hồ sơ. Admin có thể xem avatar trong danh sách nhân sự; Admin, bác sĩ và lễ tân có thể bấm **Hồ sơ cá nhân** ở cuối sidebar để xem thông tin của mình.
+
 ---
 
 ## 2. Hướng dẫn cấu hình kết nối từ máy Laptop khác (Mạng LAN / Wi-Fi)
@@ -96,6 +98,8 @@ Mỗi máy cần có SQL Server Database Engine và database riêng:
 - Tên database phải bắt đầu bằng chữ cái và chỉ gồm chữ cái, chữ số hoặc dấu gạch dưới; không dùng tên database hệ thống của SQL Server.
 - Để thêm khoa/phòng và phân công vào database cũ, mở [`seed_test_data.sql`](./seed_test_data.sql) trong SQL Server Management Studio, chọn đúng database ứng dụng đang kết nối rồi chạy. Script chỉ thêm dữ liệu chưa có, có thể chạy lại và không xóa dữ liệu hiện có.
 - Tài khoản test nhân viên: `test_admin`, `test_bs`, `test_bs2`, `test_letan`; tài khoản bệnh nhân: `test_bn01`, `test_bn04`, `test_bn05`. Mật khẩu các tài khoản test là `123456`.
+- Script seed cũng tạo 30 tài khoản mỗi role (Admin/Bác sĩ/Lễ tân), thêm 100 bệnh nhân, 300 lịch hẹn, 840 phiếu khám, 420 hóa đơn, 60 thuốc và 40 dịch vụ mẫu. Tài khoản bổ sung có dạng `demo_admin01`–`demo_admin29`, `demo_bs01`–`demo_bs28`, `demo_letan01`–`demo_letan29`; mật khẩu đều là `123456`. Chỉ chạy trên cơ sở dữ liệu dùng để demo/kiểm thử.
+- Các bảng danh sách chính dùng phân trang `OFFSET/FETCH` trên SQL Server; số dòng mỗi trang tự điều chỉnh theo vùng hiển thị. Chọn một dòng để xem các trường dữ liệu của dòng đó ở khung chi tiết bên dưới.
 - Admin phân công bác sĩ/lễ tân vào một hoặc nhiều phòng tại **Nhân sự → Phân công phòng**. Mỗi bác sĩ chỉ có một chuyên khoa chính và chỉ được gán vào các phòng thuộc khoa đó; lễ tân có thể được gán vào nhiều phòng thuộc nhiều khoa. Lễ tân chỉ thấy các phòng được phân công và chỉ cấp phiếu cho bác sĩ cùng phòng. Bác sĩ chỉ xem hồ sơ bệnh nhân từng được phân công khám cho mình.
 - Admin quản lý danh mục chuyên khoa và phòng khám tại menu **Khoa / Phòng khám**: thêm, sửa, xóa và làm mới danh sách. Không thể xóa khoa/phòng đang được sử dụng; không thể chuyển phòng đã có lịch sử khám sang chuyên khoa khác để giữ nguyên dữ liệu báo cáo.
 - Các màn hình trong ứng dụng có nút **Làm mới** ở thanh trên cùng để tải lại dữ liệu của màn hình hiện tại; báo cáo/tổng quan chỉ xem và làm mới vì đây là số liệu tổng hợp. Menu được quyết định theo role tài khoản, không phải theo phòng được phân công; thay đổi role có hiệu lực từ lần đăng nhập tiếp theo.

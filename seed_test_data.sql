@@ -1,6 +1,7 @@
 -- Du lieu test them cho QlyPhongKham.
 -- An toan de chay lai: chi them cac dong chua co, khong xoa hay sua du lieu hien tai.
 -- Tai khoan test: test_admin, test_bs, test_bs2, test_letan / mat khau 123456.
+-- Tai khoan mo rong: demo_admin01..29, demo_bs01..28, demo_letan01..29 / mat khau 123456.
 -- Tai khoan benh nhan test: test_bn01 / test_bn04 / test_bn05 (mat khau 123456).
 
 SET NOCOUNT ON;
@@ -21,6 +22,10 @@ BEGIN TRY
         ALTER TABLE dbo.PhieuKham ADD KhamLamSang NVARCHAR(MAX) NULL;
     IF COL_LENGTH(N'dbo.PhieuKham', N'SinhHieu') IS NULL
         ALTER TABLE dbo.PhieuKham ADD SinhHieu NVARCHAR(200) NULL;
+    IF COL_LENGTH(N'dbo.NhanVien', N'AnhDaiDien') IS NULL
+        ALTER TABLE dbo.NhanVien ADD AnhDaiDien VARBINARY(MAX) NULL;
+    IF COL_LENGTH(N'dbo.BenhNhan', N'AnhDaiDien') IS NULL
+        ALTER TABLE dbo.BenhNhan ADD AnhDaiDien VARBINARY(MAX) NULL;
 
     IF OBJECT_ID(N'dbo.Khoa', N'U') IS NULL
         CREATE TABLE dbo.Khoa (
@@ -72,6 +77,47 @@ BEGIN TRY
     ) v(MaNV, HoTen, ChucVu, ChuyenKhoa, SoDienThoai, Email)
     WHERE NOT EXISTS (SELECT 1 FROM dbo.NhanVien n WHERE n.MaNV = v.MaNV);
 
+    ;WITH Numbers AS (
+        SELECT 1 AS Number
+        UNION ALL
+        SELECT Number + 1 FROM Numbers WHERE Number < 29
+    ),
+    SampleEmployees AS (
+        SELECT 'NVA' + RIGHT('00' + CONVERT(VARCHAR(2), Number), 2) AS MaNV,
+               N'Nhân viên Admin mẫu ' + RIGHT(N'00' + CONVERT(NVARCHAR(2), Number), 2) AS HoTen,
+               N'Admin' AS ChucVu, CAST(NULL AS NVARCHAR(100)) AS ChuyenKhoa,
+               '091' + RIGHT('0000000' + CONVERT(VARCHAR(7), Number), 7) AS SoDienThoai,
+               'demo.admin' + RIGHT('00' + CONVERT(VARCHAR(2), Number), 2) + '@example.test' AS Email
+        FROM Numbers
+        WHERE Number <= 29
+        UNION ALL
+        SELECT 'NVB' + RIGHT('00' + CONVERT(VARCHAR(2), Number), 2),
+               N'Bác sĩ mẫu ' + RIGHT(N'00' + CONVERT(NVARCHAR(2), Number), 2),
+               N'BacSi',
+               CASE (Number - 1) % 3
+                   WHEN 0 THEN N'Nội tổng quát'
+                   WHEN 1 THEN N'Tai Mũi Họng'
+                   ELSE N'Nhi khoa'
+               END,
+               '092' + RIGHT('0000000' + CONVERT(VARCHAR(7), Number), 7),
+               'demo.doctor' + RIGHT('00' + CONVERT(VARCHAR(2), Number), 2) + '@example.test'
+        FROM Numbers
+        WHERE Number <= 28
+        UNION ALL
+        SELECT 'NVL' + RIGHT('00' + CONVERT(VARCHAR(2), Number), 2),
+               N'Lễ tân mẫu ' + RIGHT(N'00' + CONVERT(NVARCHAR(2), Number), 2),
+               N'LeTan', CAST(NULL AS NVARCHAR(100)),
+               '093' + RIGHT('0000000' + CONVERT(VARCHAR(7), Number), 7),
+               'demo.reception' + RIGHT('00' + CONVERT(VARCHAR(2), Number), 2) + '@example.test'
+        FROM Numbers
+        WHERE Number <= 29
+    )
+    INSERT INTO dbo.NhanVien (MaNV, HoTen, ChucVu, ChuyenKhoa, SoDienThoai, Email, TrangThai)
+    SELECT e.MaNV, e.HoTen, e.ChucVu, e.ChuyenKhoa, e.SoDienThoai, e.Email, 1
+    FROM SampleEmployees e
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.NhanVien n WHERE n.MaNV = e.MaNV)
+    OPTION (MAXRECURSION 100);
+
     INSERT INTO dbo.TaiKhoan (TenDangNhap, MatKhau, MaNV, Quyen, TrangThai)
     SELECT v.TenDangNhap, '123456', v.MaNV, v.Quyen, 1
     FROM (VALUES
@@ -81,7 +127,40 @@ BEGIN TRY
         ('test_letan', 'NV904', N'LeTan')
     ) v(TenDangNhap, MaNV, Quyen)
     WHERE NOT EXISTS (SELECT 1 FROM dbo.TaiKhoan t WHERE t.TenDangNhap = v.TenDangNhap)
+      AND NOT EXISTS (SELECT 1 FROM dbo.TaiKhoan t WHERE t.MaNV = v.MaNV)
       AND EXISTS (SELECT 1 FROM dbo.NhanVien n WHERE n.MaNV = v.MaNV AND n.ChucVu = v.Quyen);
+
+    ;WITH Numbers AS (
+        SELECT 1 AS Number
+        UNION ALL
+        SELECT Number + 1 FROM Numbers WHERE Number < 29
+    ),
+    SampleAccounts AS (
+        SELECT 'demo_admin' + RIGHT('00' + CONVERT(VARCHAR(2), Number), 2) AS TenDangNhap,
+               'NVA' + RIGHT('00' + CONVERT(VARCHAR(2), Number), 2) AS MaNV,
+               N'Admin' AS Quyen
+        FROM Numbers
+        WHERE Number <= 29
+        UNION ALL
+        SELECT 'demo_bs' + RIGHT('00' + CONVERT(VARCHAR(2), Number), 2),
+               'NVB' + RIGHT('00' + CONVERT(VARCHAR(2), Number), 2),
+               N'BacSi'
+        FROM Numbers
+        WHERE Number <= 28
+        UNION ALL
+        SELECT 'demo_letan' + RIGHT('00' + CONVERT(VARCHAR(2), Number), 2),
+               'NVL' + RIGHT('00' + CONVERT(VARCHAR(2), Number), 2),
+               N'LeTan'
+        FROM Numbers
+        WHERE Number <= 29
+    )
+    INSERT INTO dbo.TaiKhoan (TenDangNhap, MatKhau, MaNV, Quyen, TrangThai)
+    SELECT a.TenDangNhap, '123456', a.MaNV, a.Quyen, 1
+    FROM SampleAccounts a
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.TaiKhoan t WHERE t.TenDangNhap = a.TenDangNhap)
+      AND NOT EXISTS (SELECT 1 FROM dbo.TaiKhoan t WHERE t.MaNV = a.MaNV)
+      AND EXISTS (SELECT 1 FROM dbo.NhanVien n WHERE n.MaNV = a.MaNV AND n.ChucVu = a.Quyen)
+    OPTION (MAXRECURSION 100);
 
     INSERT INTO dbo.Khoa (MaKhoa, TenKhoa)
     SELECT v.MaKhoa, v.TenKhoa
@@ -117,6 +196,23 @@ BEGIN TRY
     )
       AND EXISTS (SELECT 1 FROM dbo.NhanVien n WHERE n.MaNV = v.MaNV AND n.ChucVu = v.VaiTro);
 
+    INSERT INTO dbo.PhanCongPhong (MaNV, MaPhong, VaiTro)
+    SELECT n.MaNV, p.MaPhong, n.ChucVu
+    FROM dbo.NhanVien n
+    CROSS JOIN dbo.PhongKham p
+    WHERE (n.MaNV LIKE 'NVB__' OR n.MaNV LIKE 'NVL__')
+      AND n.ChucVu IN (N'BacSi', N'LeTan')
+      AND (n.ChucVu = N'LeTan' OR p.MaPhong =
+          CASE (CONVERT(INT, RIGHT(n.MaNV, 2)) - 1) % 3
+              WHEN 0 THEN 'P101'
+              WHEN 1 THEN 'P201'
+              ELSE 'P301'
+          END)
+      AND NOT EXISTS (
+          SELECT 1 FROM dbo.PhanCongPhong pc
+          WHERE pc.MaNV = n.MaNV AND pc.MaPhong = p.MaPhong
+      );
+
     INSERT INTO dbo.BenhNhan (MaBN, HoTen, NgaySinh, GioiTinh, SoDienThoai, DiaChi, TienSuBenh)
     SELECT v.MaBN, v.HoTen, v.NgaySinh, v.GioiTinh, v.SoDienThoai, v.DiaChi, v.TienSuBenh
     FROM (VALUES
@@ -143,6 +239,38 @@ BEGIN TRY
     ) v(MaBN, HoTen, NgaySinh, GioiTinh, SoDienThoai, DiaChi, TienSuBenh)
     WHERE NOT EXISTS (SELECT 1 FROM dbo.BenhNhan b WHERE b.MaBN = v.MaBN);
 
+    ;WITH Numbers AS (
+        SELECT 1 AS Number
+        UNION ALL
+        SELECT Number + 1 FROM Numbers WHERE Number < 100
+    )
+    INSERT INTO dbo.BenhNhan
+        (MaBN, HoTen, NgaySinh, GioiTinh, SoDienThoai, DiaChi, TienSuBenh)
+    SELECT 'BN' + RIGHT('0000' + CONVERT(VARCHAR(4), Number + 20), 4),
+           N'Bệnh nhân mẫu ' + RIGHT(N'000' + CONVERT(NVARCHAR(3), Number), 3),
+           DATEADD(YEAR, -(18 + Number % 65), CONVERT(DATE, GETDATE())),
+           CASE WHEN Number % 2 = 0 THEN N'Nữ' ELSE N'Nam' END,
+           '094' + RIGHT('0000000' + CONVERT(VARCHAR(7), Number), 7),
+           CASE Number % 5
+               WHEN 0 THEN N'Hà Nội'
+               WHEN 1 THEN N'Bắc Ninh'
+               WHEN 2 THEN N'Hưng Yên'
+               WHEN 3 THEN N'Hải Dương'
+               ELSE N'Nam Định'
+           END,
+           CASE Number % 4
+               WHEN 0 THEN N'Không ghi nhận'
+               WHEN 1 THEN N'Tiền sử dị ứng thời tiết'
+               WHEN 2 THEN N'Tiền sử viêm dạ dày'
+               ELSE N'Theo dõi huyết áp'
+           END
+    FROM Numbers
+    WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.BenhNhan b
+        WHERE b.MaBN = 'BN' + RIGHT('0000' + CONVERT(VARCHAR(4), Number + 20), 4)
+    )
+    OPTION (MAXRECURSION 100);
+
     INSERT INTO dbo.TaiKhoanBenhNhan (TenDangNhap, MatKhau, MaBN, TrangThai)
     SELECT v.TenDangNhap, '123456', v.MaBN, 1
     FROM (VALUES
@@ -163,6 +291,23 @@ BEGIN TRY
     ) v(MaDV, TenDV, DonGia, MoTa)
     WHERE NOT EXISTS (SELECT 1 FROM dbo.DichVu d WHERE d.MaDV = v.MaDV);
 
+    ;WITH Numbers AS (
+        SELECT 1 AS Number
+        UNION ALL
+        SELECT Number + 1 FROM Numbers WHERE Number < 40
+    )
+    INSERT INTO dbo.DichVu (MaDV, TenDV, DonGia, MoTa)
+    SELECT 'DV1' + RIGHT('000' + CONVERT(VARCHAR(3), Number), 3),
+           N'Dịch vụ mẫu ' + RIGHT(N'00' + CONVERT(NVARCHAR(2), Number), 2),
+           CAST(50000 + Number * 10000 AS DECIMAL(18,2)),
+           N'Dữ liệu thử nghiệm giao diện'
+    FROM Numbers
+    WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.DichVu d
+        WHERE d.MaDV = 'DV1' + RIGHT('000' + CONVERT(VARCHAR(3), Number), 3)
+    )
+    OPTION (MAXRECURSION 100);
+
     INSERT INTO dbo.Thuoc (MaThuoc, TenThuoc, DonViTinh, DonGiaBan, SoLuongTon, CachDungMacDinh)
     SELECT v.MaThuoc, v.TenThuoc, v.DonViTinh, v.DonGiaBan, v.SoLuongTon, v.CachDungMacDinh
     FROM (VALUES
@@ -176,6 +321,29 @@ BEGIN TRY
         ('TH98', N'Dung dịch sát khuẩn test', N'Lọ', CAST(25000 AS DECIMAL(18,2)), 120, N'Dùng ngoài da')
     ) v(MaThuoc, TenThuoc, DonViTinh, DonGiaBan, SoLuongTon, CachDungMacDinh)
     WHERE NOT EXISTS (SELECT 1 FROM dbo.Thuoc t WHERE t.MaThuoc = v.MaThuoc);
+
+    ;WITH Numbers AS (
+        SELECT 1 AS Number
+        UNION ALL
+        SELECT Number + 1 FROM Numbers WHERE Number < 60
+    )
+    INSERT INTO dbo.Thuoc (MaThuoc, TenThuoc, DonViTinh, DonGiaBan, SoLuongTon, CachDungMacDinh)
+    SELECT 'TH1' + RIGHT('000' + CONVERT(VARCHAR(3), Number), 3),
+           N'Thuốc mẫu ' + RIGHT(N'00' + CONVERT(NVARCHAR(2), Number), 2),
+           CASE Number % 3 WHEN 0 THEN N'Viên' WHEN 1 THEN N'Lọ' ELSE N'Vỉ' END,
+           CAST(2000 + Number * 1500 AS DECIMAL(18,2)),
+           (Number * 17) % 180,
+           CASE Number % 3
+               WHEN 0 THEN N'Dùng theo hướng dẫn của bác sĩ'
+               WHEN 1 THEN N'Uống sau ăn'
+               ELSE N'Dùng theo chỉ định'
+           END
+    FROM Numbers
+    WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.Thuoc t
+        WHERE t.MaThuoc = 'TH1' + RIGHT('000' + CONVERT(VARCHAR(3), Number), 3)
+    )
+    OPTION (MAXRECURSION 100);
 
     INSERT INTO dbo.LichHen (MaBN, MaNV_BacSi, NgayHen, LyDoKham, TrangThai)
     SELECT v.MaBN, v.MaNV_BacSi, v.NgayHen, v.LyDoKham, v.TrangThai
@@ -195,6 +363,47 @@ BEGIN TRY
           AND l.MaNV_BacSi = v.MaNV_BacSi
           AND CONVERT(date, l.NgayHen) = CONVERT(date, v.NgayHen)
     );
+
+    ;WITH Numbers AS (
+        SELECT 1 AS Number
+        UNION ALL
+        SELECT Number + 1 FROM Numbers WHERE Number < 300
+    )
+    INSERT INTO dbo.LichHen (MaBN, MaNV_BacSi, NgayHen, LyDoKham, TrangThai)
+    SELECT 'BN' + RIGHT('0000' + CONVERT(VARCHAR(4), ((Number - 1) % 100) + 21), 4),
+           'NVB' + RIGHT('00' + CONVERT(VARCHAR(2), ((Number - 1) % 28) + 1), 2),
+           DATEADD(MINUTE, 480 + (Number % 19) * 30,
+               CONVERT(DATETIME, CONVERT(DATE, DATEADD(DAY, Number % 15, GETDATE())))),
+           CASE Number % 5
+               WHEN 0 THEN N'Khám tổng quát'
+               WHEN 1 THEN N'Tái khám theo hẹn'
+               WHEN 2 THEN N'Đau đầu, chóng mặt'
+               WHEN 3 THEN N'Ho, đau họng'
+               ELSE N'Tư vấn sức khỏe'
+           END,
+           CASE Number % 4
+               WHEN 0 THEN N'Chờ xác nhận'
+               WHEN 1 THEN N'Đã xác nhận'
+               WHEN 2 THEN N'Đã đến'
+               ELSE N'Chờ xác nhận'
+           END
+    FROM Numbers
+    WHERE EXISTS (
+        SELECT 1 FROM dbo.BenhNhan b
+        WHERE b.MaBN = 'BN' + RIGHT('0000' + CONVERT(VARCHAR(4), ((Number - 1) % 100) + 21), 4)
+    )
+      AND EXISTS (
+        SELECT 1 FROM dbo.NhanVien n
+        WHERE n.MaNV = 'NVB' + RIGHT('00' + CONVERT(VARCHAR(2), ((Number - 1) % 28) + 1), 2)
+          AND n.ChucVu = N'BacSi'
+    )
+      AND NOT EXISTS (
+        SELECT 1 FROM dbo.LichHen l
+        WHERE l.MaBN = 'BN' + RIGHT('0000' + CONVERT(VARCHAR(4), ((Number - 1) % 100) + 21), 4)
+          AND l.MaNV_BacSi = 'NVB' + RIGHT('00' + CONVERT(VARCHAR(2), ((Number - 1) % 28) + 1), 2)
+          AND CONVERT(DATE, l.NgayHen) = CONVERT(DATE, DATEADD(DAY, Number % 15, GETDATE()))
+      )
+    OPTION (MAXRECURSION 1000);
 
     INSERT INTO dbo.PhieuKham
         (MaPK, STT, MaBN, MaNV_BacSi, NgayKham, TrieuChung, KhamLamSang, SinhHieu, ChanDoan, LoiDan, TrangThai)
@@ -216,6 +425,73 @@ BEGIN TRY
         ('PK9013', 1, 'BN9001', 'NV902', DATEADD(DAY, -3, GETDATE()), N'Sốt siêu vi, đau đầu', N'Tỉnh táo, họng đỏ nhẹ', N'37.8°C; HA 118/76; Mạch 84', N'Nhiễm siêu vi đường hô hấp trên', N'Nghỉ ngơi, uống đủ nước, tái khám nếu sốt cao', N'Đã khám xong')
     ) v(MaPK, STT, MaBN, MaNV_BacSi, NgayKham, TrieuChung, KhamLamSang, SinhHieu, ChanDoan, LoiDan, TrangThai)
     WHERE NOT EXISTS (SELECT 1 FROM dbo.PhieuKham p WHERE p.MaPK = v.MaPK);
+
+    ;WITH Numbers AS (
+        SELECT 1 AS Number
+        UNION ALL
+        SELECT Number + 1 FROM Numbers WHERE Number < 840
+    )
+    INSERT INTO dbo.PhieuKham
+        (MaPK, STT, MaBN, MaNV_BacSi, MaPhong, NgayKham, TrieuChung,
+         KhamLamSang, SinhHieu, ChanDoan, LoiDan, TrangThai)
+    SELECT 'PK92' + RIGHT('000' + CONVERT(VARCHAR(3), Number), 3),
+           CASE WHEN Number <= 420 THEN 10 + Number ELSE 1000 + Number END,
+           'BN' + RIGHT('0000' + CONVERT(VARCHAR(4), ((Number - 1) % 100) + 21), 4),
+           'NVB' + RIGHT('00' + CONVERT(VARCHAR(2), ((Number - 1) % 28) + 1), 2),
+           CASE ((Number - 1) % 28) % 3
+               WHEN 0 THEN 'P101'
+               WHEN 1 THEN 'P201'
+               ELSE 'P301'
+           END,
+           CASE WHEN Number <= 420
+               THEN DATEADD(MINUTE, 480 + (Number % 30) * 20,
+                   CONVERT(DATETIME, CONVERT(DATE, GETDATE())))
+               ELSE DATEADD(DAY, -(1 + Number % 120), GETDATE())
+           END,
+           CASE Number % 5
+               WHEN 0 THEN N'Đau đầu, mệt mỏi'
+               WHEN 1 THEN N'Ho và đau họng'
+               WHEN 2 THEN N'Đau bụng nhẹ'
+               WHEN 3 THEN N'Khám sức khỏe định kỳ'
+               ELSE N'Tái khám theo lịch'
+           END,
+           CASE WHEN Number > 420 OR Number % 4 IN (2, 3)
+               THEN N'Tỉnh táo, thể trạng ổn định'
+               ELSE NULL
+           END,
+           CASE WHEN Number > 420 OR Number % 4 IN (2, 3)
+               THEN N'36.7°C; HA 120/80; Mạch 78'
+               ELSE NULL
+           END,
+           CASE WHEN Number > 420 THEN N'Khám sức khỏe ổn định'
+                WHEN Number % 4 = 2 THEN N'Theo dõi và điều trị ngoại trú'
+                ELSE NULL
+           END,
+           CASE WHEN Number > 420 THEN N'Tái khám khi cần'
+                WHEN Number % 4 = 2 THEN N'Tái khám theo lịch hẹn'
+                ELSE NULL
+           END,
+           CASE WHEN Number > 420 THEN N'Đã khám xong'
+                WHEN Number % 4 = 0 THEN N'Chờ khám'
+                WHEN Number % 4 = 1 THEN N'Đang khám'
+                WHEN Number % 4 = 2 THEN N'Đã khám xong'
+                ELSE N'Chờ kết quả CLS'
+           END
+    FROM Numbers
+    WHERE EXISTS (
+        SELECT 1 FROM dbo.BenhNhan b
+        WHERE b.MaBN = 'BN' + RIGHT('0000' + CONVERT(VARCHAR(4), ((Number - 1) % 100) + 21), 4)
+    )
+      AND EXISTS (
+        SELECT 1 FROM dbo.NhanVien n
+        WHERE n.MaNV = 'NVB' + RIGHT('00' + CONVERT(VARCHAR(2), ((Number - 1) % 28) + 1), 2)
+          AND n.ChucVu = N'BacSi'
+    )
+      AND NOT EXISTS (
+        SELECT 1 FROM dbo.PhieuKham p
+        WHERE p.MaPK = 'PK92' + RIGHT('000' + CONVERT(VARCHAR(3), Number), 3)
+    )
+    OPTION (MAXRECURSION 1000);
 
     UPDATE pk
     SET MaPhong = (
@@ -291,8 +567,51 @@ BEGIN TRY
         SELECT 1 FROM dbo.HoaDon h WHERE h.MaHD = v.MaHD OR h.MaPK = v.MaPK
     );
 
+    ;WITH Numbers AS (
+        SELECT 421 AS Number
+        UNION ALL
+        SELECT Number + 1 FROM Numbers WHERE Number < 840
+    )
+    INSERT INTO dbo.HoaDon
+        (MaHD, MaPK, MaNV_ThuNgan, NgayLap, TienDichVu, TienThuoc, GiamGia,
+         TongTien, HinhThucTT, TrangThai)
+    SELECT 'HD92' + RIGHT('000' + CONVERT(VARCHAR(3), n.Number), 3),
+           p.MaPK,
+           'NVL' + RIGHT('00' + CONVERT(VARCHAR(2), ((n.Number - 1) % 29) + 1), 2),
+           p.NgayKham,
+           CASE n.Number % 3
+               WHEN 0 THEN CAST(100000 AS DECIMAL(18,2))
+               WHEN 1 THEN CAST(180000 AS DECIMAL(18,2))
+               ELSE CAST(250000 AS DECIMAL(18,2))
+           END,
+           CAST((n.Number % 8) * 5000 AS DECIMAL(18,2)),
+           CASE WHEN n.Number % 5 = 0 THEN CAST(10000 AS DECIMAL(18,2))
+                ELSE CAST(0 AS DECIMAL(18,2))
+           END,
+           CASE n.Number % 3
+               WHEN 0 THEN CAST(100000 AS DECIMAL(18,2))
+               WHEN 1 THEN CAST(180000 AS DECIMAL(18,2))
+               ELSE CAST(250000 AS DECIMAL(18,2))
+           END + CAST((n.Number % 8) * 5000 AS DECIMAL(18,2))
+             - CASE WHEN n.Number % 5 = 0 THEN CAST(10000 AS DECIMAL(18,2))
+                    ELSE CAST(0 AS DECIMAL(18,2))
+               END,
+           CASE WHEN n.Number % 2 = 0 THEN N'Tiền mặt' ELSE N'Chuyển khoản QR' END,
+           CASE WHEN n.Number % 4 = 0 THEN N'Chưa thanh toán' ELSE N'Đã thanh toán' END
+    FROM Numbers n
+    INNER JOIN dbo.PhieuKham p
+        ON p.MaPK = 'PK92' + RIGHT('000' + CONVERT(VARCHAR(3), n.Number), 3)
+       AND p.TrangThai = N'Đã khám xong'
+    WHERE EXISTS (
+        SELECT 1 FROM dbo.NhanVien nv
+        WHERE nv.MaNV = 'NVL' + RIGHT('00' + CONVERT(VARCHAR(2), ((n.Number - 1) % 29) + 1), 2)
+          AND nv.ChucVu = N'LeTan'
+    )
+      AND NOT EXISTS (SELECT 1 FROM dbo.HoaDon h WHERE h.MaPK = p.MaPK)
+    OPTION (MAXRECURSION 1000);
+
     COMMIT TRANSACTION;
-    PRINT N'Nap du lieu test thanh cong. Tai khoan nhan vien: test_admin / test_bs / test_bs2 / test_letan; tai khoan benh nhan: test_bn01 / test_bn04 / test_bn05; mat khau 123456.';
+    PRINT N'Nap du lieu test thanh cong. Tai khoan test: test_admin / test_bs / test_bs2 / test_letan; tai khoan mo rong demo_admin01..29 / demo_bs01..28 / demo_letan01..29; mat khau 123456.';
 END TRY
 BEGIN CATCH
     IF XACT_STATE() <> 0 ROLLBACK TRANSACTION;

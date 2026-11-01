@@ -10,6 +10,7 @@ namespace QlyPhongKham.Models
         public string? ChuyenKhoa { get; set; }
         public string? SoDienThoai { get; set; }
         public string? Email { get; set; }
+        public byte[]? AnhDaiDien { get; set; }
         public bool TrangThai { get; set; } = true;
     }
 
@@ -39,6 +40,7 @@ namespace QlyPhongKham.Models
         public string? SoDienThoai { get; set; }
         public string? DiaChi { get; set; }
         public string? TienSuBenh { get; set; }
+        public byte[]? AnhDaiDien { get; set; }
     }
 
     public class PhieuKham

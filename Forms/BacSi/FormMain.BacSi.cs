@@ -243,15 +243,8 @@ namespace QlyPhongKham.Forms
             dgv.Size = new Size(grpLeft.Width - 32, grpLeft.Height - 146);
             dgv.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             dgv.ScrollBars = ScrollBars.Vertical;
-
-            // Load data method
-            void LoadList()
+            dgv.DataBindingComplete += (sender, args) =>
             {
-                string kw = txtSearch.Text.Trim();
-                string? st = cboStatus.SelectedItem?.ToString();
-                dgv.DataSource = ClinicDAL.LayDanhSachKhamBacSi(string.IsNullOrEmpty(maBS) ? null : maBS, kw, st);
-
-                // Format columns safely
                 SafeFormatCol(dgv, "MaPK", "Mã PK", 65, fillWeight: 80f);
                 SafeFormatCol(dgv, "STT", "STT", 40, fillWeight: 45f);
                 SafeFormatCol(dgv, "GioKham", "Giờ", 55, fillWeight: 60f);
@@ -263,7 +256,11 @@ namespace QlyPhongKham.Forms
                 SafeFormatCol(dgv, "TrangThai", "Trạng thái", 100, fillWeight: 120f);
                 SafeFormatCol(dgv, "TenBacSi", "Bác sĩ", null, false);
                 SafeFormatCol(dgv, "SoDienThoai", "SĐT", null, false);
-            }
+            };
+
+            // Load data method
+            GridPageController? listPageController = null;
+            void LoadList() => listPageController?.Reload();
 
             txtSearch.TextChanged += (s, e) => LoadList();
             cboStatus.SelectedIndexChanged += (s, e) => LoadList();
@@ -328,7 +325,13 @@ namespace QlyPhongKham.Forms
             wrapper.Controls.AddRange(new Control[] { pnlBody, pnlTop });
             panelContent.Controls.Add(wrapper);
 
-            LoadList();
+            listPageController = GridPageController.Attach(dgv, (offset, pageSize) =>
+                ClinicDAL.LayDanhSachKhamBacSi(
+                    string.IsNullOrEmpty(maBS) ? null : maBS,
+                    txtSearch.Text.Trim(),
+                    cboStatus.SelectedItem?.ToString(),
+                    offset,
+                    pageSize));
         }
 
         private void ShowBacSiLichHenDaDuyetView(string maBS)
@@ -686,12 +689,8 @@ namespace QlyPhongKham.Forms
             var dgv = MakeGrid();
             contentPanel.Controls.Add(dgv);
 
-            void LoadPatients()
-            {
-                dgv.DataSource = ClinicDAL.LayDanhSachBenhNhanBacSi(
-                    SessionState.CurrentUser?.MaNV ?? "",
-                    txtSearch.Text.Trim());
-            }
+            GridPageController? patientPageController = null;
+            void LoadPatients() => patientPageController?.Reload();
 
             void OpenSelectedPatient()
             {
@@ -701,13 +700,19 @@ namespace QlyPhongKham.Forms
                     ShowBacSiHoSoBenhAnView(maBN);
             }
 
-            LoadPatients();
             txtSearch.TextChanged += (s, e) => LoadPatients();
             dgv.CellDoubleClick += (s, e) => OpenSelectedPatient();
 
             var btnView = PrimaryBtn("Xem hồ sơ", 350, 8, 120, 34);
             btnView.Click += (s, e) => OpenSelectedPatient();
             toolPanel.Controls.Add(btnView);
+
+            patientPageController = GridPageController.Attach(dgv, (offset, pageSize) =>
+                ClinicDAL.LayDanhSachBenhNhanBacSi(
+                    SessionState.CurrentUser?.MaNV ?? "",
+                    txtSearch.Text.Trim(),
+                    offset,
+                    pageSize));
 
             wrapper.Controls.Add(contentPanel);
             wrapper.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 10 });
@@ -1513,19 +1518,30 @@ namespace QlyPhongKham.Forms
             dgvRes.Location = new Point(14, 40);
             dgvRes.Size = new Size(pnlLeft.Width - 28, pnlLeft.Height - 54);
             dgvRes.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-
-            void LoadTraCuu()
+            dgvRes.DataBindingComplete += (sender, args) =>
             {
-                var dt = ClinicDAL.TraCuuChuyenMon(txtKw.Text.Trim(), currentTab);
-                dgvRes.DataSource = dt;
-                lblResCount.Text = $"Kết quả tra cứu: {dt.Rows.Count} mục phù hợp";
-
                 SafeFormatCol(dgvRes, "Loai", "Phân loại", 120);
                 SafeFormatCol(dgvRes, "Ma", "Mã", 80);
                 SafeFormatCol(dgvRes, "TieuDe", "Tiêu đề / Đối tượng", 200);
                 SafeFormatCol(dgvRes, "MoTa", "Mô tả sơ lược", 200);
                 SafeFormatCol(dgvRes, "ChiTiet", "", null, false);
+            };
+
+            GridPageController? lookupPageController = null;
+            DataTable LoadLookupPage(int offset, int pageSize)
+            {
+                DataTable results = ClinicDAL.TraCuuChuyenMonPaged(
+                    txtKw.Text.Trim(),
+                    currentTab,
+                    offset,
+                    pageSize);
+                int count = results.ExtendedProperties["TotalCount"] is int totalCount
+                    ? totalCount
+                    : results.Rows.Count;
+                lblResCount.Text = $"Kết quả tra cứu: {count} mục phù hợp";
+                return results;
             }
+            void LoadTraCuu() => lookupPageController?.Reload();
 
             void SetActiveTabBtn(Button activeBtn, string tabKey)
             {
@@ -1577,7 +1593,7 @@ namespace QlyPhongKham.Forms
             wrapper.Controls.AddRange(new Control[] { pnlBody, pnlSearch });
             panelContent.Controls.Add(wrapper);
 
-            LoadTraCuu();
+            lookupPageController = GridPageController.Attach(dgvRes, LoadLookupPage);
         }
 
         // Tương thích ngược: nếu có nút cũ gọi ShowKhamBenhView()

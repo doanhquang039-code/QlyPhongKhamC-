@@ -304,6 +304,9 @@ namespace QlyPhongKham.Forms
             // OnPaint: Vẽ toàn bộ text và background Gradient mượt mà, KHÔNG BỊ TRẮNG NỀN
             hero.Paint += (s, e) =>
             {
+                if (hero.ClientSize.Width <= 0 || hero.ClientSize.Height <= 0)
+                    return;
+
                 var g = e.Graphics;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
@@ -423,12 +426,39 @@ namespace QlyPhongKham.Forms
                     e.Graphics.DrawRectangle(p, 0, 0, card.Width - 1, card.Height - 1);
                 };
 
-                var icon = new Label { Text = services[i, 0], Font = new Font("Segoe UI", 22), Location = new Point(16, 16), AutoSize = true };
-                var name = new Label { Text = services[i, 1], Font = new Font("Segoe UI", 12, FontStyle.Bold), ForeColor = C_Dark, Location = new Point(70, 18), AutoSize = true };
-                var desc = new Label { Text = services[i, 2], Font = new Font("Segoe UI", 9.5F), ForeColor = C_Gray, Location = new Point(70, 50), AutoSize = false };
+                var icon = new Label
+                {
+                    Text = services[i, 0],
+                    Font = new Font("Segoe UI", 22),
+                    Location = new Point(16, 16),
+                    Size = new Size(48, 48),
+                    TextAlign = ContentAlignment.MiddleCenter
+                };
+                var name = new Label
+                {
+                    Text = services[i, 1],
+                    Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                    ForeColor = C_Dark,
+                    Location = new Point(80, 18),
+                    Size = new Size(200, 26),
+                    AutoEllipsis = true
+                };
+                var desc = new Label
+                {
+                    Text = services[i, 2],
+                    Font = new Font("Segoe UI", 9.5F),
+                    ForeColor = C_Gray,
+                    Location = new Point(80, 50),
+                    Size = new Size(200, 60)
+                };
                 
                 card.Controls.AddRange(new Control[] { icon, name, desc });
-                card.Resize += (s, e) => desc.Size = new Size(card.ClientSize.Width - 85, 60);
+                card.Resize += (s, e) =>
+                {
+                    int textWidth = Math.Max(0, card.ClientSize.Width - 112);
+                    name.Width = textWidth;
+                    desc.Width = textWidth;
+                };
 
                 cards[i] = card;
                 pnl.Controls.Add(card);

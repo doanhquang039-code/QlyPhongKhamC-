@@ -27,7 +27,7 @@ namespace QlyPhongKham.Forms
             cboDVT.Items.AddRange(new object[] { "Viên", "Vỉ", "Hộp", "Gói", "Chai", "Tuýp", "Ống" });
             cboDVT.SelectedItem = t?.DonViTinh ?? "Viên";
             var numDonGia = new NumericUpDown { Location = new Point(140, 125), Size = new Size(150, 26), Maximum = 10000000, Increment = 1000, Value = (decimal)(t?.DonGiaBan ?? 5000), ThousandsSeparator = true };
-            var numTon = new NumericUpDown { Location = new Point(140, 160), Size = new Size(130, 26), Maximum = 999999, Value = t?.SoLuongTon ?? 100 };
+            var numTon = new NumericUpDown { Location = new Point(140, 160), Size = new Size(130, 26), Maximum = 999999, Value = t?.SoLuongTon ?? 0, Enabled = false };
             var txtCachDung = new TextBox { Location = new Point(140, 195), Size = new Size(310, 26), Text = t?.CachDungMacDinh ?? "" };
 
             Controls.AddRange(new Control[] {
@@ -35,7 +35,7 @@ namespace QlyPhongKham.Forms
                 new Label { Text = "Tên thuốc (*):", Location = new Point(20, 58), AutoSize = true }, txtTen,
                 new Label { Text = "Đơn vị tính:", Location = new Point(20, 93), AutoSize = true }, cboDVT,
                 new Label { Text = "Đơn giá bán:", Location = new Point(20, 128), AutoSize = true }, numDonGia,
-                new Label { Text = "Số lượng tồn:", Location = new Point(20, 163), AutoSize = true }, numTon,
+                new Label { Text = "Tồn kho (chỉ xem):", Location = new Point(20, 163), AutoSize = true }, numTon,
                 new Label { Text = "Cách dùng:", Location = new Point(20, 198), AutoSize = true }, txtCachDung
             });
 

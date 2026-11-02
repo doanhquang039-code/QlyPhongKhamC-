@@ -66,7 +66,7 @@ namespace QlyPhongKham.Forms
             };
             _reason = new TextBox { Dock = DockStyle.Fill, Multiline = true, MaxLength = 255, ScrollBars = ScrollBars.Vertical };
             _status = new ComboBox { Dock = DockStyle.Left, Width = 240, DropDownStyle = ComboBoxStyle.DropDownList };
-            _status.Items.AddRange(new object[] { "Chờ xác nhận", "Đã xác nhận", "Đã đến", "Đã hủy" });
+            _status.Items.AddRange(new object[] { "Chờ xác nhận", "Đã xác nhận" });
             _status.SelectedIndex = 0;
 
             AddField(formLayout, "Bệnh nhân", _patient, 0);

@@ -1,4 +1,5 @@
 dbconfig.txt
 artifacts/
-bin/Release/
-obj/Release/
+bin/
+obj/
+doanh.c++

@@ -139,6 +139,7 @@ namespace QlyPhongKham.Forms
         {
             InitializeComponent();
             ClinicDAL.EnsureClinicRoomSchema();
+            ClinicDAL.EnsurePharmacySchema();
             if (SessionState.CurrentUser?.Quyen == "ThuNgan")
                 SessionState.CurrentUser.Quyen = "LeTan";
             Resize += (s, e) => ApplyResponsiveLayout();

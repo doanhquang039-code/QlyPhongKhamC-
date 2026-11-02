@@ -119,7 +119,7 @@ BEGIN TRY
     OPTION (MAXRECURSION 100);
 
     INSERT INTO dbo.TaiKhoan (TenDangNhap, MatKhau, MaNV, Quyen, TrangThai)
-    SELECT v.TenDangNhap, '123456', v.MaNV, v.Quyen, 1
+    SELECT v.TenDangNhap, 'PBKDF2$210000$Q2xpbmljRGVtb1NhbHQwMQ==$GjPrYMc9dhjD7oZPbijVodSow+Dwaf7ufWyQe/P3wYw=', v.MaNV, v.Quyen, 1
     FROM (VALUES
         ('test_admin', 'NV901', N'Admin'),
         ('test_bs', 'NV902', N'BacSi'),
@@ -155,7 +155,7 @@ BEGIN TRY
         WHERE Number <= 29
     )
     INSERT INTO dbo.TaiKhoan (TenDangNhap, MatKhau, MaNV, Quyen, TrangThai)
-    SELECT a.TenDangNhap, '123456', a.MaNV, a.Quyen, 1
+    SELECT a.TenDangNhap, 'PBKDF2$210000$Q2xpbmljRGVtb1NhbHQwMQ==$GjPrYMc9dhjD7oZPbijVodSow+Dwaf7ufWyQe/P3wYw=', a.MaNV, a.Quyen, 1
     FROM SampleAccounts a
     WHERE NOT EXISTS (SELECT 1 FROM dbo.TaiKhoan t WHERE t.TenDangNhap = a.TenDangNhap)
       AND NOT EXISTS (SELECT 1 FROM dbo.TaiKhoan t WHERE t.MaNV = a.MaNV)
@@ -272,7 +272,7 @@ BEGIN TRY
     OPTION (MAXRECURSION 100);
 
     INSERT INTO dbo.TaiKhoanBenhNhan (TenDangNhap, MatKhau, MaBN, TrangThai)
-    SELECT v.TenDangNhap, '123456', v.MaBN, 1
+    SELECT v.TenDangNhap, 'PBKDF2$210000$Q2xpbmljRGVtb1NhbHQwMQ==$GjPrYMc9dhjD7oZPbijVodSow+Dwaf7ufWyQe/P3wYw=', v.MaBN, 1
     FROM (VALUES
         ('test_bn01', 'BN9001'),
         ('test_bn04', 'BN9004'),

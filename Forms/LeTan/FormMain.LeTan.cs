@@ -147,13 +147,19 @@ namespace QlyPhongKham.Forms
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = F_Base
             };
-            statusFilter.Items.AddRange(new object[] { "Tất cả trạng thái", "Chờ xác nhận", "Đã xác nhận", "Đã đến", "Đã hủy" });
+            statusFilter.Items.AddRange(new object[] { "Tất cả trạng thái", "Chờ xác nhận", "Đã xác nhận", "Đã đến", "Đã hủy", "Bị từ chối", "Không đến" });
             statusFilter.SelectedItem = status ?? "Tất cả trạng thái";
             if (statusFilter.SelectedIndex < 0)
                 statusFilter.SelectedIndex = 0;
             var refresh = SecondaryBtn("⌕ Tìm kiếm", 420, 52, 110, 32, C_Blue);
             var approve = PrimaryBtn("✓ Duyệt lịch", 0, 52, 115, 32);
             approve.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            var checkIn = SecondaryBtn("✓ Check-in", 0, 52, 105, 32, C_Green);
+            checkIn.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            var refuse = SecondaryBtn("Từ chối", 0, 52, 90, 32, C_Red);
+            refuse.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            var noShow = SecondaryBtn("Không đến", 0, 52, 95, 32, C_Orange);
+            noShow.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             var add = PrimaryBtn("＋ Đặt lịch", 0, 10, 125, 34);
             add.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             var edit = SecondaryBtn("✎ Sửa lịch", 0, 10, 115, 34, C_Orange);
@@ -162,7 +168,7 @@ namespace QlyPhongKham.Forms
             cancel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             var pendingCount = MakeLbl("Chờ duyệt: 0", 540, 57, bold: true);
             pendingCount.ForeColor = C_Orange;
-            toolbar.Controls.AddRange(new Control[] { datePicker, search, statusFilter, refresh, approve, pendingCount, add, edit, cancel });
+            toolbar.Controls.AddRange(new Control[] { datePicker, search, statusFilter, refresh, approve, checkIn, refuse, noShow, pendingCount, add, edit, cancel });
 
             var gridPanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(10) };
             gridPanel.Paint += PaintCardBorder;
@@ -231,6 +237,52 @@ namespace QlyPhongKham.Forms
                     "Đã duyệt lịch", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 LoadAppointments();
             };
+            checkIn.Click += (s, e) =>
+            {
+                DataRow? selected = SelectedAppointment();
+                if (selected == null || selected["TrangThai"].ToString() != "Đã xác nhận")
+                {
+                    MessageBox.Show("Chọn lịch đã xác nhận để check-in.", "Không thể check-in",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                try
+                {
+                    var ticket = ClinicDAL.CheckInLichHen(Convert.ToInt32(selected["MaLichHen"]), SessionState.CurrentUser?.MaNV ?? "");
+                    MessageBox.Show($"Đã check-in và tạo phiếu khám {ticket.maPK}, số thứ tự #{ticket.stt}.",
+                        "Check-in thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    LoadAppointments();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message, "Không thể check-in", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            };
+            void EndAppointment(string targetStatus)
+            {
+                DataRow? selected = SelectedAppointment();
+                if (selected == null)
+                {
+                    MessageBox.Show("Chọn lịch hẹn cần cập nhật.", "Chưa chọn lịch", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                string reason = Microsoft.VisualBasic.Interaction.InputBox("Nhập lý do xử lý lịch hẹn:", targetStatus, "").Trim();
+                if (string.IsNullOrWhiteSpace(reason)) return;
+                try
+                {
+                    if (!ClinicDAL.KetThucLichHen(Convert.ToInt32(selected["MaLichHen"]), targetStatus, reason))
+                        throw new InvalidOperationException(targetStatus == "Không đến"
+                            ? "Chỉ đánh dấu không đến sau giờ hẹn."
+                            : "Lịch đã được xử lý hoặc không còn ở trạng thái phù hợp.");
+                    LoadAppointments();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message, "Không thể cập nhật lịch", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }
+            refuse.Click += (s, e) => EndAppointment("Bị từ chối");
+            noShow.Click += (s, e) => EndAppointment("Không đến");
             edit.Click += (s, e) =>
             {
                 DataRow? selected = SelectedAppointment();
@@ -289,7 +341,10 @@ namespace QlyPhongKham.Forms
                 edit.Location = new Point(cancel.Left - edit.Width - 8, 10);
                 add.Location = new Point(edit.Left - add.Width - 8, 10);
                 approve.Location = new Point(right - approve.Width, 52);
-                pendingCount.Location = new Point(approve.Left - pendingCount.Width - 12, 57);
+                checkIn.Location = new Point(approve.Left - checkIn.Width - 8, 52);
+                noShow.Location = new Point(checkIn.Left - noShow.Width - 8, 52);
+                refuse.Location = new Point(noShow.Left - refuse.Width - 8, 52);
+                pendingCount.Location = new Point(refuse.Left - pendingCount.Width - 12, 57);
             };
             panelContent.Controls.Add(gridPanel);
             panelContent.Controls.Add(toolbar);
@@ -587,11 +642,10 @@ namespace QlyPhongKham.Forms
                 }
 
                 string maPhong = cboPhong.SelectedValue?.ToString() ?? "";
-                int stt = ClinicDAL.LaySTTTiepTheoTrongNgay(maPhong);
                 var pk = new PhieuKham
                 {
-                    MaPK        = ClinicDAL.SinhMaPhieuKham(),
-                    STT         = stt,
+                    MaPK        = "",
+                    STT         = 0,
                     MaBN        = bn.MaBN,
                     MaNV_BacSi  = cboBacSi.SelectedValue?.ToString() ?? "",
                     MaPhong     = maPhong,
@@ -603,7 +657,7 @@ namespace QlyPhongKham.Forms
                     return;
                 }
 
-                MessageBox.Show($"✅ Cấp phiếu thành công!\n\n📄 Mã phiếu: {pk.MaPK}\n🎫 Số thứ tự: #{stt}\n👤 Bệnh nhân: {bn.HoTen}",
+                MessageBox.Show($"✅ Cấp phiếu thành công!\n\n📄 Mã phiếu: {pk.MaPK}\n🎫 Số thứ tự: #{pk.STT}\n👤 Bệnh nhân: {bn.HoTen}",
                     "Cấp phiếu thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
                 txtMaBN.Text  = ClinicDAL.SinhMaBenhNhan();
@@ -839,7 +893,7 @@ namespace QlyPhongKham.Forms
 
             var wrapper = new Panel { Dock = DockStyle.Fill };
 
-            var toolPanel = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = C_Card, Padding = new Padding(12, 8, 12, 0) };
+            var toolPanel = new Panel { Dock = DockStyle.Top, Height = 82, BackColor = C_Card, Padding = new Padding(12, 8, 12, 0) };
             toolPanel.Paint += PaintCardBorder;
 
             var txtSearch  = MakeInput(95, 8, 160);
@@ -849,12 +903,14 @@ namespace QlyPhongKham.Forms
             var btnDeleteT = SecondaryBtn("🗑 Xóa", 550, 8, 70, 34, C_Red);
             var btnNhapKho = SecondaryBtn("📦 Nhập kho", 630, 8, 105, 34, C_Green);
             var btnCanhBao = SecondaryBtn("⚠ Sắp hết", 745, 8, 95, 34, C_Orange);
+            var btnCapPhat = SecondaryBtn("💊 Cấp đơn", 745, 44, 95, 32, C_Teal);
+            var btnDieuChinh = SecondaryBtn("🧮 Kiểm kê", 850, 44, 100, 32, C_Orange);
             var btnExportT = SecondaryBtn("📥 Xuất Excel", 850, 8, 105, 34, C_Teal);
             var btnImportT = SecondaryBtn("📤 Nhập Excel", 965, 8, 105, 34, Color.FromArgb(79, 70, 229));
 
             toolPanel.Controls.AddRange(new Control[] {
                 MakeLbl("Tên thuốc:", 12, 15),
-                txtSearch, btnSearch, btnAddT, btnEditT, btnDeleteT, btnNhapKho, btnCanhBao, btnExportT, btnImportT
+                txtSearch, btnSearch, btnAddT, btnEditT, btnDeleteT, btnNhapKho, btnCanhBao, btnCapPhat, btnDieuChinh, btnExportT, btnImportT
             });
 
             var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 640 };
@@ -893,7 +949,7 @@ namespace QlyPhongKham.Forms
 
             var grpCB = new Panel { Dock = DockStyle.Fill, BackColor = C_Card, Padding = new Padding(10) };
             grpCB.Paint += PaintCardBorder;
-            grpCB.Controls.Add(MakeLbl("⚠ THUỐC CÓ TỒN KHO THẤP (≤ 30)", 10, 10, bold: true));
+            grpCB.Controls.Add(MakeLbl("⚠ TỒN THẤP / LÔ SẮP HẾT HẠN (90 NGÀY)", 10, 10, bold: true));
             var pnlCBGrid = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 30, 0, 0) };
             var dgvCB = MakeGrid();
             dgvCB.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
@@ -960,14 +1016,30 @@ namespace QlyPhongKham.Forms
                 }
                 string maThuoc  = dgvT.SelectedRows[0].Cells["MaThuoc"].Value?.ToString() ?? "";
                 string tenThuoc = dgvT.SelectedRows[0].Cells["TenThuoc"].Value?.ToString() ?? "";
-                string input = Microsoft.VisualBasic.Interaction.InputBox($"Nhập số lượng cần bổ sung vào kho:\n{tenThuoc}", "Nhập kho dược", "100");
-                if (int.TryParse(input, out int sl) && sl > 0)
+                using var dlg = new FormNhapLoThuoc(maThuoc, tenThuoc);
+                if (dlg.ShowDialog() == DialogResult.OK)
                 {
-                    ClinicDAL.NhapKho(maThuoc, sl);
-                    MessageBox.Show($"✅ Đã nhập thêm {sl} {dgvT.SelectedRows[0].Cells["DonViTinh"].Value} vào kho!", "Thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     LoadThuoc();
                     dgvCB.DataSource = ClinicDAL.LayThuocSapHet(30);
                 }
+            };
+
+            btnCapPhat.Click += (s, e) =>
+            {
+                DataTable pending = ClinicDAL.LayDanhSachDonChoCapPhat();
+                if (pending.Rows.Count == 0) { MessageBox.Show("Không có đơn đã thanh toán đang chờ cấp phát."); return; }
+                using var dlg = new FormCapPhatThuoc(pending);
+                if (dlg.ShowDialog() == DialogResult.OK) { LoadThuoc(); dgvCB.DataSource = ClinicDAL.LayThuocSapHet(30); }
+            };
+
+            btnDieuChinh.Click += (s, e) =>
+            {
+                if (dgvT.SelectedRows.Count == 0) { MessageBox.Show("Chọn thuốc cần kiểm kê."); return; }
+                string drug = dgvT.SelectedRows[0].Cells["MaThuoc"].Value?.ToString() ?? "";
+                DataTable lots = ClinicDAL.LayDanhSachLoThuoc(drug);
+                if (lots.Rows.Count == 0) { MessageBox.Show("Thuốc chưa có lô nhập. Hãy nhập kho theo lô trước."); return; }
+                using var dlg = new FormDieuChinhKho(drug, lots);
+                if (dlg.ShowDialog() == DialogResult.OK) { LoadThuoc(); dgvCB.DataSource = ClinicDAL.LayThuocSapHet(30); }
             };
 
             btnCanhBao.Click += (s, e) => dgvCB.DataSource = ClinicDAL.LayThuocSapHet(30);
@@ -1328,7 +1400,7 @@ namespace QlyPhongKham.Forms
                 Font = F_Base,
                 Anchor = AnchorStyles.None
             };
-            method.Items.AddRange(new object[] { "Tiền mặt", "Chuyển khoản", "Thẻ tín dụng", "BHYT" });
+            method.Items.AddRange(new object[] { "Tiền mặt", "Chuyển khoản QR", "Thẻ" });
             string currentMethod = invoice["HinhThucTT"].ToString() ?? "";
             method.SelectedItem = method.Items.Contains(currentMethod) ? currentMethod : "Tiền mặt";
             var methodPanel = new Panel { Dock = DockStyle.Top, Height = 48 };
@@ -1411,7 +1483,7 @@ namespace QlyPhongKham.Forms
                     Font = F_Base,
                     Anchor = AnchorStyles.None
                 };
-                method.Items.AddRange(new object[] { "Tiền mặt", "Chuyển khoản", "Thẻ tín dụng", "BHYT" });
+                method.Items.AddRange(new object[] { "Tiền mặt", "Chuyển khoản QR", "Thẻ" });
                 method.SelectedIndex = 0;
                 var methodPanel = new Panel { Dock = DockStyle.Top, Height = 48 };
                 methodPanel.Controls.Add(method);
@@ -1521,7 +1593,7 @@ namespace QlyPhongKham.Forms
             });
 
             var cboHT = new ComboBox { Location = new Point(125, 215), Size = new Size(160, 26), DropDownStyle = ComboBoxStyle.DropDownList, Font = F_Base };
-            cboHT.Items.AddRange(new object[] { "Tiền mặt", "Chuyển khoản", "Thẻ tín dụng", "BHYT" });
+            cboHT.Items.AddRange(new object[] { "Tiền mặt", "Chuyển khoản QR", "Thẻ" });
             cboHT.SelectedIndex = 0;
 
             var numGG = new NumericUpDown { Location = new Point(400, 215), Size = new Size(120, 26), Maximum = 10000000, Increment = 5000, ThousandsSeparator = true, Font = F_Base };
@@ -1565,7 +1637,7 @@ namespace QlyPhongKham.Forms
                 {
                     MaHD        = ClinicDAL.SinhMaHoaDon(),
                     MaPK        = txtMaPK2.Text.Trim(),
-                    MaNV_ThuNgan= SessionState.CurrentUser?.MaNV ?? "NV004",
+                    MaNV_ThuNgan= SessionState.CurrentUser?.MaNV ?? "",
                     TienDichVu  = curDV,
                     TienThuoc   = curThuoc,
                     GiamGia     = numGG.Value,
@@ -1575,7 +1647,10 @@ namespace QlyPhongKham.Forms
                 };
                 try
                 {
-                    ClinicDAL.TaoHoaDon(hd);
+                    if (string.IsNullOrWhiteSpace(hd.MaNV_ThuNgan))
+                        throw new InvalidOperationException("Không xác định được nhân viên thu ngân đang đăng nhập.");
+                    if (!ClinicDAL.TaoHoaDon(hd))
+                        throw new InvalidOperationException("Phiếu khám đã được cập nhật, chưa hoàn tất CLS, hoặc mức giảm giá không hợp lệ.");
                     MessageBox.Show($"✅ Thanh toán thành công!\n\n📄 Mã HĐ: {hd.MaHD}\n💰 Tổng tiền: {hd.TongTien:N0} VNĐ\n📱 Hình thức: {hd.HinhThucTT}",
                         "Hóa đơn viện phí", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     LoadChoTT();

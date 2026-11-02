@@ -422,6 +422,16 @@ namespace QlyPhongKham.Forms
             string sdt = rBN["SoDienThoai"] == DBNull.Value ? "Chưa cập nhật" : rBN["SoDienThoai"].ToString() ?? "Chưa cập nhật";
             string diaChi = rBN["DiaChi"] == DBNull.Value ? "Chưa cập nhật" : rBN["DiaChi"].ToString() ?? "Chưa cập nhật";
             string tienSu = rBN["TienSuBenh"] == DBNull.Value ? "" : rBN["TienSuBenh"].ToString() ?? "";
+            try
+            {
+                DataTable health = ClinicDAL.LayHoSoSucKhoe(maBN);
+                foreach (DataRow item in health.Rows)
+                {
+                    string entry = $"{item["Loai"]}: {item["NoiDung"]}";
+                    tienSu = string.IsNullOrWhiteSpace(tienSu) ? entry : tienSu + " | " + entry;
+                }
+            }
+            catch { /* Existing installations can be upgraded lazily when health-record data is first entered. */ }
             string nsStr = rBN["NgaySinh"] != DBNull.Value ? Convert.ToDateTime(rBN["NgaySinh"]).ToString("dd/MM/yyyy") : "Chưa cập nhật";
             var dtLichSu = ClinicDAL.LayLichSuKhamBenhNhan(maBN, maBS);
             var dtChiDinh = ClinicDAL.LayChiDinhDVBenhNhan(maBN, maBS);

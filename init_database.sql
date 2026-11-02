@@ -106,6 +106,35 @@ CREATE TABLE BenhNhan (
 );
 GO
 
+CREATE TABLE HoSoSucKhoe (
+    MaHoSo BIGINT IDENTITY(1,1) PRIMARY KEY,
+    MaBN VARCHAR(10) NOT NULL,
+    Loai NVARCHAR(30) NOT NULL CHECK (Loai IN (N'Dị ứng',N'Bệnh mạn tính',N'Thuốc đang dùng',N'Tiền sử phẫu thuật')),
+    NoiDung NVARCHAR(500) NOT NULL,
+    NgayCapNhat DATETIME NOT NULL DEFAULT GETDATE(),
+    MaNV VARCHAR(10) NULL,
+    CONSTRAINT FK_HoSoSucKhoe_BN FOREIGN KEY(MaBN) REFERENCES BenhNhan(MaBN),
+    CONSTRAINT FK_HoSoSucKhoe_NV FOREIGN KEY(MaNV) REFERENCES NhanVien(MaNV)
+);
+GO
+CREATE TABLE DongYDuLieuCaNhan (
+    MaBN VARCHAR(10) PRIMARY KEY,
+    DongY BIT NOT NULL,
+    NgayGhiNhan DATETIME NOT NULL DEFAULT GETDATE(),
+    PhienBan NVARCHAR(30) NOT NULL,
+    CONSTRAINT FK_DongYDuLieu_BN FOREIGN KEY(MaBN) REFERENCES BenhNhan(MaBN)
+);
+GO
+CREATE TABLE DanhMucICD10 (MaICD10 VARCHAR(10) PRIMARY KEY,TenChanDoan NVARCHAR(255) NOT NULL,ConHieuLuc BIT NOT NULL DEFAULT 1);
+GO
+
+CREATE TABLE NhatKyHeThong (
+    MaNhatKy BIGINT IDENTITY(1,1) PRIMARY KEY, NgayGhi DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    MaNV VARCHAR(10) NULL, TenDangNhap NVARCHAR(100) NULL, HanhDong NVARCHAR(80) NOT NULL,
+    DoiTuong NVARCHAR(120) NULL, ChiTiet NVARCHAR(1000) NULL, MayTram NVARCHAR(128) NULL
+);
+GO
+
 CREATE TABLE TaiKhoanBenhNhan (
     TenDangNhap VARCHAR(50) PRIMARY KEY,
     MatKhau VARCHAR(255) NOT NULL,
@@ -122,11 +151,16 @@ CREATE TABLE LichHen (
     MaNV_BacSi VARCHAR(10) NULL,
     NgayHen DATETIME NOT NULL,
     LyDoKham NVARCHAR(255) NULL,
+    LyDoXuLy NVARCHAR(255) NULL,
     TrangThai NVARCHAR(30) NOT NULL DEFAULT N'Chờ xác nhận' 
-        CONSTRAINT CK_LichHen_TrangThai CHECK (TrangThai IN (N'Chờ xác nhận', N'Đã xác nhận', N'Đã đến', N'Đã hủy')),
+        CONSTRAINT CK_LichHen_TrangThai CHECK (TrangThai IN (N'Chờ xác nhận', N'Đã xác nhận', N'Đã đến', N'Đã hủy', N'Bị từ chối', N'Không đến')),
     CONSTRAINT FK_LichHen_BenhNhan FOREIGN KEY (MaBN) REFERENCES BenhNhan(MaBN) ON DELETE CASCADE,
     CONSTRAINT FK_LichHen_BacSi FOREIGN KEY (MaNV_BacSi) REFERENCES NhanVien(MaNV)
 );
+GO
+
+CREATE UNIQUE INDEX UX_LichHen_BacSi_NgayHen_Active ON LichHen(MaNV_BacSi, NgayHen)
+    WHERE MaNV_BacSi IS NOT NULL AND TrangThai <> N'Đã hủy' AND TrangThai <> N'Bị từ chối' AND TrangThai <> N'Không đến';
 GO
 
 -- 5. BẢNG PHIẾU KHÁM (Hồ sơ khám & Hàng chờ khám)
@@ -137,6 +171,7 @@ CREATE TABLE PhieuKham (
     MaNV_BacSi VARCHAR(10) NOT NULL,
     MaPhong VARCHAR(10) NULL,
     NgayKham DATETIME NOT NULL DEFAULT GETDATE(),
+    NgayKhamNgay AS CONVERT(DATE, NgayKham) PERSISTED,
     TrieuChung NVARCHAR(255) NULL,
     KhamLamSang NVARCHAR(MAX) NULL,
     SinhHieu NVARCHAR(200) NULL,
@@ -148,6 +183,12 @@ CREATE TABLE PhieuKham (
     CONSTRAINT FK_PhieuKham_BacSi FOREIGN KEY (MaNV_BacSi) REFERENCES NhanVien(MaNV),
     CONSTRAINT FK_PhieuKham_Phong FOREIGN KEY (MaPhong) REFERENCES PhongKham(MaPhong)
 );
+GO
+
+ALTER TABLE PhieuKham ADD MaLichHen INT NULL;
+ALTER TABLE PhieuKham ADD CONSTRAINT FK_PhieuKham_LichHen FOREIGN KEY (MaLichHen) REFERENCES LichHen(MaLichHen);
+CREATE UNIQUE INDEX UX_PhieuKham_MaLichHen ON PhieuKham(MaLichHen) WHERE MaLichHen IS NOT NULL;
+CREATE UNIQUE INDEX UX_PhieuKham_Phong_Ngay_STT ON PhieuKham(MaPhong, NgayKhamNgay, STT) WHERE MaPhong IS NOT NULL;
 GO
 
 -- 6. BẢNG DỊCH VỤ CẬN LÂM SÀNG
@@ -184,15 +225,70 @@ CREATE TABLE Thuoc (
 );
 GO
 
+CREATE TABLE NhaCungCap (
+    MaNCC INT IDENTITY(1,1) PRIMARY KEY,
+    TenNCC NVARCHAR(150) NOT NULL UNIQUE,
+    SoDienThoai VARCHAR(20) NULL,
+    DiaChi NVARCHAR(255) NULL,
+    DangHoatDong BIT NOT NULL DEFAULT 1
+);
+GO
+
+CREATE TABLE PhieuNhapKho (
+    MaPN VARCHAR(12) PRIMARY KEY,
+    MaNCC INT NOT NULL,
+    MaNV_Nhap VARCHAR(10) NOT NULL,
+    NgayNhap DATETIME NOT NULL DEFAULT GETDATE(),
+    GhiChu NVARCHAR(255) NULL,
+    CONSTRAINT FK_PhieuNhapKho_NCC FOREIGN KEY (MaNCC) REFERENCES NhaCungCap(MaNCC),
+    CONSTRAINT FK_PhieuNhapKho_NhanVien FOREIGN KEY (MaNV_Nhap) REFERENCES NhanVien(MaNV)
+);
+GO
+
+CREATE TABLE LoThuoc (
+    MaLo INT IDENTITY(1,1) PRIMARY KEY,
+    MaPN VARCHAR(12) NOT NULL,
+    MaThuoc VARCHAR(10) NOT NULL,
+    SoLo NVARCHAR(60) NOT NULL,
+    NgayHetHan DATE NOT NULL,
+    DonGiaNhap DECIMAL(18,2) NOT NULL CHECK (DonGiaNhap >= 0),
+    SoLuongNhap INT NOT NULL CHECK (SoLuongNhap > 0),
+    SoLuongCon INT NOT NULL CHECK (SoLuongCon >= 0 AND SoLuongCon <= SoLuongNhap),
+    CONSTRAINT FK_LoThuoc_PhieuNhap FOREIGN KEY (MaPN) REFERENCES PhieuNhapKho(MaPN),
+    CONSTRAINT FK_LoThuoc_Thuoc FOREIGN KEY (MaThuoc) REFERENCES Thuoc(MaThuoc)
+);
+GO
+CREATE INDEX IX_LoThuoc_FEFO ON LoThuoc(MaThuoc, NgayHetHan, MaLo) INCLUDE (SoLuongCon);
+GO
+
+CREATE TABLE DieuChinhKho (
+    MaDieuChinh INT IDENTITY(1,1) PRIMARY KEY,
+    MaLo INT NOT NULL,
+    MaNV VARCHAR(10) NOT NULL,
+    SoLuongThayDoi INT NOT NULL CHECK (SoLuongThayDoi <> 0),
+    LyDo NVARCHAR(255) NOT NULL,
+    NgayDieuChinh DATETIME NOT NULL DEFAULT GETDATE(),
+    CONSTRAINT FK_DieuChinhKho_Lo FOREIGN KEY (MaLo) REFERENCES LoThuoc(MaLo),
+    CONSTRAINT FK_DieuChinhKho_NhanVien FOREIGN KEY (MaNV) REFERENCES NhanVien(MaNV)
+);
+GO
+
 -- 9. BẢNG ĐƠN THUỐC (1-1 với PhieuKham)
 CREATE TABLE DonThuoc (
     MaDonThuoc VARCHAR(10) PRIMARY KEY,
-    MaPK VARCHAR(10) NOT NULL UNIQUE,
+    MaPK VARCHAR(10) NOT NULL,
     NgayKe DATETIME NOT NULL DEFAULT GETDATE(),
     GhiChu NVARCHAR(255) NULL,
+    TrangThaiCapPhat NVARCHAR(20) NOT NULL DEFAULT N'Chờ cấp phát'
+        CONSTRAINT CK_DonThuoc_TrangThaiCapPhat CHECK (TrangThaiCapPhat IN (N'Chờ cấp phát',N'Đã cấp',N'Không lấy',N'Mua ngoài')),
+    NgayCapPhat DATETIME NULL,
+    MaNV_CapPhat VARCHAR(10) NULL,
+    GhiChuCapPhat NVARCHAR(255) NULL,
     CONSTRAINT FK_DonThuoc_PhieuKham FOREIGN KEY (MaPK) REFERENCES PhieuKham(MaPK) ON DELETE CASCADE
 );
 GO
+
+ALTER TABLE DonThuoc ADD CONSTRAINT FK_DonThuoc_NhanVienCapPhat FOREIGN KEY (MaNV_CapPhat) REFERENCES NhanVien(MaNV);
 
 -- 10. BẢNG CHI TIẾT ĐƠN THUỐC
 CREATE TABLE ChiTietDonThuoc (
@@ -207,12 +303,26 @@ CREATE TABLE ChiTietDonThuoc (
 );
 GO
 
+CREATE TABLE ChiTietCapPhatThuoc (
+    MaCapPhat INT IDENTITY(1,1) PRIMARY KEY,
+    MaCTDT INT NOT NULL,
+    MaLo INT NOT NULL,
+    MaNV VARCHAR(10) NOT NULL,
+    SoLuong INT NOT NULL CHECK (SoLuong > 0),
+    NgayCapPhat DATETIME NOT NULL DEFAULT GETDATE(),
+    CONSTRAINT FK_CapPhat_ChiTietDon FOREIGN KEY (MaCTDT) REFERENCES ChiTietDonThuoc(MaCTDT),
+    CONSTRAINT FK_CapPhat_Lo FOREIGN KEY (MaLo) REFERENCES LoThuoc(MaLo),
+    CONSTRAINT FK_CapPhat_NhanVien FOREIGN KEY (MaNV) REFERENCES NhanVien(MaNV)
+);
+GO
+
 -- 11. BẢNG HÓA ĐƠN (1-1 với PhieuKham)
 CREATE TABLE HoaDon (
     MaHD VARCHAR(10) PRIMARY KEY,
-    MaPK VARCHAR(10) NOT NULL UNIQUE,
+    MaPK VARCHAR(10) NOT NULL,
     MaNV_ThuNgan VARCHAR(10) NOT NULL,
     NgayLap DATETIME NOT NULL DEFAULT GETDATE(),
+    NgayThanhToan DATETIME NULL,
     TienDichVu DECIMAL(18,2) NOT NULL DEFAULT 0,
     TienThuoc DECIMAL(18,2) NOT NULL DEFAULT 0,
     GiamGia DECIMAL(18,2) NOT NULL DEFAULT 0,
@@ -224,6 +334,9 @@ CREATE TABLE HoaDon (
     CONSTRAINT FK_HoaDon_PhieuKham FOREIGN KEY (MaPK) REFERENCES PhieuKham(MaPK),
     CONSTRAINT FK_HoaDon_ThuNgan FOREIGN KEY (MaNV_ThuNgan) REFERENCES NhanVien(MaNV)
 );
+GO
+
+CREATE UNIQUE INDEX UX_HoaDon_MaPK_ChuaHuy ON HoaDon(MaPK) WHERE TrangThai <> N'Đã hủy';
 GO
 
 -- =============================================
@@ -238,15 +351,13 @@ INSERT INTO NhanVien (MaNV, HoTen, ChucVu, ChuyenKhoa, SoDienThoai, Email, Trang
 ('NV004', N'Phạm Thu Ngân', 'LeTan', NULL, '0934567890', 'ngan.pt@phongkham.com', 1),
 ('NV005', N'Hoàng Lễ Tân', 'LeTan', NULL, '0945678901', 'tan.hl@phongkham.com', 1);
 
--- Mật khẩu hash SHA256 cho '123' với Salt 'PhongKhamSecretKey':
--- SHA256("123" + "PhongKhamSecretKey") = "Qd5xU...": Để đơn giản cho BTL, lưu mật khẩu dạng hash hoặc plain text hỗ trợ cả hai
--- C# Helper sẽ kiểm tra plain text hoặc hash. Ở đây lưu "123456" làm mẫu cho dễ test
+-- Mật khẩu mẫu '123456' được băm PBKDF2-SHA256 (210000 vòng).
 INSERT INTO TaiKhoan (TenDangNhap, MatKhau, MaNV, Quyen, TrangThai) VALUES
-('admin', '123456', 'NV001', 'Admin', 1),
-('bacsi_nam', '123456', 'NV002', 'BacSi', 1),
-('bacsi_hoa', '123456', 'NV003', 'BacSi', 1),
-('thungan', '123456', 'NV004', 'LeTan', 1),
-('letan', '123456', 'NV005', 'LeTan', 1);
+('admin', 'PBKDF2$210000$Q2xpbmljRGVtb1NhbHQwMQ==$GjPrYMc9dhjD7oZPbijVodSow+Dwaf7ufWyQe/P3wYw=', 'NV001', 'Admin', 1),
+('bacsi_nam', 'PBKDF2$210000$Q2xpbmljRGVtb1NhbHQwMQ==$GjPrYMc9dhjD7oZPbijVodSow+Dwaf7ufWyQe/P3wYw=', 'NV002', 'BacSi', 1),
+('bacsi_hoa', 'PBKDF2$210000$Q2xpbmljRGVtb1NhbHQwMQ==$GjPrYMc9dhjD7oZPbijVodSow+Dwaf7ufWyQe/P3wYw=', 'NV003', 'BacSi', 1),
+('thungan', 'PBKDF2$210000$Q2xpbmljRGVtb1NhbHQwMQ==$GjPrYMc9dhjD7oZPbijVodSow+Dwaf7ufWyQe/P3wYw=', 'NV004', 'LeTan', 1),
+('letan', 'PBKDF2$210000$Q2xpbmljRGVtb1NhbHQwMQ==$GjPrYMc9dhjD7oZPbijVodSow+Dwaf7ufWyQe/P3wYw=', 'NV005', 'LeTan', 1);
 
 INSERT INTO Khoa (MaKhoa, TenKhoa) VALUES
 ('KNOI', N'Nội tổng quát'),
@@ -273,9 +384,9 @@ INSERT INTO BenhNhan (MaBN, HoTen, NgaySinh, GioiTinh, SoDienThoai, DiaChi, Tien
 ('BN0003', N'Ngô Bảo Châu', '2002-01-18', N'Nam', '0966555666', N'Nam Định', N'Không');
 
 INSERT INTO TaiKhoanBenhNhan (TenDangNhap, MatKhau, MaBN, TrangThai) VALUES
-('benhnhan_mai', '123456', 'BN0001', 1),
-('benhnhan_hung', '123456', 'BN0002', 1),
-('benhnhan_chau', '123456', 'BN0003', 1);
+('benhnhan_mai', 'PBKDF2$210000$Q2xpbmljRGVtb1NhbHQwMQ==$GjPrYMc9dhjD7oZPbijVodSow+Dwaf7ufWyQe/P3wYw=', 'BN0001', 1),
+('benhnhan_hung', 'PBKDF2$210000$Q2xpbmljRGVtb1NhbHQwMQ==$GjPrYMc9dhjD7oZPbijVodSow+Dwaf7ufWyQe/P3wYw=', 'BN0002', 1),
+('benhnhan_chau', 'PBKDF2$210000$Q2xpbmljRGVtb1NhbHQwMQ==$GjPrYMc9dhjD7oZPbijVodSow+Dwaf7ufWyQe/P3wYw=', 'BN0003', 1);
 
 -- Dịch vụ
 INSERT INTO DichVu (MaDV, TenDV, DonGia, MoTa) VALUES

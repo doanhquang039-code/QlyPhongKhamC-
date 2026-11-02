@@ -226,7 +226,7 @@ namespace QlyPhongKham.Forms
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = F_Base
             };
-            cboStatus.Items.AddRange(new object[] { "Tất cả trạng thái", "Chờ xác nhận", "Đã xác nhận", "Đã đến", "Đã hủy" });
+            cboStatus.Items.AddRange(new object[] { "Tất cả trạng thái", "Chờ xác nhận", "Đã xác nhận", "Đã đến", "Đã hủy", "Bị từ chối", "Không đến" });
             cboStatus.SelectedIndex = 0;
 
             var btnAdd = PrimaryBtn("Thêm lịch hẹn", 417, 8, 125, 34);
@@ -280,10 +280,10 @@ namespace QlyPhongKham.Forms
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
-                if (selected["TrangThai"].ToString() == "Đã hủy")
+                if (selected["TrangThai"].ToString() is not ("Chờ xác nhận" or "Đã xác nhận"))
                 {
-                    MessageBox.Show("Lịch đã hủy không thể sửa. Hãy tạo lịch hẹn mới nếu cần.",
-                        "Lịch đã hủy", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show("Chỉ lịch đang chờ xác nhận hoặc đã xác nhận mới được sửa.",
+                        "Không thể sửa lịch", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
 

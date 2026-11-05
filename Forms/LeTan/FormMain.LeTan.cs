@@ -15,7 +15,7 @@ namespace QlyPhongKham.Forms
         {
             SetRefreshPageAction(ShowLeTanDashboard);
             SetActiveNav(btnNavTongQuan);
-            SetPageHeader("Lễ tân & Thu ngân  ›  Trang chủ", "Tổng quan tiếp đón và thanh toán");
+            SetPageHeader("Lễ tân  ›  Trang chủ", "Tổng quan tiếp đón");
             panelContent.Controls.Clear();
 
             try
@@ -26,24 +26,26 @@ namespace QlyPhongKham.Forms
                 var allowedDoctors = ClinicDAL.LayDanhSachBacSiTheoNhanVien(maNV).AsEnumerable()
                     .Select(row => row["MaNV"].ToString() ?? "")
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
-                DataTable waitingBills = ClinicDAL.LayDanhSachChoThanhToan();
-                DataTable invoices = ClinicDAL.LayDanhSachHoaDon();
                 DateTime today = DateTime.Today;
                 int todayAppointments = appointments.AsEnumerable()
                     .Count(row => row.Field<DateTime>("NgayHen").Date == today
                         && allowedDoctors.Contains(row["MaNV_BacSi"].ToString() ?? ""));
-                int todayBills = invoices.AsEnumerable()
-                    .Count(row => row.Field<DateTime>("NgayLap").Date == today);
+                int todayNoShows = appointments.AsEnumerable()
+                    .Count(row => row.Field<DateTime>("NgayHen").Date == today
+                        && row["TrangThai"].ToString() == "Không đến"
+                        && allowedDoctors.Contains(row["MaNV_BacSi"].ToString() ?? ""));
+                int waitingApproval = appointments.AsEnumerable()
+                    .Count(row => row.Field<DateTime>("NgayHen").Date == today
+                        && row["TrangThai"].ToString() == "Chờ xác nhận"
+                        && allowedDoctors.Contains(row["MaNV_BacSi"].ToString() ?? ""));
 
                 var wrapper = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
                 var title = MakeLbl("TIẾP NHẬN BỆNH NHÂN", 12, 8, bold: true);
                 title.Font = new Font("Segoe UI", 13F, FontStyle.Bold);
                 var btnReceive = PrimaryBtn("＋ Tiếp nhận", 12, 40, 135, 36);
                 var btnBook = SecondaryBtn("＋ Thêm lịch hẹn", 157, 40, 145, 36, C_Teal);
-                var btnPayment = SecondaryBtn("💳 Thanh toán", 312, 40, 135, 36, C_Blue);
                 btnReceive.Click += (s, e) => ShowTiepDonView();
                 btnBook.Click += (s, e) => OpenReceptionAppointment();
-                btnPayment.Click += (s, e) => ShowThuNganView();
 
                 var cards = new TableLayoutPanel
                 {
@@ -59,8 +61,8 @@ namespace QlyPhongKham.Forms
                 cards.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
                 cards.Controls.Add(MakeLeTanKpi("HÀNG CHỜ KHÁM", queue.Rows.Count.ToString(), "Phiếu trong phạm vi phòng được giao", C_Teal), 0, 0);
                 cards.Controls.Add(MakeLeTanKpi("LỊCH HẸN HÔM NAY", todayAppointments.ToString(), "Lịch hẹn toàn phòng khám", C_Blue), 1, 0);
-                cards.Controls.Add(MakeLeTanKpi("CHỜ THANH TOÁN", waitingBills.Rows.Count.ToString(), "Hồ sơ đã khám xong", C_Orange), 2, 0);
-                cards.Controls.Add(MakeLeTanKpi("HÓA ĐƠN HÔM NAY", todayBills.ToString(), "Hóa đơn đã lập hôm nay", C_Purple), 3, 0);
+                cards.Controls.Add(MakeLeTanKpi("CHỜ DUYỆT", waitingApproval.ToString(), "Lịch chưa được xác nhận", C_Orange), 2, 0);
+                cards.Controls.Add(MakeLeTanKpi("KHÔNG ĐẾN", todayNoShows.ToString(), "Lịch vắng trong ngày", C_Purple), 3, 0);
 
                 var queueCard = new Panel
                 {
@@ -79,7 +81,7 @@ namespace QlyPhongKham.Forms
                 queueGrid.DataSource = queue;
                 queueCard.Controls.Add(queueGrid);
 
-                wrapper.Controls.AddRange(new Control[] { title, btnReceive, btnBook, btnPayment, cards, queueCard });
+                wrapper.Controls.AddRange(new Control[] { title, btnReceive, btnBook, cards, queueCard });
                 panelContent.Controls.Add(wrapper);
             }
             catch (Exception ex)
@@ -179,12 +181,16 @@ namespace QlyPhongKham.Forms
                     grid.Columns["TrangThai"]!.Visible = false;
                 if (grid.Columns.Contains("TrangThaiDuyet"))
                     grid.Columns["TrangThaiDuyet"]!.HeaderText = "Trạng thái";
+                if (grid.Columns.Contains("SoLanVangMat"))
+                    grid.Columns["SoLanVangMat"]!.HeaderText = "Số lần vắng";
             };
             gridPanel.Controls.Add(grid);
 
             GridPageController? appointmentPageController = null;
             void LoadAppointments()
             {
+                ClinicDAL.DanhDauLichHenKhongDenQuaHan(
+                    SessionState.CurrentUser?.MaNV ?? "", 60);
                 appointmentPageController?.Reload();
                 int waitingCount = ClinicDAL.LaySoLichHenChoDuyetLeTan(
                     SessionState.CurrentUser?.MaNV ?? "",
@@ -248,7 +254,13 @@ namespace QlyPhongKham.Forms
                 }
                 try
                 {
-                    var ticket = ClinicDAL.CheckInLichHen(Convert.ToInt32(selected["MaLichHen"]), SessionState.CurrentUser?.MaNV ?? "");
+                    using var vitalsDialog = new FormSinhHieu();
+                    if (vitalsDialog.ShowDialog(this) != DialogResult.OK)
+                        return;
+                    var ticket = ClinicDAL.CheckInLichHen(
+                        Convert.ToInt32(selected["MaLichHen"]),
+                        SessionState.CurrentUser?.MaNV ?? "",
+                        vitalsDialog.DuLieuSinhHieu);
                     MessageBox.Show($"Đã check-in và tạo phiếu khám {ticket.maPK}, số thứ tự #{ticket.stt}.",
                         "Check-in thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     LoadAppointments();
@@ -360,6 +372,7 @@ namespace QlyPhongKham.Forms
                 SessionState.CurrentUser?.MaNV ?? "",
                 datePicker.Value.Date);
             pendingCount.Text = $"Chờ duyệt: {waitingAppointments}";
+            StartNoShowTimer(LoadAppointments);
         }
 
         private void OpenReceptionAppointment()
@@ -489,6 +502,14 @@ namespace QlyPhongKham.Forms
             cboPhong.DataSource = dtPhong;
             cboPhong.DisplayMember = "TenPhong";
             cboPhong.ValueMember = "MaPhong";
+            var doctorAssignmentHint = new Label
+            {
+                Location = new Point(0, 52),
+                Size = new Size(300, 38),
+                ForeColor = Color.FromArgb(71, 85, 105),
+                Font = new Font("Segoe UI", 7.5f),
+                AutoEllipsis = true
+            };
             if (dtPhong.Rows.Count == 0)
             {
                 registrationHeader.Controls.Add(new Label
@@ -511,9 +532,30 @@ namespace QlyPhongKham.Forms
                 cboBacSi.DataSource = doctors;
                 cboBacSi.DisplayMember = "HoTen";
                 cboBacSi.ValueMember = "MaNV";
+                if (doctors.Rows.Count == 0)
+                {
+                    cboBacSi.DataSource = null;
+                    cboBacSi.Items.Clear();
+                    cboBacSi.Items.Add("Chưa có bác sĩ phân công phòng này");
+                    cboBacSi.SelectedIndex = 0;
+                }
                 cboBacSi.Enabled = doctors.Rows.Count > 0;
+                UpdateDoctorSchedule();
             }
-            cboPhong.SelectedValueChanged += (s, e) => LoadDoctorsForRoom();
+            void UpdateDoctorSchedule()
+            {
+                if (cboBacSi.SelectedValue != null && cboBacSi.DataSource != null)
+                {
+                    doctorAssignmentHint.Text = ClinicDAL.MoTaLichTrucBacSi(cboBacSi.SelectedValue.ToString() ?? "");
+                    doctorAssignmentHint.ForeColor = Color.FromArgb(71, 85, 105);
+                }
+                else
+                {
+                    doctorAssignmentHint.Text = "Chưa có bác sĩ phân công phòng này. Nhờ Admin phân công nhân sự.";
+                    doctorAssignmentHint.ForeColor = Color.Firebrick;
+                }
+            }
+            cboBacSi.SelectedValueChanged += (s, e) => UpdateDoctorSchedule();
             if (dtPhong.Rows.Count > 0)
                 LoadDoctorsForRoom();
 
@@ -528,7 +570,12 @@ namespace QlyPhongKham.Forms
                 ForeColor = C_Teal
             };
             var btnCap     = PrimaryBtn("🎟  CẤP PHIẾU KHÁM", 0, 0, 200, 38);
-            btnCap.Enabled = dtPhong.Rows.Count > 0;
+            btnCap.Enabled = dtPhong.Rows.Count > 0 && cboBacSi.DataSource != null;
+            cboPhong.SelectedValueChanged += (s, e) =>
+            {
+                LoadDoctorsForRoom();
+                btnCap.Enabled = cboBacSi.DataSource != null && cboBacSi.SelectedValue != null;
+            };
             var btnTaiKham = SecondaryBtn("🔁  Tái khám (BN cũ)", 0, 0, 180, 38, C_Blue);
             var btnReset   = SecondaryBtn("🔄  Làm mới", 0, 0, 110, 38, Color.FromArgb(107, 114, 128));
             btnCap.Margin = btnTaiKham.Margin = btnReset.Margin = new Padding(5, 3, 5, 3);
@@ -562,7 +609,9 @@ namespace QlyPhongKham.Forms
             fieldsGrid.Controls.Add(CreateField("GIỚI TÍNH", cboGT), 3, 0);
             fieldsGrid.Controls.Add(CreateField("NGÀY SINH", dtpNS), 0, 1);
             fieldsGrid.Controls.Add(CreateField("PHÒNG KHÁM *", cboPhong), 1, 1);
-            fieldsGrid.Controls.Add(CreateField("BÁC SĨ KHÁM *", cboBacSi), 2, 1);
+            var doctorField = CreateField("BÁC SĨ KHÁM *", cboBacSi);
+            doctorField.Controls.Add(doctorAssignmentHint);
+            fieldsGrid.Controls.Add(doctorField, 2, 1);
             fieldsGrid.Controls.Add(CreateField("ĐỊA CHỈ", txtDC), 3, 1);
             fieldsGrid.Controls.Add(CreateField("TIỀN SỬ BỆNH / DỊ ỨNG", txtTS), 0, 2);
             fieldsGrid.Controls.Add(CreateField("TRIỆU CHỨNG", txtTC), 1, 2);
@@ -620,6 +669,9 @@ namespace QlyPhongKham.Forms
                     MessageBox.Show("Phòng khám chưa được phân công bác sĩ. Vui lòng liên hệ quản trị viên.", "Thiếu phân công", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
+                using var vitalsDialog = new FormSinhHieu();
+                if (vitalsDialog.ShowDialog(this) != DialogResult.OK)
+                    return;
 
                 bool isNewBN = !txtMaBN.Text.StartsWith("BN") ||
                     !ClinicDAL.LayDanhSachBenhNhan(txtMaBN.Text).Rows.Cast<DataRow>().Any(r => r["MaBN"].ToString() == txtMaBN.Text);
@@ -651,7 +703,7 @@ namespace QlyPhongKham.Forms
                     MaPhong     = maPhong,
                     TrieuChung  = txtTC.Text.Trim()
                 };
-                if (!ClinicDAL.TaoPhieuKham(pk, maLeTan))
+                if (!ClinicDAL.TaoPhieuKham(pk, maLeTan, vitalsDialog.DuLieuSinhHieu))
                 {
                     MessageBox.Show("Không tạo được phiếu khám. Kiểm tra phân công bác sĩ/phòng và thử lại.", "Lỗi cấp phiếu", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
@@ -670,6 +722,13 @@ namespace QlyPhongKham.Forms
             var grpCho = new Panel { Dock = DockStyle.Fill, BackColor = C_Card, Padding = new Padding(12) };
             grpCho.Paint += PaintCardBorder;
             grpCho.Controls.Add(MakeLbl("HÀNG CHỜ KHÁM BỆNH TRONG NGÀY", 12, 10, bold: true));
+            var btnOpenQueueDisplay = SecondaryBtn("📺 Màn hình gọi số", 590, 4, 170, 30, C_Blue);
+            btnOpenQueueDisplay.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnOpenQueueDisplay.Click += (s, e) =>
+            {
+                using var queueDisplay = new FormManHinhCho();
+                queueDisplay.ShowDialog(this);
+            };
             var btnCancelTicket = SecondaryBtn("Hủy phiếu đang chờ", 780, 4, 180, 30, C_Red);
             btnCancelTicket.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnCancelTicket.Click += (s, e) =>
@@ -700,6 +759,7 @@ namespace QlyPhongKham.Forms
             var pnlGridCho = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 30, 0, 0) };
             pnlGridCho.Controls.Add(dgvHangCho);
             grpCho.Controls.Add(pnlGridCho);
+            grpCho.Controls.Add(btnOpenQueueDisplay);
             grpCho.Controls.Add(btnCancelTicket);
             queuePageController = GridPageController.Attach(dgvHangCho, (offset, pageSize) =>
                 ClinicDAL.LayHangChoKhamTrongNgay(
@@ -1115,9 +1175,15 @@ namespace QlyPhongKham.Forms
         // ═══════════════════════════════════════════════════════════
         private void ShowThuNganView()
         {
+            if (!SessionState.IsAdmin && !SessionState.IsCashier)
+            {
+                MessageBox.Show("Chức năng thanh toán chỉ dành cho thu ngân và quản trị viên.",
+                    "Không đủ quyền", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
             SetRefreshPageAction(ShowThuNganView);
             SetActiveNav(btnNavThuNgan);
-            SetPageHeader("Lễ tân & Thu ngân  ›  Thanh toán", "Quản lý hóa đơn và thanh toán viện phí");
+            SetPageHeader("Thu ngân  ›  Thanh toán", "Quản lý hóa đơn và thanh toán viện phí");
             panelContent.Controls.Clear();
 
             var wrapper = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8) };
@@ -1149,13 +1215,36 @@ namespace QlyPhongKham.Forms
             var printInvoice = SecondaryBtn("🖨 In/Lưu PDF", 830, 59, 120, 32, Color.FromArgb(10, 80, 160));
             var exportInvoices = SecondaryBtn("📥 Xuất Excel", 960, 59, 110, 32, C_Green);
             var cancelInvoice = SecondaryBtn("Hủy HĐ", 1080, 59, 85, 32, C_Red);
-            header.Controls.AddRange(new Control[] { search, status, refresh, pay, details, printInvoice, exportInvoices, cancelInvoice });
+            var shiftButton = SecondaryBtn("Mở ca", 0, 8, 100, 30, C_Teal);
+            shiftButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            var refundButton = SecondaryBtn(SessionState.IsAdmin ? "Duyệt hoàn tiền" : "Đề nghị hoàn tiền",
+                0, 8, 150, 30, C_Orange);
+            refundButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            var clsCollectionButton = SecondaryBtn("Thu phí CLS", 0, 8, 115, 30, C_Blue);
+            clsCollectionButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            header.SizeChanged += (sender, args) =>
+            {
+                shiftButton.Location = new Point(header.ClientSize.Width - shiftButton.Width - 8, 8);
+                refundButton.Location = new Point(shiftButton.Left - refundButton.Width - 8, 8);
+                clsCollectionButton.Location = new Point(refundButton.Left - clsCollectionButton.Width - 8, 8);
+            };
+            header.Controls.AddRange(new Control[] { search, status, refresh, pay, details, printInvoice,
+                exportInvoices, cancelInvoice, shiftButton, refundButton, clsCollectionButton });
 
             var grid = MakeGrid();
             grid.DataBindingComplete += (sender, args) =>
             {
                 if (grid.Columns.Contains("TongTien"))
                     grid.Columns["TongTien"]!.DefaultCellStyle.Format = "N0";
+                foreach (string column in new[] { "TienBaoHiem", "DaThu", "ConNo" })
+                    if (grid.Columns.Contains(column))
+                        grid.Columns[column]!.DefaultCellStyle.Format = "N0";
+                if (grid.Columns.Contains("TienBaoHiem"))
+                    grid.Columns["TienBaoHiem"]!.HeaderText = "Bảo hiểm";
+                if (grid.Columns.Contains("DaThu"))
+                    grid.Columns["DaThu"]!.HeaderText = "Đã thu";
+                if (grid.Columns.Contains("ConNo"))
+                    grid.Columns["ConNo"]!.HeaderText = "Còn nợ";
                 if (grid.Columns.Contains("NgayLap"))
                     grid.Columns["NgayLap"]!.DefaultCellStyle.Format = "dd/MM/yyyy HH:mm";
             };
@@ -1163,17 +1252,41 @@ namespace QlyPhongKham.Forms
             var pendingTitle = MakeLbl("PHIẾU KHÁM CHỜ LẬP HÓA ĐƠN", 0, 0, bold: true);
             var createInvoice = PrimaryBtn("＋ Lập hóa đơn", 0, 0, 130, 30);
             createInvoice.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            var advancePayment = SecondaryBtn("Tạm ứng", 0, 0, 100, 30, C_Orange);
+            advancePayment.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             var pendingGrid = MakeGrid();
             pendingGrid.Location = new Point(0, 32);
             pendingGrid.Size = new Size(bottom.ClientSize.Width, bottom.ClientSize.Height - 36);
             pendingGrid.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            bottom.Controls.AddRange(new Control[] { pendingTitle, createInvoice, pendingGrid });
-            bottom.SizeChanged += (s, e) => createInvoice.Location = new Point(bottom.ClientSize.Width - createInvoice.Width, 0);
+            bottom.Controls.AddRange(new Control[] { pendingTitle, createInvoice, advancePayment, pendingGrid });
+            bottom.SizeChanged += (s, e) =>
+            {
+                createInvoice.Location = new Point(bottom.ClientSize.Width - createInvoice.Width, 0);
+                advancePayment.Location = new Point(createInvoice.Left - advancePayment.Width - 8, 0);
+            };
             var invoicesPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 5, 0, 5) };
             invoicesPanel.Paint += PaintCardBorder;
             invoicesPanel.Controls.Add(grid);
 
             GridPageController? invoicePageController = null;
+            void UpdateShiftState(int totalInvoices, int waitingCount)
+            {
+                DataTable currentShift = ClinicDAL.LayThongTinCaThuNgan();
+                bool open = currentShift.Rows.Count > 0;
+                shiftButton.Text = open ? "Đóng ca" : "Mở ca";
+                shiftButton.BackColor = open ? C_Orange : C_Teal;
+                pay.Enabled = open;
+                advancePayment.Enabled = open;
+                if (open)
+                {
+                    DataRow shift = currentShift.Rows[0];
+                    summary.Text = $"Ca #{shift["MaCa"]} đang mở • Dự kiến {Convert.ToDecimal(shift["TienDuKien"]):N0} đ • {totalInvoices} hóa đơn, {waitingCount} phiếu chờ lập";
+                }
+                else
+                {
+                    summary.Text = $"Chưa mở ca thu ngân • Cần mở ca trước khi thu • {totalInvoices} hóa đơn, {waitingCount} phiếu chờ lập";
+                }
+            }
             void LoadInvoices()
             {
                 invoicePageController?.Reload();
@@ -1183,7 +1296,7 @@ namespace QlyPhongKham.Forms
                     && invoices.ExtendedProperties["TotalCount"] is int count
                     ? count
                     : grid.Rows.Count;
-                summary.Text = $"Tổng {totalInvoices} hóa đơn  •  {waiting.Rows.Count} phiếu khám chờ lập hóa đơn";
+                UpdateShiftState(totalInvoices, waiting.Rows.Count);
             }
 
             DataRow? SelectedInvoice()
@@ -1198,6 +1311,94 @@ namespace QlyPhongKham.Forms
                     LoadInvoices();
             };
             status.SelectedIndexChanged += (s, e) => LoadInvoices();
+            shiftButton.Click += (s, e) =>
+            {
+                try
+                {
+                    DataTable currentShift = ClinicDAL.LayThongTinCaThuNgan();
+                    if (currentShift.Rows.Count == 0)
+                    {
+                        string input = Microsoft.VisualBasic.Interaction.InputBox(
+                            "Nhập tiền đầu ca:", "Mở ca thu ngân", "0");
+                        if (!decimal.TryParse(input, System.Globalization.NumberStyles.Number,
+                                System.Globalization.CultureInfo.CurrentCulture, out decimal openingAmount)
+                            || openingAmount < 0)
+                        {
+                            MessageBox.Show("Tiền đầu ca phải là số không âm.", "Dữ liệu không hợp lệ",
+                                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            return;
+                        }
+                        ClinicDAL.MoCaThuNgan(openingAmount);
+                    }
+                    else
+                    {
+                        decimal expected = Convert.ToDecimal(currentShift.Rows[0]["TienDuKien"]);
+                        string input = Microsoft.VisualBasic.Interaction.InputBox(
+                            $"Tiền dự kiến trong ca: {expected:N0} đ\nNhập số tiền thực tế kiểm đếm:",
+                            "Đóng ca thu ngân", expected.ToString("0.##", System.Globalization.CultureInfo.CurrentCulture));
+                        if (!decimal.TryParse(input, System.Globalization.NumberStyles.Number,
+                                System.Globalization.CultureInfo.CurrentCulture, out decimal actualAmount)
+                            || actualAmount < 0)
+                        {
+                            MessageBox.Show("Tiền kiểm đếm phải là số không âm.", "Dữ liệu không hợp lệ",
+                                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            return;
+                        }
+                        string note = Microsoft.VisualBasic.Interaction.InputBox(
+                            "Ghi chú chênh lệch (nếu có):", "Đối soát cuối ca", "");
+                        ClinicDAL.DongCaThuNgan(actualAmount, note);
+                    }
+                    LoadInvoices();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message, "Không thể cập nhật ca thu ngân",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+            refundButton.Click += (s, e) =>
+            {
+                if (SessionState.IsAdmin)
+                {
+                    ShowRefundRequests();
+                    return;
+                }
+                DataRow? invoice = SelectedInvoice();
+                if (invoice == null
+                    || invoice["TrangThai"].ToString() == "Đã hủy"
+                    || Convert.ToDecimal(invoice["DaThu"]) <= 0)
+                {
+                    MessageBox.Show("Chọn hóa đơn có khoản đã thu để đề nghị hoàn tiền.",
+                        "Không thể đề nghị", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                string amountText = Microsoft.VisualBasic.Interaction.InputBox(
+                    "Nhập số tiền cần hoàn:", "Đề nghị hoàn tiền", "");
+                if (!decimal.TryParse(amountText, System.Globalization.NumberStyles.Number,
+                        System.Globalization.CultureInfo.CurrentCulture, out decimal refundAmount)
+                    || refundAmount <= 0)
+                {
+                    MessageBox.Show("Số tiền hoàn phải lớn hơn 0.", "Dữ liệu không hợp lệ",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                string reason = Microsoft.VisualBasic.Interaction.InputBox(
+                    "Nhập lý do đề nghị hoàn tiền:", "Đề nghị hoàn tiền", "");
+                if (string.IsNullOrWhiteSpace(reason))
+                    return;
+                try
+                {
+                    ClinicDAL.TaoYeuCauHoanTien(invoice["MaHD"].ToString() ?? "", refundAmount, reason);
+                    MessageBox.Show("Đã gửi yêu cầu hoàn tiền chờ quản trị viên duyệt.",
+                        "Đã gửi yêu cầu", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message, "Không thể gửi yêu cầu hoàn tiền",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+            clsCollectionButton.Click += (s, e) => ShowClsCollection();
             details.Click += (s, e) =>
             {
                 DataRow? invoice = SelectedInvoice();
@@ -1230,7 +1431,12 @@ namespace QlyPhongKham.Forms
                 string chanDoan = invoice.Table.Columns.Contains("ChanDoan") ? invoice["ChanDoan"]?.ToString() ?? "Khám bệnh" : "Khám bệnh tổng quát";
                 string nguoiLap = SessionState.CurrentUser?.HoTenNhanVien ?? "Thu ngân";
 
-                PdfPrintHelper.InHoaDon(maHD, maPK, tenBN, chanDoan, hinhThucTT, tienDV, tienThuoc, giamGia, tongTien, nguoiLap);
+                PdfPrintHelper.InHoaDon(
+                    maHD, maPK, tenBN, chanDoan, hinhThucTT, tienDV, tienThuoc, giamGia, tongTien,
+                    nguoiLap,
+                    invoice.Table.Columns.Contains("TienBaoHiem") ? Convert.ToDecimal(invoice["TienBaoHiem"]) : 0,
+                    invoice.Table.Columns.Contains("DaThu") ? Convert.ToDecimal(invoice["DaThu"]) : 0,
+                    invoice.Table.Columns.Contains("ConNo") ? Convert.ToDecimal(invoice["ConNo"]) : tongTien);
             };
 
             exportInvoices.Click += (s, e) =>
@@ -1293,6 +1499,18 @@ namespace QlyPhongKham.Forms
                 CreateInvoice(view.Row);
                 LoadInvoices();
             };
+            advancePayment.Click += (s, e) =>
+            {
+                if (pendingGrid.SelectedRows.Count == 0
+                    || pendingGrid.SelectedRows[0].DataBoundItem is not DataRowView view)
+                {
+                    MessageBox.Show("Chọn phiếu khám cần tạm ứng.", "Chưa chọn phiếu khám",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                if (ShowAdvancePayment(view.Row))
+                    LoadInvoices();
+            };
             createInvoice.Click += (s, e) =>
             {
                 if (pendingGrid.SelectedRows.Count == 0
@@ -1343,8 +1561,10 @@ namespace QlyPhongKham.Forms
                 Font = new Font("Segoe UI", 12F, FontStyle.Bold),
                 ForeColor = C_TextDark
             };
+            var tabControl = new TabControl { Dock = DockStyle.Fill, Font = F_Base };
+            var itemsTab = new TabPage("Khoản phí");
+            var transactionsTab = new TabPage("Lịch sử giao dịch");
             var grid = MakeGrid();
-            grid.Dock = DockStyle.Fill;
             grid.DataSource = ClinicDAL.LayChiTietHoaDon(maHD);
             DataGridViewColumnCollection? detailColumns = grid.Columns;
             foreach (string column in new[] { "DonGia", "ThanhTien" })
@@ -1353,9 +1573,25 @@ namespace QlyPhongKham.Forms
                 if (detailColumn != null)
                     detailColumn.DefaultCellStyle.Format = "N0";
             }
+            var transactionGrid = MakeGrid();
+            transactionGrid.DataSource = ClinicDAL.LayGiaoDichVienPhi(maHD);
+            foreach (string column in new[] { "SoTien" })
+                if (transactionGrid.Columns.Contains(column))
+                    transactionGrid.Columns[column]!.DefaultCellStyle.Format = "N0";
+            if (transactionGrid.Columns.Contains("ThoiGian"))
+                transactionGrid.Columns["ThoiGian"]!.DefaultCellStyle.Format = "dd/MM/yyyy HH:mm";
+            itemsTab.Controls.Add(grid);
+            transactionsTab.Controls.Add(transactionGrid);
+            tabControl.TabPages.AddRange(new[] { itemsTab, transactionsTab });
+            decimal paidAmount = invoice.Table.Columns.Contains("DaThu")
+                ? Convert.ToDecimal(invoice["DaThu"])
+                : 0;
+            decimal balance = invoice.Table.Columns.Contains("ConNo")
+                ? Convert.ToDecimal(invoice["ConNo"])
+                : Convert.ToDecimal(invoice["TongTien"]) - Convert.ToDecimal(invoice["TienBaoHiem"]) - paidAmount;
             var footer = new Label
             {
-                Text = $"Dịch vụ: {Convert.ToDecimal(invoice["TienDichVu"]):N0} đ     Thuốc: {Convert.ToDecimal(invoice["TienThuoc"]):N0} đ     Giảm giá: {Convert.ToDecimal(invoice["GiamGia"]):N0} đ     TỔNG: {Convert.ToDecimal(invoice["TongTien"]):N0} đ",
+                Text = $"Tổng: {Convert.ToDecimal(invoice["TongTien"]):N0} đ   •   BHYT: {Convert.ToDecimal(invoice["TienBaoHiem"]):N0} đ   •   Đã thu: {paidAmount:N0} đ   •   Còn nợ: {balance:N0} đ",
                 Dock = DockStyle.Bottom,
                 Height = 48,
                 TextAlign = ContentAlignment.MiddleRight,
@@ -1363,7 +1599,7 @@ namespace QlyPhongKham.Forms
                 Font = new Font("Segoe UI", 10F, FontStyle.Bold),
                 ForeColor = C_Blue
             };
-            dialog.Controls.Add(grid);
+            dialog.Controls.Add(tabControl);
             dialog.Controls.Add(footer);
             dialog.Controls.Add(heading);
             dialog.ShowDialog(this);
@@ -1376,23 +1612,41 @@ namespace QlyPhongKham.Forms
             using var dialog = new Form
             {
                 Text = "Xác nhận thanh toán",
-                Size = new Size(480, 300),
+                Size = new Size(480, 360),
                 StartPosition = FormStartPosition.CenterParent,
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 MaximizeBox = false,
                 MinimizeBox = false,
                 BackColor = Color.White
             };
+            decimal balanceDue = invoice.Table.Columns.Contains("ConNo")
+                ? Convert.ToDecimal(invoice["ConNo"])
+                : Convert.ToDecimal(invoice["TongTien"]) - Convert.ToDecimal(invoice["TienBaoHiem"]);
             var amount = new Label
             {
-                Text = $"{Convert.ToDecimal(invoice["TongTien"]):N0} đ",
+                Text = $"Còn phải thu: {balanceDue:N0} đ",
                 Dock = DockStyle.Top,
-                Height = 78,
+                Height = 64,
                 TextAlign = ContentAlignment.MiddleCenter,
-                Font = new Font("Segoe UI", 23F, FontStyle.Bold),
+                Font = new Font("Segoe UI", 18F, FontStyle.Bold),
                 ForeColor = C_Green
             };
             var label = new Label { Text = $"Hóa đơn {maHD}  •  {invoice["TenBN"]}", Dock = DockStyle.Top, Height = 30, TextAlign = ContentAlignment.MiddleCenter };
+            var paymentAmount = new NumericUpDown
+            {
+                Minimum = 1,
+                Maximum = Math.Max(1, balanceDue),
+                Value = Math.Max(1, balanceDue),
+                DecimalPlaces = 0,
+                ThousandsSeparator = true,
+                Width = 250,
+                Font = F_Base,
+                Anchor = AnchorStyles.None
+            };
+            var paymentAmountPanel = new Panel { Dock = DockStyle.Top, Height = 42 };
+            paymentAmountPanel.Controls.Add(paymentAmount);
+            paymentAmountPanel.Resize += (s, e) =>
+                paymentAmount.Location = new Point((paymentAmountPanel.ClientSize.Width - paymentAmount.Width) / 2, 5);
             var method = new ComboBox
             {
                 DropDownStyle = ComboBoxStyle.DropDownList,
@@ -1419,7 +1673,10 @@ namespace QlyPhongKham.Forms
             {
                 try
                 {
-                    if (!ClinicDAL.ThanhToanHoaDon(maHD, method.SelectedItem?.ToString() ?? "Tiền mặt"))
+                    if (!ClinicDAL.ThanhToanHoaDon(
+                            maHD,
+                            method.SelectedItem?.ToString() ?? "Tiền mặt",
+                            paymentAmount.Value))
                     {
                         MessageBox.Show("Hóa đơn đã được cập nhật hoặc không còn ở trạng thái chờ thanh toán.",
                             "Không thể thanh toán", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -1436,9 +1693,99 @@ namespace QlyPhongKham.Forms
             actions.Controls.AddRange(new Control[] { confirm, cancel });
             dialog.Controls.Add(actions);
             dialog.Controls.Add(methodPanel);
+            dialog.Controls.Add(paymentAmountPanel);
             dialog.Controls.Add(label);
             dialog.Controls.Add(amount);
             dialog.AcceptButton = confirm;
+            dialog.CancelButton = cancel;
+            return dialog.ShowDialog(this) == DialogResult.OK;
+        }
+
+        private bool ShowAdvancePayment(DataRow ticket)
+        {
+            string maPK = ticket["MaPK"].ToString() ?? "";
+            var (tienDV, tienThuoc) = ClinicDAL.TinhChiPhiPhieuKham(maPK);
+            decimal estimatedTotal = tienDV + tienThuoc;
+            using var dialog = new Form
+            {
+                Text = "Ghi nhận tạm ứng",
+                Size = new Size(480, 330),
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false,
+                MinimizeBox = false,
+                BackColor = Color.White
+            };
+            var heading = new Label
+            {
+                Text = $"Tạm ứng cho {ticket["TenBN"]} • Phiếu {maPK}",
+                Dock = DockStyle.Top,
+                Height = 50,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = F_Bold
+            };
+            var total = new Label
+            {
+                Text = $"Chi phí tạm tính tối đa: {estimatedTotal:N0} đ",
+                Dock = DockStyle.Top,
+                Height = 38,
+                TextAlign = ContentAlignment.MiddleCenter,
+                ForeColor = C_Blue
+            };
+            var amount = new NumericUpDown
+            {
+                Minimum = 1,
+                Maximum = Math.Max(1, estimatedTotal),
+                Value = Math.Max(1, estimatedTotal),
+                DecimalPlaces = 0,
+                ThousandsSeparator = true,
+                Width = 250,
+                Anchor = AnchorStyles.None
+            };
+            var method = new ComboBox
+            {
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Width = 250,
+                Anchor = AnchorStyles.None
+            };
+            method.Items.AddRange(new object[] { "Tiền mặt", "Chuyển khoản QR", "Thẻ" });
+            method.SelectedIndex = 0;
+            var amountPanel = new Panel { Dock = DockStyle.Top, Height = 42 };
+            amountPanel.Controls.Add(amount);
+            amountPanel.Resize += (s, e) => amount.Location = new Point((amountPanel.ClientSize.Width - amount.Width) / 2, 5);
+            var methodPanel = new Panel { Dock = DockStyle.Top, Height = 42 };
+            methodPanel.Controls.Add(method);
+            methodPanel.Resize += (s, e) => method.Location = new Point((methodPanel.ClientSize.Width - method.Width) / 2, 5);
+            var actions = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 55,
+                FlowDirection = FlowDirection.RightToLeft,
+                Padding = new Padding(12)
+            };
+            var save = PrimaryBtn("Ghi nhận tạm ứng", 0, 0, 150, 34);
+            var cancel = new Button { Text = "Đóng", Width = 90, Height = 34, DialogResult = DialogResult.Cancel };
+            save.Click += (sender, args) =>
+            {
+                try
+                {
+                    ClinicDAL.TamUngPhieuKham(maPK, amount.Value, method.SelectedItem?.ToString() ?? "Tiền mặt");
+                    dialog.DialogResult = DialogResult.OK;
+                    dialog.Close();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message, "Không thể ghi nhận tạm ứng",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+            actions.Controls.AddRange(new Control[] { save, cancel });
+            dialog.Controls.Add(actions);
+            dialog.Controls.Add(methodPanel);
+            dialog.Controls.Add(amountPanel);
+            dialog.Controls.Add(total);
+            dialog.Controls.Add(heading);
+            dialog.AcceptButton = save;
             dialog.CancelButton = cancel;
             return dialog.ShowDialog(this) == DialogResult.OK;
         }
@@ -1452,7 +1799,7 @@ namespace QlyPhongKham.Forms
                 using var dialog = new Form
                 {
                     Text = "Lập hóa đơn",
-                    Size = new Size(460, 300),
+                    Size = new Size(460, 350),
                     StartPosition = FormStartPosition.CenterParent,
                     FormBorderStyle = FormBorderStyle.FixedDialog,
                     MaximizeBox = false,
@@ -1485,6 +1832,31 @@ namespace QlyPhongKham.Forms
                 };
                 method.Items.AddRange(new object[] { "Tiền mặt", "Chuyển khoản QR", "Thẻ" });
                 method.SelectedIndex = 0;
+                var insuranceRate = new NumericUpDown
+                {
+                    Minimum = 0,
+                    Maximum = 100,
+                    DecimalPlaces = 2,
+                    Increment = 5,
+                    Width = 230,
+                    Font = F_Base,
+                    Anchor = AnchorStyles.None
+                };
+                var insurancePanel = new Panel { Dock = DockStyle.Top, Height = 48 };
+                insurancePanel.Controls.Add(new Label
+                {
+                    Text = "Bảo hiểm (%)",
+                    Location = new Point(32, 13),
+                    AutoSize = true,
+                    Font = F_Base
+                });
+                insurancePanel.Controls.Add(insuranceRate);
+                insurancePanel.Resize += (s, e) =>
+                {
+                    int start = (insurancePanel.ClientSize.Width - 340) / 2;
+                    insurancePanel.Controls[0].Location = new Point(start, 13);
+                    insuranceRate.Location = new Point(start + 110, 8);
+                };
                 var methodPanel = new Panel { Dock = DockStyle.Top, Height = 48 };
                 methodPanel.Controls.Add(method);
                 methodPanel.Resize += (s, e) => method.Location = new Point((methodPanel.ClientSize.Width - method.Width) / 2, 8);
@@ -1513,7 +1885,7 @@ namespace QlyPhongKham.Forms
                             HinhThucTT = method.SelectedItem?.ToString() ?? "Tiền mặt",
                             TrangThai = "Chưa thanh toán"
                         };
-                        if (!ClinicDAL.TaoHoaDon(invoice))
+                        if (!ClinicDAL.TaoHoaDon(invoice, insuranceRate.Value))
                             throw new InvalidOperationException("Không thể tạo hóa đơn cho phiếu khám này.");
                         dialog.DialogResult = DialogResult.OK;
                         dialog.Close();
@@ -1526,6 +1898,7 @@ namespace QlyPhongKham.Forms
                 actions.Controls.AddRange(new Control[] { create, cancel });
                 dialog.Controls.Add(actions);
                 dialog.Controls.Add(methodPanel);
+                dialog.Controls.Add(insurancePanel);
                 dialog.Controls.Add(amount);
                 dialog.Controls.Add(heading);
                 dialog.AcceptButton = create;
@@ -1536,6 +1909,178 @@ namespace QlyPhongKham.Forms
             {
                 MessageBox.Show(ex.Message, "Không thể tính viện phí", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private void ShowClsCollection()
+        {
+            using var dialog = new Form
+            {
+                Text = "Thu phí cận lâm sàng",
+                Size = new Size(800, 440),
+                MinimumSize = new Size(650, 360),
+                StartPosition = FormStartPosition.CenterParent,
+                BackColor = Color.White
+            };
+            var title = new Label
+            {
+                Text = "CHỈ ĐỊNH CLS ĐANG CHỜ THU",
+                Dock = DockStyle.Top,
+                Height = 46,
+                Padding = new Padding(14, 12, 0, 0),
+                Font = new Font("Segoe UI", 11F, FontStyle.Bold)
+            };
+            var grid = MakeGrid();
+            var actions = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 56,
+                FlowDirection = FlowDirection.RightToLeft,
+                Padding = new Padding(10)
+            };
+            var close = new Button { Text = "Đóng", Width = 90, Height = 32, DialogResult = DialogResult.Cancel };
+            var collect = PrimaryBtn("Thu phí đã chọn", 0, 0, 140, 32);
+            var method = new ComboBox
+            {
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Width = 170,
+                Height = 30,
+                Font = F_Base
+            };
+            method.Items.AddRange(new object[] { "Tiền mặt", "Chuyển khoản QR", "Thẻ" });
+            method.SelectedIndex = 0;
+            actions.Controls.AddRange(new Control[] { close, collect, method });
+
+            void LoadOrders()
+            {
+                grid.DataSource = ClinicDAL.LayChiDinhChoThanhToanCLS();
+                if (grid.Columns.Contains("DonGiaThoiDiem"))
+                {
+                    grid.Columns["DonGiaThoiDiem"]!.HeaderText = "Phí CLS";
+                    grid.Columns["DonGiaThoiDiem"]!.DefaultCellStyle.Format = "N0";
+                }
+                if (grid.Columns.Contains("NgayKham"))
+                    grid.Columns["NgayKham"]!.DefaultCellStyle.Format = "dd/MM/yyyy HH:mm";
+            }
+
+            collect.Click += (sender, args) =>
+            {
+                if (grid.SelectedRows.Count == 0)
+                {
+                    MessageBox.Show("Chọn chỉ định CLS cần thu phí.", "Chưa chọn chỉ định",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                int maChiDinh = Convert.ToInt32(grid.SelectedRows[0].Cells["MaChiDinh"].Value);
+                try
+                {
+                    ClinicDAL.ThanhToanChiDinhCLS(maChiDinh, method.SelectedItem?.ToString() ?? "Tiền mặt");
+                    LoadOrders();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message, "Không thể thu phí CLS",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+            dialog.Controls.Add(grid);
+            dialog.Controls.Add(actions);
+            dialog.Controls.Add(title);
+            dialog.CancelButton = close;
+            LoadOrders();
+            dialog.ShowDialog(this);
+        }
+
+        private void ShowRefundRequests()
+        {
+            if (!SessionState.IsAdmin)
+                throw new UnauthorizedAccessException("Chỉ quản trị viên được xử lý yêu cầu hoàn tiền.");
+            using var dialog = new Form
+            {
+                Text = "Duyệt yêu cầu hoàn tiền",
+                Size = new Size(900, 520),
+                MinimumSize = new Size(720, 420),
+                StartPosition = FormStartPosition.CenterParent,
+                BackColor = Color.White
+            };
+            var title = new Label
+            {
+                Text = "YÊU CẦU HOÀN TIỀN",
+                Dock = DockStyle.Top,
+                Height = 48,
+                Padding = new Padding(14, 14, 0, 0),
+                Font = new Font("Segoe UI", 12F, FontStyle.Bold)
+            };
+            var grid = MakeGrid();
+            var actions = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 54,
+                FlowDirection = FlowDirection.RightToLeft,
+                Padding = new Padding(10)
+            };
+            var close = new Button { Text = "Đóng", Width = 90, Height = 32, DialogResult = DialogResult.Cancel };
+            var reject = SecondaryBtn("Từ chối", 0, 0, 110, 32, C_Red);
+            var approve = PrimaryBtn("Duyệt hoàn tiền", 0, 0, 140, 32);
+            actions.Controls.AddRange(new Control[] { close, reject, approve });
+
+            void LoadRequests()
+            {
+                grid.DataSource = ClinicDAL.LayYeuCauHoanTien();
+                if (grid.Columns.Contains("SoTien"))
+                    grid.Columns["SoTien"]!.DefaultCellStyle.Format = "N0";
+                if (grid.Columns.Contains("NgayDeNghi"))
+                    grid.Columns["NgayDeNghi"]!.DefaultCellStyle.Format = "dd/MM/yyyy HH:mm";
+                if (grid.Columns.Contains("NgayDuyet"))
+                    grid.Columns["NgayDuyet"]!.DefaultCellStyle.Format = "dd/MM/yyyy HH:mm";
+            }
+
+            long? SelectedRequestId()
+            {
+                if (grid.SelectedRows.Count == 0
+                    || grid.SelectedRows[0].DataBoundItem is not DataRowView selected
+                    || selected.Row["TrangThai"].ToString() != "Chờ duyệt")
+                    return null;
+                return Convert.ToInt64(selected.Row["MaYeuCau"]);
+            }
+
+            void ProcessRequest(bool approveRequest)
+            {
+                long? id = SelectedRequestId();
+                if (!id.HasValue)
+                {
+                    MessageBox.Show("Chọn yêu cầu đang chờ duyệt.", "Chưa chọn yêu cầu",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                string note = Microsoft.VisualBasic.Interaction.InputBox(
+                    approveRequest ? "Ghi chú phê duyệt (nếu có):" : "Nhập lý do từ chối:",
+                    approveRequest ? "Duyệt hoàn tiền" : "Từ chối hoàn tiền", "");
+                if (!approveRequest && string.IsNullOrWhiteSpace(note))
+                {
+                    MessageBox.Show("Cần ghi lý do từ chối.", "Thiếu lý do",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                try
+                {
+                    ClinicDAL.XuLyYeuCauHoanTien(id.Value, approveRequest, note);
+                    LoadRequests();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message, "Không thể xử lý yêu cầu",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+
+            approve.Click += (sender, args) => ProcessRequest(true);
+            reject.Click += (sender, args) => ProcessRequest(false);
+            dialog.Controls.Add(grid);
+            dialog.Controls.Add(actions);
+            dialog.Controls.Add(title);
+            dialog.CancelButton = close;
+            LoadRequests();
+            dialog.ShowDialog(this);
         }
 
         private void ShowThuNganViewLegacy()

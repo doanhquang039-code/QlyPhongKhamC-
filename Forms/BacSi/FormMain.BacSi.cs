@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
+using System.IO;
 using System.Windows.Forms;
 using QlyPhongKham.DAL;
 using QlyPhongKham.Models;
@@ -422,16 +423,12 @@ namespace QlyPhongKham.Forms
             string sdt = rBN["SoDienThoai"] == DBNull.Value ? "Chưa cập nhật" : rBN["SoDienThoai"].ToString() ?? "Chưa cập nhật";
             string diaChi = rBN["DiaChi"] == DBNull.Value ? "Chưa cập nhật" : rBN["DiaChi"].ToString() ?? "Chưa cập nhật";
             string tienSu = rBN["TienSuBenh"] == DBNull.Value ? "" : rBN["TienSuBenh"].ToString() ?? "";
-            try
+            DataTable healthRecords = ClinicDAL.LayHoSoSucKhoe(maBN);
+            foreach (DataRow item in healthRecords.Rows)
             {
-                DataTable health = ClinicDAL.LayHoSoSucKhoe(maBN);
-                foreach (DataRow item in health.Rows)
-                {
-                    string entry = $"{item["Loai"]}: {item["NoiDung"]}";
-                    tienSu = string.IsNullOrWhiteSpace(tienSu) ? entry : tienSu + " | " + entry;
-                }
+                string entry = $"{item["Loai"]}: {item["NoiDung"]}";
+                tienSu = string.IsNullOrWhiteSpace(tienSu) ? entry : tienSu + " | " + entry;
             }
-            catch { /* Existing installations can be upgraded lazily when health-record data is first entered. */ }
             string nsStr = rBN["NgaySinh"] != DBNull.Value ? Convert.ToDateTime(rBN["NgaySinh"]).ToString("dd/MM/yyyy") : "Chưa cập nhật";
             var dtLichSu = ClinicDAL.LayLichSuKhamBenhNhan(maBN, maBS);
             var dtChiDinh = ClinicDAL.LayChiDinhDVBenhNhan(maBN, maBS);
@@ -577,7 +574,7 @@ namespace QlyPhongKham.Forms
             });
             cardContact.Controls.Add(new Label
             {
-                Text = "Tài liệu đính kèm chưa được hỗ trợ lưu trong cơ sở dữ liệu.",
+                Text = "Tệp kết quả được lưu trực tiếp theo từng chỉ định CLS.",
                 Location = new Point(14, 122),
                 Size = new Size(cardContact.Width - 28, 48),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
@@ -646,7 +643,68 @@ namespace QlyPhongKham.Forms
             SafeFormatCol(dgvDonThuocHistory, "CachDung", "Cách dùng", 220);
             tabThuoc.Controls.Add(dgvDonThuocHistory);
 
-            tabControlDB.TabPages.AddRange(new[] { tabBenhSu, tabCLS, tabThuoc });
+            var tabHealth = new TabPage("  🛡 Hồ sơ sức khỏe  ");
+            var dgvHealth = MakeGrid();
+            dgvHealth.Dock = DockStyle.Fill;
+            dgvHealth.DataSource = healthRecords.Copy();
+            SafeFormatCol(dgvHealth, "Loai", "Nhóm thông tin", 140);
+            SafeFormatCol(dgvHealth, "NoiDung", "Nội dung", 360);
+            SafeFormatCol(dgvHealth, "NgayCapNhat", "Cập nhật", 130);
+            SafeFormatCol(dgvHealth, "MaNV", "Mã nhân viên", 100);
+            var btnAddHealth = SecondaryBtn("＋ Thêm mục sức khỏe", 8, 8, 190, 32, C_Teal);
+            btnAddHealth.Click += (s, e) =>
+            {
+                using var editor = new Form
+                {
+                    Text = "Bổ sung hồ sơ sức khỏe",
+                    StartPosition = FormStartPosition.CenterParent,
+                    FormBorderStyle = FormBorderStyle.FixedDialog,
+                    ClientSize = new Size(430, 210),
+                    MaximizeBox = false,
+                    MinimizeBox = false
+                };
+                var category = new ComboBox
+                {
+                    DropDownStyle = ComboBoxStyle.DropDownList,
+                    Location = new Point(18, 42),
+                    Size = new Size(394, 30)
+                };
+                category.Items.AddRange(new object[] { "Dị ứng", "Bệnh mạn tính", "Thuốc đang dùng", "Tiền sử phẫu thuật" });
+                category.SelectedIndex = 0;
+                var content = new TextBox
+                {
+                    Location = new Point(18, 96),
+                    Size = new Size(394, 54),
+                    Multiline = true,
+                    MaxLength = 500
+                };
+                var save = new Button { Text = "Lưu thông tin", Location = new Point(280, 164), Size = new Size(132, 32), DialogResult = DialogResult.OK };
+                editor.Controls.AddRange(new Control[]
+                {
+                    new Label { Text = "Loại thông tin", Location = new Point(18, 18), AutoSize = true },
+                    category,
+                    new Label { Text = "Nội dung (tối đa 500 ký tự)", Location = new Point(18, 76), AutoSize = true },
+                    content,
+                    save
+                });
+                editor.AcceptButton = save;
+                if (editor.ShowDialog(this) != DialogResult.OK || string.IsNullOrWhiteSpace(content.Text))
+                    return;
+                try
+                {
+                    ClinicDAL.LuuMucHoSoSucKhoe(maBN, category.SelectedItem?.ToString() ?? "", content.Text);
+                    ShowBacSiHoSoBenhAnView(maBN);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Không thể cập nhật hồ sơ sức khỏe: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+            tabHealth.Controls.Add(dgvHealth);
+            tabHealth.Controls.Add(btnAddHealth);
+            btnAddHealth.BringToFront();
+
+            tabControlDB.TabPages.AddRange(new[] { tabBenhSu, tabCLS, tabThuoc, tabHealth });
             cardDienBien.Controls.AddRange(new Control[] { lblDBTitle, tabControlDB });
 
             // Card dịch vụ cận lâm sàng gần đây
@@ -815,10 +873,108 @@ namespace QlyPhongKham.Forms
             btnBackToList.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnBackToList.Click += (s, e) => ShowBacSiLichKhamView();
 
-            pnlWorkflow.Controls.AddRange(new Control[] { btnStep1, btnStep2, btnStep3, btnBackToList });
+            var btnTransfer = SecondaryBtn("Chuyển khoa / phòng", 598, 8, 160, 32, C_Blue);
+            btnTransfer.Visible = activeStep == 0;
+            btnTransfer.Click += (s, e) =>
+            {
+                DataTable rooms = ClinicDAL.LayDanhSachPhongKham();
+                if (rooms.Rows.Count == 0)
+                {
+                    MessageBox.Show("Chưa có phòng khám để chuyển đến.", "Không có phòng", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                using var transferForm = new Form
+                {
+                    Text = "Chuyển bệnh nhân sang khoa / phòng",
+                    StartPosition = FormStartPosition.CenterParent,
+                    FormBorderStyle = FormBorderStyle.FixedDialog,
+                    ClientSize = new Size(460, 275),
+                    MaximizeBox = false,
+                    MinimizeBox = false
+                };
+                var room = new ComboBox
+                {
+                    Location = new Point(18, 42),
+                    Size = new Size(424, 30),
+                    DropDownStyle = ComboBoxStyle.DropDownList,
+                    DisplayMember = "TenPhong",
+                    ValueMember = "MaPhong",
+                    DataSource = rooms
+                };
+                var targetDoctor = new ComboBox
+                {
+                    Location = new Point(18, 104),
+                    Size = new Size(424, 30),
+                    DropDownStyle = ComboBoxStyle.DropDownList,
+                    DisplayMember = "TenHienThi",
+                    ValueMember = "MaNV"
+                };
+                void LoadTargetDoctors()
+                {
+                    if (room.SelectedValue == null) return;
+                    DataTable doctors = ClinicDAL.LayDanhSachBacSiTheoPhong(room.SelectedValue.ToString() ?? "");
+                    if (!doctors.Columns.Contains("TenHienThi"))
+                        doctors.Columns.Add("TenHienThi", typeof(string));
+                    foreach (DataRow doctorRow in doctors.Rows)
+                        doctorRow["TenHienThi"] = $"{doctorRow["HoTen"]} - {doctorRow["ChuyenKhoa"]}";
+                    targetDoctor.DataSource = doctors;
+                }
+                room.SelectedValueChanged += (sender, args) => LoadTargetDoctors();
+                LoadTargetDoctors();
+                var reason = new TextBox
+                {
+                    Location = new Point(18, 166),
+                    Size = new Size(424, 48),
+                    Multiline = true,
+                    MaxLength = 500
+                };
+                var confirmTransfer = new Button
+                {
+                    Text = "Tạo phiếu chuyển",
+                    Location = new Point(292, 226),
+                    Size = new Size(150, 32),
+                    DialogResult = DialogResult.OK
+                };
+                transferForm.Controls.AddRange(new Control[]
+                {
+                    new Label { Text = "Khoa / phòng tiếp nhận", Location = new Point(18, 18), AutoSize = true },
+                    room,
+                    new Label { Text = "Bác sĩ tiếp nhận", Location = new Point(18, 80), AutoSize = true },
+                    targetDoctor,
+                    new Label { Text = "Lý do chuyển", Location = new Point(18, 142), AutoSize = true },
+                    reason,
+                    confirmTransfer
+                });
+                transferForm.AcceptButton = confirmTransfer;
+                if (transferForm.ShowDialog(this) != DialogResult.OK) return;
+                if (targetDoctor.SelectedValue == null || string.IsNullOrWhiteSpace(reason.Text))
+                {
+                    MessageBox.Show("Chọn bác sĩ tiếp nhận và nhập lý do chuyển.", "Thiếu thông tin", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                try
+                {
+                    var childVisit = ClinicDAL.ChuyenPhongKham(
+                        _currentDoctorMaPK ?? "",
+                        targetDoctor.SelectedValue.ToString() ?? "",
+                        room.SelectedValue?.ToString() ?? "",
+                        reason.Text);
+                    MessageBox.Show($"Đã tạo phiếu khám liên kết {childVisit.maPK} (STT {childVisit.stt}).",
+                        "Chuyển phòng thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    ShowBacSiLichKhamView();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Không thể chuyển phòng: {ex.Message}", "Chuyển phòng thất bại", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+
+            pnlWorkflow.Controls.AddRange(new Control[] { btnStep1, btnStep2, btnStep3, btnTransfer, btnBackToList });
 
             // ── PATIENT BANNER ──
-            var pnlBanner = new Panel { Dock = DockStyle.Top, Height = 74, BackColor = C_Card, Padding = new Padding(16, 10, 16, 10) };
+            string maPKGoc = drPK["MaPK_Goc"] == DBNull.Value ? "" : drPK["MaPK_Goc"].ToString() ?? "";
+            string lyDoChuyen = drPK["LyDoChuyen"] == DBNull.Value ? "" : drPK["LyDoChuyen"].ToString() ?? "";
+            var pnlBanner = new Panel { Dock = DockStyle.Top, Height = string.IsNullOrEmpty(maPKGoc) ? 74 : 96, BackColor = C_Card, Padding = new Padding(16, 10, 16, 10) };
             pnlBanner.Paint += PaintCardBorder;
 
             var lblPName = new Label { Text = $"{tenBN}  ({maBN})", Location = new Point(14, 12), AutoSize = true, Font = new Font("Segoe UI", 13f, FontStyle.Bold), ForeColor = C_TextDark };
@@ -838,6 +994,19 @@ namespace QlyPhongKham.Forms
                 TextAlign = ContentAlignment.MiddleCenter
             };
             pnlBanner.Controls.AddRange(new Control[] { lblPName, lblPMeta, badgeAllergy });
+            if (!string.IsNullOrEmpty(maPKGoc))
+            {
+                var transferInfo = new Label
+                {
+                    Text = $"Phiếu chuyển từ {maPKGoc}: {lyDoChuyen}",
+                    Location = new Point(14, 64),
+                    Size = new Size(panelContent.Width - 40, 20),
+                    Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                    Font = F_Small,
+                    ForeColor = C_Blue
+                };
+                pnlBanner.Controls.Add(transferInfo);
+            }
 
             // ── BODY CONTENT THEO STEP ──
             var pnlBody = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent, Padding = new Padding(0, 10, 0, 0) };
@@ -934,14 +1103,31 @@ namespace QlyPhongKham.Forms
                 string kq = Microsoft.VisualBasic.Interaction.InputBox($"Nhập kết quả xét nghiệm / CLS cho:\n{tenD}", "Kết quả cận lâm sàng", "Chỉ số bình thường, không ghi nhận bất thường");
                 if (!string.IsNullOrEmpty(kq))
                 {
-                    ClinicDAL.CapNhatKetQuaDV(maCD, kq);
+                    if (!ClinicDAL.CapNhatKetQuaDV(maCD, kq))
+                    {
+                        MessageBox.Show("Chỉ định CLS cần được thu phí trước khi cập nhật kết quả.",
+                            "Chưa thanh toán CLS", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
                     LoadCLSList();
                 }
             };
 
             var btnAttach = SecondaryBtn("📎 Tài liệu (chưa lưu)", 184, cardCLS.Height - 50, 180, 34, C_Teal);
             btnAttach.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            btnAttach.Enabled = false;
+            btnAttach.Text = "📎 Tệp kết quả";
+            btnAttach.Click += (s, e) =>
+            {
+                if (dgvCLS.SelectedRows.Count == 0)
+                {
+                    MessageBox.Show("Chọn một chỉ định CLS trước.", "Chưa chọn chỉ định",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                int maCD = Convert.ToInt32(dgvCLS.SelectedRows[0].Cells["MaChiDinh"].Value);
+                string tenDV = dgvCLS.SelectedRows[0].Cells["TenDV"].Value?.ToString() ?? "CLS";
+                OpenClsAttachments(maCD, tenDV);
+            };
 
             cardCLS.Controls.AddRange(new Control[] { lblCLSTitle, cboDichVu, btnAddCLS, dgvCLS, btnNhapKQ, btnAttach });
             pnlRightCol.Controls.Add(cardCLS);
@@ -1028,15 +1214,40 @@ namespace QlyPhongKham.Forms
 
             // Row 4: Chẩn đoán sơ bộ
             var lblCD = MakeLbl("Chẩn đoán sơ bộ (*):", 14, 348, bold: true);
-            var txtCD = new TextBox { Location = new Point(14, 370), Size = new Size(cardLamSang.Width - 48, 44), Multiline = true, Font = F_Base, Text = cd, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            var icd = new ComboBox
+            {
+                Location = new Point(14, 370),
+                Size = new Size(cardLamSang.Width - 48, 30),
+                DropDownStyle = ComboBoxStyle.DropDown,
+                AutoCompleteMode = AutoCompleteMode.SuggestAppend,
+                AutoCompleteSource = AutoCompleteSource.ListItems,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                Font = F_Base
+            };
+            DataTable icdCodes = ClinicDAL.LayDanhMucICD10();
+            if (!icdCodes.Columns.Contains("TenHienThi"))
+                icdCodes.Columns.Add("TenHienThi", typeof(string));
+            foreach (DataRow row in icdCodes.Rows)
+                row["TenHienThi"] = $"{row["MaICD10"]} - {row["TenChanDoan"]}";
+            icd.DataSource = icdCodes;
+            icd.DisplayMember = "TenHienThi";
+            icd.ValueMember = "MaICD10";
+            if (icdCodes.Rows.Count == 0)
+                icd.Text = "Danh mục ICD-10 chưa được nạp; có thể nhập chẩn đoán bên dưới";
+            var txtCD = new TextBox { Location = new Point(14, 406), Size = new Size(cardLamSang.Width - 48, 44), Multiline = true, Font = F_Base, Text = cd, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            icd.SelectedIndexChanged += (s, e) =>
+            {
+                if (icd.SelectedItem is DataRowView selected)
+                    txtCD.Text = $"{selected["MaICD10"]} - {selected["TenChanDoan"]}";
+            };
 
             // Row 5: Hướng xử trí
-            var lblHD = MakeLbl("Hướng xử trí:", 14, 422, bold: true);
-            var txtHD = new TextBox { Location = new Point(14, 444), Size = new Size(cardLamSang.Width - 48, 44), Multiline = true, Font = F_Base, Text = ld, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            var lblHD = MakeLbl("Hướng xử trí:", 14, 458, bold: true);
+            var txtHD = new TextBox { Location = new Point(14, 480), Size = new Size(cardLamSang.Width - 48, 44), Multiline = true, Font = F_Base, Text = ld, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
 
             // Action buttons
-            var btnSaveDraft = SecondaryBtn("💾 Lưu nháp", 14, 502, 120, 36, Color.FromArgb(107, 114, 128));
-            var btnNextStep  = PrimaryBtn("Tiếp theo: Kê đơn thuốc  ➔", 144, 502, 230, 36);
+            var btnSaveDraft = SecondaryBtn("💾 Lưu nháp", 14, 538, 120, 36, Color.FromArgb(107, 114, 128));
+            var btnNextStep  = PrimaryBtn("Tiếp theo: Kê đơn thuốc  ➔", 144, 538, 230, 36);
 
             string GetSinhHieu()
                 => string.Join("|", txtHA.Text.Trim(), txtMach.Text.Trim(), txtNhiet.Text.Trim(),
@@ -1091,7 +1302,7 @@ namespace QlyPhongKham.Forms
 
             cardLamSang.Controls.AddRange(new Control[] {
                 lblTitle, lblTC, txtTC, lblTS, txtTS, pnlVitals,
-                lblThamKham, txtThamKham, lblCD, txtCD, lblHD, txtHD,
+                lblThamKham, txtThamKham, lblCD, icd, txtCD, lblHD, txtHD,
                 btnSaveDraft, btnNextStep
             });
 
@@ -1105,6 +1316,120 @@ namespace QlyPhongKham.Forms
         // ───────────────────────────────────────────────────────────
         // BƯỚC 2: KÊ ĐƠN THUỐC ĐIỆN TỬ
         // ───────────────────────────────────────────────────────────
+        private void OpenClsAttachments(int maChiDinh, string tenDichVu)
+        {
+            using var dialog = new Form
+            {
+                Text = $"Tài liệu CLS - {tenDichVu}",
+                Size = new Size(680, 420),
+                MinimumSize = new Size(560, 340),
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.Sizable,
+                BackColor = Color.White
+            };
+            var title = new Label
+            {
+                Text = $"Tệp kết quả cho {tenDichVu}  •  Chấp nhận PDF/JPEG/PNG, tối đa 10 MB mỗi tệp",
+                Dock = DockStyle.Top,
+                Height = 44,
+                Padding = new Padding(14, 12, 12, 0),
+                Font = F_Bold
+            };
+            var grid = MakeGrid();
+            var actions = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 54,
+                FlowDirection = FlowDirection.RightToLeft,
+                Padding = new Padding(10)
+            };
+            var close = new Button { Text = "Đóng", Width = 90, Height = 32, DialogResult = DialogResult.Cancel };
+            var download = SecondaryBtn("Tải tệp đã chọn", 0, 0, 135, 32, C_Blue);
+            var upload = PrimaryBtn("Tải tệp lên SQL", 0, 0, 130, 32);
+            actions.Controls.AddRange(new Control[] { close, download, upload });
+
+            void LoadAttachments()
+            {
+                grid.DataSource = ClinicDAL.LayTaiLieuCLS(maChiDinh);
+                SafeFormatCol(grid, "MaTaiLieu", "Mã", 65);
+                SafeFormatCol(grid, "TenTep", "Tên tệp", 250);
+                SafeFormatCol(grid, "LoaiNoiDung", "Định dạng", 130);
+                SafeFormatCol(grid, "KichThuoc", "Dung lượng (byte)", 120);
+                SafeFormatCol(grid, "NgayTaiLen", "Ngày tải", 145);
+                if (grid.Columns.Contains("NgayTaiLen"))
+                    grid.Columns["NgayTaiLen"]!.DefaultCellStyle.Format = "dd/MM/yyyy HH:mm";
+            }
+
+            DataRow? SelectedAttachment()
+                => grid.SelectedRows.Count > 0 && grid.SelectedRows[0].DataBoundItem is DataRowView view
+                    ? view.Row
+                    : null;
+
+            upload.Click += (sender, args) =>
+            {
+                using var picker = new OpenFileDialog
+                {
+                    Title = "Chọn kết quả CLS",
+                    Filter = "Tệp kết quả (PDF, JPEG, PNG)|*.pdf;*.jpg;*.jpeg;*.png",
+                    CheckFileExists = true,
+                    Multiselect = false
+                };
+                if (picker.ShowDialog(dialog) != DialogResult.OK)
+                    return;
+                try
+                {
+                    byte[] content = File.ReadAllBytes(picker.FileName);
+                    string contentType = Path.GetExtension(picker.FileName).ToLowerInvariant() switch
+                    {
+                        ".pdf" => "application/pdf",
+                        ".png" => "image/png",
+                        ".jpg" or ".jpeg" => "image/jpeg",
+                        _ => ""
+                    };
+                    ClinicDAL.LuuTaiLieuCLS(maChiDinh, Path.GetFileName(picker.FileName), contentType, content);
+                    LoadAttachments();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message, "Không thể tải tệp CLS",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+            download.Click += (sender, args) =>
+            {
+                DataRow? row = SelectedAttachment();
+                if (row == null)
+                {
+                    MessageBox.Show("Chọn tệp cần tải xuống.", "Chưa chọn tệp",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                try
+                {
+                    var attachment = ClinicDAL.TaiTaiLieuCLS(Convert.ToInt64(row["MaTaiLieu"]));
+                    using var picker = new SaveFileDialog
+                    {
+                        FileName = attachment.tenTep,
+                        Filter = "Tệp kết quả (PDF, JPEG, PNG)|*.pdf;*.jpg;*.jpeg;*.png",
+                        OverwritePrompt = true
+                    };
+                    if (picker.ShowDialog(dialog) == DialogResult.OK)
+                        File.WriteAllBytes(picker.FileName, attachment.duLieu);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message, "Không thể tải tệp xuống",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+            dialog.Controls.Add(grid);
+            dialog.Controls.Add(actions);
+            dialog.Controls.Add(title);
+            dialog.CancelButton = close;
+            LoadAttachments();
+            dialog.ShowDialog(this);
+        }
+
         private void BuildStep2KeDonThuoc(Panel container, DataRow? drPK, string tienSu)
         {
             var pnlContainer = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
@@ -1238,6 +1563,13 @@ namespace QlyPhongKham.Forms
                     if (r["MaThuoc"]?.ToString() == maThuoc) { rThuoc = r; break; }
                 }
                 if (rThuoc == null) return;
+                if (!string.IsNullOrWhiteSpace(tienSu) &&
+                    MessageBox.Show(
+                        $"Bệnh nhân có tiền sử / dị ứng đã ghi nhận:\r\n{tienSu}\r\n\r\nDanh mục thuốc hiện chưa có dữ liệu hoạt chất để tự xác định tương tác. Bác sĩ cần kiểm tra an toàn trước khi kê. Tiếp tục với thuốc {rThuoc["TenThuoc"]}?",
+                        "Cảnh báo an toàn thuốc",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning) != DialogResult.Yes)
+                    return;
 
                 int sl = (int)(numLieu.Value * numLan.Value * numNgay.Value);
                 decimal donGia = Convert.ToDecimal(rThuoc["DonGiaBan"]);
@@ -1406,7 +1738,55 @@ namespace QlyPhongKham.Forms
                         MessageBox.Show("Không tìm thấy phiếu khám để hoàn tất.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         return;
                     }
-                    MessageBox.Show("Đã hoàn tất ca khám và chuyển phiếu sang quầy thu ngân.", "Hoàn tất thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    if (MessageBox.Show("Đã hoàn tất ca khám. Bạn có muốn tạo lịch tái khám nháp cho bệnh nhân không?",
+                        "Tạo lịch tái khám", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                    {
+                        using var followUpForm = new Form
+                        {
+                            Text = "Chọn thời gian tái khám",
+                            StartPosition = FormStartPosition.CenterParent,
+                            FormBorderStyle = FormBorderStyle.FixedDialog,
+                            ClientSize = new Size(340, 125),
+                            MaximizeBox = false,
+                            MinimizeBox = false
+                        };
+                        var days = new ComboBox
+                        {
+                            DropDownStyle = ComboBoxStyle.DropDownList,
+                            Location = new Point(18, 30),
+                            Size = new Size(290, 30)
+                        };
+                        days.Items.AddRange(new object[] { "Sau 7 ngày", "Sau 14 ngày", "Sau 30 ngày" });
+                        days.SelectedIndex = 0;
+                        var confirm = new Button
+                        {
+                            Text = "Tạo lịch",
+                            DialogResult = DialogResult.OK,
+                            Location = new Point(208, 76),
+                            Size = new Size(100, 30)
+                        };
+                        followUpForm.Controls.AddRange(new Control[] { days, confirm });
+                        followUpForm.AcceptButton = confirm;
+                        if (followUpForm.ShowDialog(this) == DialogResult.OK)
+                        {
+                            try
+                            {
+                                int interval = days.SelectedIndex switch { 1 => 14, 2 => 30, _ => 7 };
+                                DateTime followUp = ClinicDAL.TaoLichTaiKham(_currentDoctorMaPK, interval);
+                                MessageBox.Show($"Đã tạo lịch nháp {followUp:dd/MM/yyyy HH:mm}. Lễ tân cần xác nhận lịch.",
+                                    "Đã tạo lịch tái khám", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            }
+                            catch (Exception ex)
+                            {
+                                MessageBox.Show($"Ca khám đã hoàn tất nhưng chưa tạo được lịch tái khám: {ex.Message}",
+                                    "Không tạo được lịch", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        MessageBox.Show("Đã hoàn tất ca khám và chuyển phiếu sang quầy thu ngân.", "Hoàn tất thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
                     ShowBacSiLichKhamView();
                 }
                 catch (Exception ex)
@@ -1417,7 +1797,83 @@ namespace QlyPhongKham.Forms
 
             var btnPrintSummary = SecondaryBtn("🖨 In tóm tắt ca khám", 14, 376, cardPay.Width - 28, 34, C_Blue);
             btnPrintSummary.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            btnPrintSummary.Click += (s, e) => MessageBox.Show("Chức năng in tóm tắt ca khám chưa được triển khai.", "In tóm tắt", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            btnPrintSummary.Click += (s, e) =>
+            {
+                if (drPK == null) return;
+                using var documentForm = new Form
+                {
+                    Text = "In giấy tờ y tế",
+                    StartPosition = FormStartPosition.CenterParent,
+                    FormBorderStyle = FormBorderStyle.FixedDialog,
+                    ClientSize = new Size(480, 300),
+                    MaximizeBox = false,
+                    MinimizeBox = false
+                };
+                var documentType = new ComboBox
+                {
+                    DropDownStyle = ComboBoxStyle.DropDownList,
+                    Location = new Point(18, 34),
+                    Size = new Size(438, 30)
+                };
+                documentType.Items.AddRange(new object[]
+                {
+                    "Tóm tắt ca khám",
+                    "Giấy khám sức khỏe",
+                    "Giấy chuyển tuyến",
+                    "Giấy nghỉ ốm"
+                });
+                documentType.SelectedIndex = 0;
+                var content = new TextBox
+                {
+                    Location = new Point(18, 92),
+                    Size = new Size(438, 142),
+                    Multiline = true,
+                    ScrollBars = ScrollBars.Vertical
+                };
+                content.Text = documentType.SelectedIndex == 0
+                    ? $"Phiếu khám: {_currentDoctorMaPK}\r\nNgày khám: {Convert.ToDateTime(drPK["NgayKham"]):dd/MM/yyyy HH:mm}\r\nTriệu chứng: {drPK["TrieuChung"]}\r\nKhám lâm sàng: {drPK["KhamLamSang"]}\r\nSinh hiệu: {drPK["SinhHieu"]}\r\nLời dặn: {drPK["LoiDan"]}"
+                    : "";
+                documentType.SelectedIndexChanged += (sender, args) =>
+                {
+                    content.Text = documentType.SelectedIndex == 0
+                        ? $"Phiếu khám: {_currentDoctorMaPK}\r\nNgày khám: {Convert.ToDateTime(drPK["NgayKham"]):dd/MM/yyyy HH:mm}\r\nTriệu chứng: {drPK["TrieuChung"]}\r\nKhám lâm sàng: {drPK["KhamLamSang"]}\r\nSinh hiệu: {drPK["SinhHieu"]}\r\nLời dặn: {drPK["LoiDan"]}"
+                        : "";
+                };
+                var print = new Button
+                {
+                    Text = "Xem trước / In / Lưu PDF",
+                    Location = new Point(286, 250),
+                    Size = new Size(170, 32),
+                    DialogResult = DialogResult.OK
+                };
+                documentForm.Controls.AddRange(new Control[]
+                {
+                    new Label { Text = "Loại giấy tờ", Location = new Point(18, 12), AutoSize = true },
+                    documentType,
+                    new Label { Text = "Nội dung bổ sung / xác nhận", Location = new Point(18, 70), AutoSize = true },
+                    content,
+                    print
+                });
+                documentForm.AcceptButton = print;
+                if (documentForm.ShowDialog(this) != DialogResult.OK) return;
+                if (string.IsNullOrWhiteSpace(content.Text))
+                {
+                    MessageBox.Show("Vui lòng nhập nội dung giấy tờ trước khi in.", "Thiếu nội dung", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                string docTitle = documentType.SelectedItem?.ToString() ?? "Giấy y tế";
+                string dob = drPK["NgaySinh"] == DBNull.Value
+                    ? "Chưa cập nhật"
+                    : Convert.ToDateTime(drPK["NgaySinh"]).ToString("dd/MM/yyyy");
+                PdfPrintHelper.InGiayYTe(
+                    docTitle,
+                    drPK["MaBN"].ToString() ?? "",
+                    drPK["TenBN"].ToString() ?? "",
+                    dob,
+                    drPK["ChanDoan"].ToString() ?? "",
+                    content.Text.Trim(),
+                    SessionState.CurrentUser?.HoTenNhanVien ?? "Bác sĩ điều trị");
+            };
 
             cardPay.Controls.AddRange(new Control[] { lblPayTitle, pnlItems, pnlCheck, btnSendCashier, btnPrintSummary });
             pnlRightCol.Controls.Add(cardPay);

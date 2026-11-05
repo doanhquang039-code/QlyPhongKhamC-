@@ -128,7 +128,7 @@ namespace QlyPhongKham.Forms
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = new Font("Segoe UI", 9.5F)
             };
-            cboRole.Items.AddRange(new object[] { "Admin", "BacSi", "LeTan" });
+            cboRole.Items.AddRange(new object[] { "Admin", "BacSi", "LeTan", "ThuNgan" });
             cboRole.SelectedItem = nv?.ChucVu ?? "LeTan";
             AddField(detailsCard, "Chức vụ", cboRole, 271, 42);
 

@@ -108,6 +108,7 @@ namespace QlyPhongKham.Forms
         private Panel _sidebarNavigation = null!;
         private Panel _sidebarFooter = null!;
         private Bitmap? _sidebarProfileAvatar;
+        private System.Windows.Forms.Timer? _noShowTimer;
         private  Label  lblPageTitle    = null!;
         private  Label  lblBreadcrumb   = null!;
         private  Panel  topBar          = null!;
@@ -140,8 +141,6 @@ namespace QlyPhongKham.Forms
             InitializeComponent();
             ClinicDAL.EnsureClinicRoomSchema();
             ClinicDAL.EnsurePharmacySchema();
-            if (SessionState.CurrentUser?.Quyen == "ThuNgan")
-                SessionState.CurrentUser.Quyen = "LeTan";
             Resize += (s, e) => ApplyResponsiveLayout();
             ApplyRolePermissions();
         }
@@ -209,7 +208,7 @@ namespace QlyPhongKham.Forms
             btnNavTongQuan.Click += (s, e) =>
             {
                 if (SessionState.IsReceptionist) ShowLeTanDashboard();
-                else ShowDashboard();
+                else if (SessionState.IsAdmin) ShowDashboard();
             };
             btnNavLichHen.Click  += (s, e) =>
             {
@@ -355,6 +354,9 @@ namespace QlyPhongKham.Forms
 
         internal void SetActiveNav(Button btn)
         {
+            _noShowTimer?.Stop();
+            _noShowTimer?.Dispose();
+            _noShowTimer = null;
             if (_activeNavBtn != null)
             {
                 _activeNavBtn.BackColor = Color.Transparent;
@@ -363,6 +365,36 @@ namespace QlyPhongKham.Forms
             _activeNavBtn = btn;
             btn.BackColor = Color.FromArgb(0, 180, 166, 40);
             btn.ForeColor = C_Teal;
+        }
+
+        internal void StartNoShowTimer(Action refreshAppointments)
+        {
+            _noShowTimer?.Stop();
+            _noShowTimer?.Dispose();
+            _noShowTimer = new System.Windows.Forms.Timer { Interval = 60_000 };
+            _noShowTimer.Tick += (sender, args) =>
+            {
+                try
+                {
+                    refreshAppointments();
+                }
+                catch (Exception ex)
+                {
+                    _noShowTimer?.Stop();
+                    MessageBox.Show(this, ex.Message, "Không thể tự cập nhật lịch vắng",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+            _noShowTimer.Start();
+            FormClosed -= StopNoShowTimer;
+            FormClosed += StopNoShowTimer;
+        }
+
+        private void StopNoShowTimer(object? sender, FormClosedEventArgs e)
+        {
+            _noShowTimer?.Stop();
+            _noShowTimer?.Dispose();
+            _noShowTimer = null;
         }
 
         // ════════════════════════════════════════════════════════
@@ -506,14 +538,28 @@ namespace QlyPhongKham.Forms
                 btnNavKhoThuoc.Visible = true;
                 btnNavKhoThuoc.Text = "  💊  Kho thuốc";
                 btnNavKhoThuoc.Location = new Point(8, 216);
-                btnNavThuNgan.Visible = true;
-                btnNavThuNgan.Text = "  💳  Thanh toán";
-                btnNavThuNgan.Location = new Point(8, 262);
+                btnNavThuNgan.Visible = false;
                 btnNavNhanVien.Visible = false;
                 btnNavBaoCao.Visible   = false;
                 btnNavKhoaPhong.Visible = false;
                 ApplyResponsiveLayout();
                 ShowLeTanDashboard();
+            }
+            else if (SessionState.IsCashier)
+            {
+                btnNavTongQuan.Visible = false;
+                btnNavLichHen.Visible = false;
+                btnNavBenhNhan.Visible = false;
+                btnNavKhamBenh.Visible = false;
+                btnNavKhoThuoc.Visible = false;
+                btnNavNhanVien.Visible = false;
+                btnNavBaoCao.Visible = false;
+                btnNavKhoaPhong.Visible = false;
+                btnNavThuNgan.Visible = true;
+                btnNavThuNgan.Text = "  💳  Thanh toán";
+                btnNavThuNgan.Location = new Point(8, 32);
+                ApplyResponsiveLayout();
+                ShowThuNganView();
             }
             else // Admin
             {
@@ -539,7 +585,8 @@ namespace QlyPhongKham.Forms
         {
             "Admin" => "Quản trị viên",
             "BacSi" => "Bác sĩ khám bệnh",
-            "LeTan" => "Lễ tân & Thu ngân",
+            "LeTan" => "Lễ tân",
+            "ThuNgan" => "Thu ngân",
             _ => quyen
         };
 

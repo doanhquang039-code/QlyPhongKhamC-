@@ -59,6 +59,26 @@ namespace QlyPhongKham.Models
         public string TrangThai { get; set; } = "Chờ khám";
     }
 
+    /// <summary>
+    /// Sinh hiệu được đo trước khám. Chuỗi SinhHieu trên PhieuKham chỉ còn là
+    /// bản tóm tắt để tương thích các báo cáo và dữ liệu cũ.
+    /// </summary>
+    public class SinhHieu
+    {
+        public decimal HuyetApTamThu { get; set; }
+        public decimal HuyetApTamTruong { get; set; }
+        public decimal Mach { get; set; }
+        public decimal NhietDo { get; set; }
+        public decimal Spo2 { get; set; }
+        public decimal ChieuCao { get; set; }
+        public decimal CanNang { get; set; }
+        public decimal Bmi => ChieuCao <= 0 ? 0 : CanNang / ((ChieuCao / 100m) * (ChieuCao / 100m));
+
+        public string ToSummary() => string.Format(System.Globalization.CultureInfo.InvariantCulture,
+            "Huyết áp: {0:0}/{1:0} mmHg; Mạch: {2:0} lần/phút; Nhiệt độ: {3:0.0} °C; SpO2: {4:0}%; Chiều cao: {5:0.0} cm; Cân nặng: {6:0.0} kg; BMI: {7:0.0}",
+            HuyetApTamThu, HuyetApTamTruong, Mach, NhietDo, Spo2, ChieuCao, CanNang, Bmi);
+    }
+
     public class DichVu
     {
         public string MaDV { get; set; } = string.Empty;

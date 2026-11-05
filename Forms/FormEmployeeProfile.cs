@@ -152,7 +152,8 @@ namespace QlyPhongKham.Forms
         {
             "Admin" => "Quản trị viên",
             "BacSi" => "Bác sĩ khám bệnh",
-            "LeTan" or "ThuNgan" => "Lễ tân & Thu ngân",
+            "LeTan" => "Lễ tân",
+            "ThuNgan" => "Thu ngân",
             _ => role
         };
     }

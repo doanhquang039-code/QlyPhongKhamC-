@@ -2,4 +2,5 @@ dbconfig.txt
 artifacts/
 bin/
 obj/
+.local-dotnet/
 doanh.c++

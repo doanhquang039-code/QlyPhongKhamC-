@@ -12,6 +12,6 @@ namespace QlyPhongKham
         public static bool IsAdmin => CurrentUser?.Quyen == "Admin";
         public static bool IsDoctor => CurrentUser?.Quyen == "BacSi";
         public static bool IsReceptionist => CurrentUser?.Quyen == "LeTan";
-        public static bool IsCashier => IsReceptionist;
+        public static bool IsCashier => CurrentUser?.Quyen == "LeTan";
     }
 }

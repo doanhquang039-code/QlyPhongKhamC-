@@ -26,7 +26,30 @@ GO
 USE [$(DatabaseName)];
 GO
 
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_PADDING ON;
+SET ANSI_WARNINGS ON;
+SET ARITHABORT ON;
+SET CONCAT_NULL_YIELDS_NULL ON;
+SET NUMERIC_ROUNDABORT OFF;
+GO
+
 -- 1. BẢNG NHÂN VIÊN
+IF OBJECT_ID('LichHen', 'U') IS NOT NULL AND EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name=N'FK_LichHen_PhieuKhamTaiKham')
+    ALTER TABLE LichHen DROP CONSTRAINT FK_LichHen_PhieuKhamTaiKham;
+IF OBJECT_ID('SinhHieuPhieuKham', 'U') IS NOT NULL DROP TABLE SinhHieuPhieuKham;
+IF OBJECT_ID('PhieuKham', 'U') IS NOT NULL AND EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name=N'FK_PhieuKham_LichHen')
+    ALTER TABLE PhieuKham DROP CONSTRAINT FK_PhieuKham_LichHen;
+IF OBJECT_ID('ChiTietCapPhatThuoc', 'U') IS NOT NULL DROP TABLE ChiTietCapPhatThuoc;
+IF OBJECT_ID('DieuChinhKho', 'U') IS NOT NULL DROP TABLE DieuChinhKho;
+IF OBJECT_ID('LoThuoc', 'U') IS NOT NULL DROP TABLE LoThuoc;
+IF OBJECT_ID('PhieuNhapKho', 'U') IS NOT NULL DROP TABLE PhieuNhapKho;
+IF OBJECT_ID('NhaCungCap', 'U') IS NOT NULL DROP TABLE NhaCungCap;
+IF OBJECT_ID('HoSoSucKhoe', 'U') IS NOT NULL DROP TABLE HoSoSucKhoe;
+IF OBJECT_ID('DongYDuLieuCaNhan', 'U') IS NOT NULL DROP TABLE DongYDuLieuCaNhan;
+IF OBJECT_ID('DanhMucICD10', 'U') IS NOT NULL DROP TABLE DanhMucICD10;
+IF OBJECT_ID('NhatKyHeThong', 'U') IS NOT NULL DROP TABLE NhatKyHeThong;
 IF OBJECT_ID('TaiKhoan', 'U') IS NOT NULL DROP TABLE TaiKhoan;
 IF OBJECT_ID('TaiKhoanBenhNhan', 'U') IS NOT NULL DROP TABLE TaiKhoanBenhNhan;
 IF OBJECT_ID('ChiTietDonThuoc', 'U') IS NOT NULL DROP TABLE ChiTietDonThuoc;
@@ -47,7 +70,7 @@ GO
 CREATE TABLE NhanVien (
     MaNV VARCHAR(10) PRIMARY KEY,
     HoTen NVARCHAR(100) NOT NULL,
-    ChucVu NVARCHAR(20) NOT NULL CONSTRAINT CK_NhanVien_ChucVu CHECK (ChucVu IN (N'Admin', N'BacSi', N'LeTan')),
+    ChucVu NVARCHAR(20) NOT NULL CONSTRAINT CK_NhanVien_ChucVu CHECK (ChucVu IN (N'Admin', N'BacSi', N'LeTan', N'ThuNgan')),
     ChuyenKhoa NVARCHAR(100) NULL,
     SoDienThoai VARCHAR(15) NULL,
     Email VARCHAR(100) NULL,
@@ -152,6 +175,7 @@ CREATE TABLE LichHen (
     NgayHen DATETIME NOT NULL,
     LyDoKham NVARCHAR(255) NULL,
     LyDoXuLy NVARCHAR(255) NULL,
+    MaPK_TaiKham VARCHAR(10) NULL,
     TrangThai NVARCHAR(30) NOT NULL DEFAULT N'Chờ xác nhận' 
         CONSTRAINT CK_LichHen_TrangThai CHECK (TrangThai IN (N'Chờ xác nhận', N'Đã xác nhận', N'Đã đến', N'Đã hủy', N'Bị từ chối', N'Không đến')),
     CONSTRAINT FK_LichHen_BenhNhan FOREIGN KEY (MaBN) REFERENCES BenhNhan(MaBN) ON DELETE CASCADE,
@@ -170,6 +194,8 @@ CREATE TABLE PhieuKham (
     MaBN VARCHAR(10) NOT NULL,
     MaNV_BacSi VARCHAR(10) NOT NULL,
     MaPhong VARCHAR(10) NULL,
+    MaPK_Goc VARCHAR(10) NULL,
+    LyDoChuyen NVARCHAR(500) NULL,
     NgayKham DATETIME NOT NULL DEFAULT GETDATE(),
     NgayKhamNgay AS CONVERT(DATE, NgayKham) PERSISTED,
     TrieuChung NVARCHAR(255) NULL,
@@ -178,17 +204,39 @@ CREATE TABLE PhieuKham (
     ChanDoan NVARCHAR(255) NULL,
     LoiDan NVARCHAR(500) NULL,
     TrangThai NVARCHAR(30) NOT NULL DEFAULT N'Chờ khám'
-        CONSTRAINT CK_PhieuKham_TrangThai CHECK (TrangThai IN (N'Chờ khám', N'Đang khám', N'Chờ kết quả CLS', N'Đã khám xong', N'Đã hủy')),
+        CONSTRAINT CK_PhieuKham_TrangThai CHECK (TrangThai IN (N'Chờ khám', N'Đang khám', N'Chờ kết quả CLS', N'Đã khám xong', N'Đã hủy', N'Đã chuyển phòng')),
     CONSTRAINT FK_PhieuKham_BenhNhan FOREIGN KEY (MaBN) REFERENCES BenhNhan(MaBN),
     CONSTRAINT FK_PhieuKham_BacSi FOREIGN KEY (MaNV_BacSi) REFERENCES NhanVien(MaNV),
-    CONSTRAINT FK_PhieuKham_Phong FOREIGN KEY (MaPhong) REFERENCES PhongKham(MaPhong)
+    CONSTRAINT FK_PhieuKham_Phong FOREIGN KEY (MaPhong) REFERENCES PhongKham(MaPhong),
+    CONSTRAINT FK_PhieuKham_PhieuKhamGoc FOREIGN KEY (MaPK_Goc) REFERENCES PhieuKham(MaPK)
 );
 GO
 
 ALTER TABLE PhieuKham ADD MaLichHen INT NULL;
 ALTER TABLE PhieuKham ADD CONSTRAINT FK_PhieuKham_LichHen FOREIGN KEY (MaLichHen) REFERENCES LichHen(MaLichHen);
+ALTER TABLE LichHen ADD CONSTRAINT FK_LichHen_PhieuKhamTaiKham FOREIGN KEY (MaPK_TaiKham) REFERENCES PhieuKham(MaPK);
+GO
 CREATE UNIQUE INDEX UX_PhieuKham_MaLichHen ON PhieuKham(MaLichHen) WHERE MaLichHen IS NOT NULL;
 CREATE UNIQUE INDEX UX_PhieuKham_Phong_Ngay_STT ON PhieuKham(MaPhong, NgayKhamNgay, STT) WHERE MaPhong IS NOT NULL;
+GO
+
+CREATE TABLE SinhHieuPhieuKham (
+    MaSinhHieu BIGINT IDENTITY(1,1) PRIMARY KEY,
+    MaPK VARCHAR(10) NOT NULL,
+    HuyetApTamThu DECIMAL(5,1) NOT NULL CHECK(HuyetApTamThu BETWEEN 40 AND 300),
+    HuyetApTamTruong DECIMAL(5,1) NOT NULL CHECK(HuyetApTamTruong BETWEEN 20 AND 200),
+    Mach DECIMAL(5,1) NOT NULL CHECK(Mach BETWEEN 20 AND 250),
+    NhietDo DECIMAL(4,1) NOT NULL CHECK(NhietDo BETWEEN 25 AND 45),
+    Spo2 DECIMAL(5,1) NOT NULL CHECK(Spo2 BETWEEN 50 AND 100),
+    ChieuCao DECIMAL(5,1) NULL CHECK(ChieuCao BETWEEN 30 AND 250),
+    CanNang DECIMAL(6,2) NULL CHECK(CanNang BETWEEN 1 AND 400),
+    MaNV_Do VARCHAR(10) NOT NULL,
+    NgayDo DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    CONSTRAINT FK_SinhHieu_PhieuKham FOREIGN KEY(MaPK) REFERENCES PhieuKham(MaPK),
+    CONSTRAINT FK_SinhHieu_NhanVien FOREIGN KEY(MaNV_Do) REFERENCES NhanVien(MaNV)
+);
+GO
+CREATE INDEX IX_SinhHieuPhieuKham_MaPK_NgayDo ON SinhHieuPhieuKham(MaPK, NgayDo DESC);
 GO
 
 -- 6. BẢNG DỊCH VỤ CẬN LÂM SÀNG
@@ -253,7 +301,8 @@ CREATE TABLE LoThuoc (
     NgayHetHan DATE NOT NULL,
     DonGiaNhap DECIMAL(18,2) NOT NULL CHECK (DonGiaNhap >= 0),
     SoLuongNhap INT NOT NULL CHECK (SoLuongNhap > 0),
-    SoLuongCon INT NOT NULL CHECK (SoLuongCon >= 0 AND SoLuongCon <= SoLuongNhap),
+    SoLuongCon INT NOT NULL,
+    CONSTRAINT CK_LoThuoc_SoLuongCon CHECK (SoLuongCon >= 0 AND SoLuongCon <= SoLuongNhap),
     CONSTRAINT FK_LoThuoc_PhieuNhap FOREIGN KEY (MaPN) REFERENCES PhieuNhapKho(MaPN),
     CONSTRAINT FK_LoThuoc_Thuoc FOREIGN KEY (MaThuoc) REFERENCES Thuoc(MaThuoc)
 );
@@ -348,7 +397,7 @@ INSERT INTO NhanVien (MaNV, HoTen, ChucVu, ChuyenKhoa, SoDienThoai, Email, Trang
 ('NV001', N'Nguyễn Quản Trị', 'Admin', NULL, '0901234567', 'admin@phongkham.com', 1),
 ('NV002', N'BS. Trần Văn Nam', 'BacSi', N'Nội tổng quát', '0912345678', 'nam.tv@phongkham.com', 1),
 ('NV003', N'BS. Lê Thị Hoa', 'BacSi', N'Tai Mũi Họng', '0923456789', 'hoa.lt@phongkham.com', 1),
-('NV004', N'Phạm Thu Ngân', 'LeTan', NULL, '0934567890', 'ngan.pt@phongkham.com', 1),
+('NV004', N'Phạm Thu Ngân', 'ThuNgan', NULL, '0934567890', 'ngan.pt@phongkham.com', 1),
 ('NV005', N'Hoàng Lễ Tân', 'LeTan', NULL, '0945678901', 'tan.hl@phongkham.com', 1);
 
 -- Mật khẩu mẫu '123456' được băm PBKDF2-SHA256 (210000 vòng).
@@ -356,7 +405,7 @@ INSERT INTO TaiKhoan (TenDangNhap, MatKhau, MaNV, Quyen, TrangThai) VALUES
 ('admin', 'PBKDF2$210000$Q2xpbmljRGVtb1NhbHQwMQ==$GjPrYMc9dhjD7oZPbijVodSow+Dwaf7ufWyQe/P3wYw=', 'NV001', 'Admin', 1),
 ('bacsi_nam', 'PBKDF2$210000$Q2xpbmljRGVtb1NhbHQwMQ==$GjPrYMc9dhjD7oZPbijVodSow+Dwaf7ufWyQe/P3wYw=', 'NV002', 'BacSi', 1),
 ('bacsi_hoa', 'PBKDF2$210000$Q2xpbmljRGVtb1NhbHQwMQ==$GjPrYMc9dhjD7oZPbijVodSow+Dwaf7ufWyQe/P3wYw=', 'NV003', 'BacSi', 1),
-('thungan', 'PBKDF2$210000$Q2xpbmljRGVtb1NhbHQwMQ==$GjPrYMc9dhjD7oZPbijVodSow+Dwaf7ufWyQe/P3wYw=', 'NV004', 'LeTan', 1),
+('thungan', 'PBKDF2$210000$Q2xpbmljRGVtb1NhbHQwMQ==$GjPrYMc9dhjD7oZPbijVodSow+Dwaf7ufWyQe/P3wYw=', 'NV004', 'ThuNgan', 1),
 ('letan', 'PBKDF2$210000$Q2xpbmljRGVtb1NhbHQwMQ==$GjPrYMc9dhjD7oZPbijVodSow+Dwaf7ufWyQe/P3wYw=', 'NV005', 'LeTan', 1);
 
 INSERT INTO Khoa (MaKhoa, TenKhoa) VALUES
@@ -374,7 +423,7 @@ INSERT INTO PhanCongPhong (MaNV, MaPhong, VaiTro) VALUES
 ('NV002', 'P101', N'BacSi'),
 ('NV002', 'P102', N'BacSi'),
 ('NV003', 'P201', N'BacSi'),
-('NV004', 'P101', N'LeTan'),
+('NV005', 'P101', N'LeTan'),
 ('NV005', 'P201', N'LeTan');
 
 -- Bệnh nhân

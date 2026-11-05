@@ -125,10 +125,61 @@ namespace QlyPhongKham.Helpers
             ExecutePrint(printDoc);
         }
 
+        public static void InGiayYTe(string tieuDe, string maBN, string tenBN, string ngaySinh,
+            string chanDoan, string noiDung, string bacSi)
+        {
+            var printDoc = new PrintDocument();
+            printDoc.DocumentName = $"GiayYTe_{maBN}_{DateTime.Now:yyyyMMdd}";
+            printDoc.PrintPage += (s, ev) =>
+            {
+                var graphics = ev.Graphics;
+                if (graphics == null) return;
+
+                float left = 55;
+                float right = ev.PageBounds.Width - 55;
+                float width = right - left;
+                float top = 55;
+                using var heading = new Font("Segoe UI", 16, FontStyle.Bold);
+                using var titleFont = new Font("Segoe UI", 18, FontStyle.Bold);
+                using var bold = new Font("Segoe UI", 11, FontStyle.Bold);
+                using var regular = new Font("Segoe UI", 11, FontStyle.Regular);
+                using var italic = new Font("Segoe UI", 10, FontStyle.Italic);
+                using var ink = new SolidBrush(Color.FromArgb(30, 41, 59));
+                using var accent = new SolidBrush(Color.FromArgb(13, 148, 136));
+                using var line = new Pen(Color.FromArgb(203, 213, 225), 1);
+                graphics.DrawString("PHÒNG KHÁM ĐA KHOA AN TÂM", heading, accent, left, top);
+                top += 30;
+                graphics.DrawLine(line, left, top, right, top);
+                top += 24;
+                var titleSize = graphics.MeasureString(tieuDe, titleFont, (int)width);
+                graphics.DrawString(tieuDe, titleFont, ink, left + (width - titleSize.Width) / 2, top);
+                top += titleSize.Height + 28;
+                graphics.DrawString($"Họ tên: {tenBN}", bold, ink, left, top);
+                top += 26;
+                graphics.DrawString($"Mã bệnh nhân: {maBN}     Ngày sinh: {ngaySinh}", regular, ink, left, top);
+                top += 32;
+                graphics.DrawString("Chẩn đoán:", bold, ink, left, top);
+                top += 24;
+                graphics.DrawString(chanDoan, regular, ink, new RectangleF(left, top, width, 70));
+                top += 82;
+                graphics.DrawString("Nội dung:", bold, ink, left, top);
+                top += 24;
+                graphics.DrawString(noiDung, regular, ink, new RectangleF(left, top, width, 280));
+                var signLeft = right - 235;
+                graphics.DrawString($"Ngày {DateTime.Today:dd} tháng {DateTime.Today:MM} năm {DateTime.Today:yyyy}", italic, ink, signLeft, ev.PageBounds.Height - 175);
+                graphics.DrawString("Bác sĩ khám bệnh", bold, ink, signLeft + 35, ev.PageBounds.Height - 148);
+                graphics.DrawString(bacSi, bold, accent, signLeft + 35, ev.PageBounds.Height - 72);
+                ev.HasMorePages = false;
+            };
+            ExecutePrint(printDoc);
+        }
+
         /// <summary>
         /// In hoặc Lưu file PDF Hóa Đơn Viện Phí
         /// </summary>
-        public static void InHoaDon(string maHD, string maPK, string tenBN, string chanDoan, string hinhThucTT, decimal tienDV, decimal tienThuoc, decimal giamGia, decimal tongTien, string nguoiLap)
+        public static void InHoaDon(string maHD, string maPK, string tenBN, string chanDoan, string hinhThucTT,
+            decimal tienDV, decimal tienThuoc, decimal giamGia, decimal tongTien, string nguoiLap,
+            decimal tienBaoHiem = 0, decimal daThu = 0, decimal conNo = 0)
         {
             var printDoc = new PrintDocument();
             printDoc.DocumentName = $"HoaDon_{maHD}_{DateTime.Now:yyyyMMdd}";
@@ -221,13 +272,18 @@ namespace QlyPhongKham.Helpers
                     top += 28;
                 }
 
-                // Tổng cộng Box
                 top += 10;
+                g.DrawString($"Tổng viện phí: {tongTien:N0} đ", fontRegular, brushBlack, right - 300, top);
+                top += 22;
+                g.DrawString($"BHYT chi trả: -{tienBaoHiem:N0} đ", fontRegular, brushBlack, right - 300, top);
+                top += 28;
                 g.FillRectangle(new SolidBrush(Color.FromArgb(238, 242, 255)), left, top, contentWidth, 42);
                 g.DrawRectangle(new Pen(Color.FromArgb(99, 102, 241), 1.5f), left, top, contentWidth, 42);
-                g.DrawString("TỔNG TIỀN PHẢI THANH TOÁN:", fontBigNumber, brushBlue, left + 15, top + 10);
-                g.DrawString($"{tongTien:N0} VNĐ", fontBigNumber, new SolidBrush(Color.FromArgb(220, 38, 38)), right - 220, top + 10);
-                top += 55;
+                g.DrawString("BỆNH NHÂN CẦN THANH TOÁN:", fontBigNumber, brushBlue, left + 15, top + 10);
+                g.DrawString($"{tongTien - tienBaoHiem:N0} VNĐ", fontBigNumber, new SolidBrush(Color.FromArgb(220, 38, 38)), right - 220, top + 10);
+                top += 48;
+                g.DrawString($"Đã thu: {daThu:N0} đ     Còn nợ: {conNo:N0} đ", fontBold, brushBlack, right - 300, top);
+                top += 24;
 
                 // Chữ ký
                 top += 20;
@@ -261,4 +317,3 @@ namespace QlyPhongKham.Helpers
         }
     }
 }
-

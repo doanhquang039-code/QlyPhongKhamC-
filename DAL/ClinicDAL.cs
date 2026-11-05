@@ -23,6 +23,251 @@ namespace QlyPhongKham.DAL
         private static bool _pharmacySchemaReady;
         private static readonly object AuditSchemaLock = new();
         private static bool _auditSchemaReady;
+        private static readonly object AdvancedWorkflowSchemaLock = new();
+        private static bool _advancedWorkflowSchemaReady;
+        private static readonly object VisitLineageSchemaLock = new();
+        private static bool _visitLineageSchemaReady;
+        private static readonly object VitalSignsSchemaLock = new();
+        private static bool _vitalSignsSchemaReady;
+
+        private static void EnsureVitalSignsSchema()
+        {
+            if (_vitalSignsSchemaReady) return;
+            lock (VitalSignsSchemaLock)
+            {
+                if (_vitalSignsSchemaReady) return;
+                DatabaseHelper.ExecuteNonQuery(@"
+                    IF OBJECT_ID(N'dbo.SinhHieuPhieuKham',N'U') IS NULL
+                    BEGIN
+                        CREATE TABLE dbo.SinhHieuPhieuKham(
+                            MaSinhHieu BIGINT IDENTITY(1,1) PRIMARY KEY,
+                            MaPK VARCHAR(10) NOT NULL,
+                            HuyetApTamThu DECIMAL(5,1) NOT NULL CHECK(HuyetApTamThu BETWEEN 40 AND 300),
+                            HuyetApTamTruong DECIMAL(5,1) NOT NULL CHECK(HuyetApTamTruong BETWEEN 20 AND 200),
+                            Mach DECIMAL(5,1) NOT NULL CHECK(Mach BETWEEN 20 AND 250),
+                            NhietDo DECIMAL(4,1) NOT NULL CHECK(NhietDo BETWEEN 25 AND 45),
+                            Spo2 DECIMAL(5,1) NOT NULL CHECK(Spo2 BETWEEN 50 AND 100),
+                            ChieuCao DECIMAL(5,1) NULL CHECK(ChieuCao BETWEEN 30 AND 250),
+                            CanNang DECIMAL(6,2) NULL CHECK(CanNang BETWEEN 1 AND 400),
+                            MaNV_Do VARCHAR(10) NOT NULL,
+                            NgayDo DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+                            CONSTRAINT FK_SinhHieuPhieuKham_PhieuKham FOREIGN KEY(MaPK) REFERENCES dbo.PhieuKham(MaPK),
+                            CONSTRAINT FK_SinhHieuPhieuKham_NhanVien FOREIGN KEY(MaNV_Do) REFERENCES dbo.NhanVien(MaNV)
+                        );
+                        CREATE INDEX IX_SinhHieuPhieuKham_MaPK_NgayDo ON dbo.SinhHieuPhieuKham(MaPK,NgayDo DESC);
+                    END;");
+                _vitalSignsSchemaReady = true;
+            }
+        }
+
+        private static void LuuSinhHieu(SqlConnection connection, SqlTransaction transaction, string maPK,
+            SinhHieu sinhHieu, string maNhanVien)
+        {
+            using var command = new SqlCommand(@"INSERT dbo.SinhHieuPhieuKham
+                (MaPK,HuyetApTamThu,HuyetApTamTruong,Mach,NhietDo,Spo2,ChieuCao,CanNang,MaNV_Do)
+                VALUES(@MaPK,@TamThu,@TamTruong,@Mach,@NhietDo,@Spo2,@ChieuCao,@CanNang,@MaNV)", connection, transaction);
+            command.Parameters.AddWithValue("@MaPK", maPK);
+            command.Parameters.AddWithValue("@TamThu", sinhHieu.HuyetApTamThu);
+            command.Parameters.AddWithValue("@TamTruong", sinhHieu.HuyetApTamTruong);
+            command.Parameters.AddWithValue("@Mach", sinhHieu.Mach);
+            command.Parameters.AddWithValue("@NhietDo", sinhHieu.NhietDo);
+            command.Parameters.AddWithValue("@Spo2", sinhHieu.Spo2);
+            command.Parameters.AddWithValue("@ChieuCao", sinhHieu.ChieuCao);
+            command.Parameters.AddWithValue("@CanNang", sinhHieu.CanNang);
+            command.Parameters.AddWithValue("@MaNV", maNhanVien);
+            command.ExecuteNonQuery();
+        }
+
+        private static void EnsureVisitLineageSchema()
+        {
+            if (_visitLineageSchemaReady) return;
+            lock (VisitLineageSchemaLock)
+            {
+                if (_visitLineageSchemaReady) return;
+                DatabaseHelper.ExecuteNonQuery(@"
+                    IF COL_LENGTH(N'dbo.PhieuKham',N'MaPK_Goc') IS NULL
+                        ALTER TABLE dbo.PhieuKham ADD MaPK_Goc VARCHAR(10) NULL;
+                    IF COL_LENGTH(N'dbo.PhieuKham',N'LyDoChuyen') IS NULL
+                        ALTER TABLE dbo.PhieuKham ADD LyDoChuyen NVARCHAR(500) NULL;
+                    IF COL_LENGTH(N'dbo.LichHen',N'MaPK_TaiKham') IS NULL
+                        ALTER TABLE dbo.LichHen ADD MaPK_TaiKham VARCHAR(10) NULL;
+                    IF EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.PhieuKham')
+                        AND name=N'CK_PhieuKham_TrangThai' AND definition NOT LIKE N'%Đã chuyển phòng%')
+                        ALTER TABLE dbo.PhieuKham DROP CONSTRAINT CK_PhieuKham_TrangThai;
+                    IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.PhieuKham')
+                        AND name=N'CK_PhieuKham_TrangThai')
+                        ALTER TABLE dbo.PhieuKham ADD CONSTRAINT CK_PhieuKham_TrangThai
+                            CHECK(TrangThai IN(N'Chờ khám',N'Đang khám',N'Chờ kết quả CLS',N'Đã khám xong',N'Đã hủy',N'Đã chuyển phòng'));
+                    IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE name=N'FK_PhieuKham_PhieuKhamGoc')
+                        ALTER TABLE dbo.PhieuKham ADD CONSTRAINT FK_PhieuKham_PhieuKhamGoc
+                            FOREIGN KEY(MaPK_Goc) REFERENCES dbo.PhieuKham(MaPK);
+                    IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE name=N'FK_LichHen_PhieuKhamTaiKham')
+                        ALTER TABLE dbo.LichHen ADD CONSTRAINT FK_LichHen_PhieuKhamTaiKham
+                            FOREIGN KEY(MaPK_TaiKham) REFERENCES dbo.PhieuKham(MaPK);
+                    IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'dbo.PhieuKham') AND name=N'IX_PhieuKham_MaPK_Goc')
+                        CREATE INDEX IX_PhieuKham_MaPK_Goc ON dbo.PhieuKham(MaPK_Goc);
+                    IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'dbo.LichHen') AND name=N'IX_LichHen_MaPK_TaiKham')
+                        CREATE INDEX IX_LichHen_MaPK_TaiKham ON dbo.LichHen(MaPK_TaiKham);");
+                _visitLineageSchemaReady = true;
+            }
+        }
+
+        private static void EnsureAdvancedWorkflowSchema()
+        {
+            if (_advancedWorkflowSchemaReady) return;
+            lock (AdvancedWorkflowSchemaLock)
+            {
+                if (_advancedWorkflowSchemaReady) return;
+                EnsureInvoiceSchema();
+                DatabaseHelper.ExecuteNonQuery(@"
+                    IF OBJECT_ID(N'dbo.CaLamViecBacSi',N'U') IS NULL
+                        CREATE TABLE dbo.CaLamViecBacSi(
+                            MaCa INT IDENTITY(1,1) PRIMARY KEY,
+                            MaNV VARCHAR(10) NOT NULL,
+                            Thu TINYINT NOT NULL CHECK(Thu BETWEEN 1 AND 7),
+                            GioBatDau TIME NOT NULL,
+                            GioKetThuc TIME NOT NULL,
+                            CONSTRAINT CK_CaLamViecBacSi_Gio CHECK(GioBatDau<GioKetThuc),
+                            CONSTRAINT FK_CaLamViecBacSi_NhanVien FOREIGN KEY(MaNV) REFERENCES dbo.NhanVien(MaNV) ON DELETE CASCADE
+                        );
+                    IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'dbo.CaLamViecBacSi') AND name=N'IX_CaLamViecBacSi_NhanVien_Thu')
+                        CREATE INDEX IX_CaLamViecBacSi_NhanVien_Thu ON dbo.CaLamViecBacSi(MaNV,Thu,GioBatDau,GioKetThuc);
+                    IF COL_LENGTH(N'dbo.ChiTietChiDinhDV',N'DaThanhToanCLS') IS NULL
+                        ALTER TABLE dbo.ChiTietChiDinhDV ADD DaThanhToanCLS BIT NOT NULL
+                            CONSTRAINT DF_ChiTietChiDinhDV_DaThanhToanCLS DEFAULT 1;
+                    IF COL_LENGTH(N'dbo.ChiTietChiDinhDV',N'MaNV_ThucHien') IS NULL
+                        ALTER TABLE dbo.ChiTietChiDinhDV ADD MaNV_ThucHien VARCHAR(10) NULL;
+                    IF COL_LENGTH(N'dbo.ChiTietChiDinhDV',N'ThoiGianThucHien') IS NULL
+                        ALTER TABLE dbo.ChiTietChiDinhDV ADD ThoiGianThucHien DATETIME2 NULL;
+                    IF COL_LENGTH(N'dbo.ChiTietChiDinhDV',N'ThoiGianTraKetQua') IS NULL
+                        ALTER TABLE dbo.ChiTietChiDinhDV ADD ThoiGianTraKetQua DATETIME2 NULL;
+                    IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE name=N'FK_ChiDinh_NguoiThucHien')
+                        ALTER TABLE dbo.ChiTietChiDinhDV ADD CONSTRAINT FK_ChiDinh_NguoiThucHien
+                            FOREIGN KEY(MaNV_ThucHien) REFERENCES dbo.NhanVien(MaNV);
+                    IF EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.ChiTietChiDinhDV')
+                        AND name=N'CK_ChiDinh_TrangThai' AND definition NOT LIKE N'%Đang thực hiện%')
+                        ALTER TABLE dbo.ChiTietChiDinhDV DROP CONSTRAINT CK_ChiDinh_TrangThai;
+                    IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.ChiTietChiDinhDV')
+                        AND name=N'CK_ChiDinh_TrangThai')
+                        ALTER TABLE dbo.ChiTietChiDinhDV ADD CONSTRAINT CK_ChiDinh_TrangThai
+                            CHECK(TrangThai IN(N'Chờ thực hiện',N'Đang thực hiện',N'Đã có kết quả'));
+                    IF OBJECT_ID(N'dbo.TaiLieuCLS',N'U') IS NULL
+                    BEGIN
+                        CREATE TABLE dbo.TaiLieuCLS(
+                            MaTaiLieu BIGINT IDENTITY(1,1) PRIMARY KEY,
+                            MaChiDinh INT NOT NULL,
+                            TenTep NVARCHAR(255) NOT NULL,
+                            LoaiNoiDung VARCHAR(100) NOT NULL,
+                            DuLieu VARBINARY(MAX) NOT NULL,
+                            KichThuoc BIGINT NOT NULL CHECK(KichThuoc>0),
+                            MaNV_TaiLen VARCHAR(10) NOT NULL,
+                            NgayTaiLen DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+                            CONSTRAINT FK_TaiLieuCLS_ChiDinh FOREIGN KEY(MaChiDinh) REFERENCES dbo.ChiTietChiDinhDV(MaChiDinh) ON DELETE CASCADE,
+                            CONSTRAINT FK_TaiLieuCLS_NhanVien FOREIGN KEY(MaNV_TaiLen) REFERENCES dbo.NhanVien(MaNV)
+                        );
+                        CREATE INDEX IX_TaiLieuCLS_MaChiDinh ON dbo.TaiLieuCLS(MaChiDinh,NgayTaiLen DESC);
+                    END;");
+                EnsureDefaultDoctorShifts();
+                DatabaseHelper.ExecuteNonQuery(@"
+                    IF OBJECT_ID(N'dbo.CaThuNgan',N'U') IS NULL
+                    BEGIN
+                        CREATE TABLE dbo.CaThuNgan(
+                            MaCa BIGINT IDENTITY(1,1) PRIMARY KEY,
+                            MaNV VARCHAR(10) NOT NULL,
+                            ThoiGianMo DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+                            TienDauCa DECIMAL(18,2) NOT NULL CHECK(TienDauCa>=0),
+                            ThoiGianDong DATETIME2 NULL,
+                            TienThucTe DECIMAL(18,2) NULL,
+                            GhiChuDongCa NVARCHAR(500) NULL,
+                            CONSTRAINT FK_CaThuNgan_NhanVien FOREIGN KEY(MaNV) REFERENCES dbo.NhanVien(MaNV)
+                        );
+                        CREATE UNIQUE INDEX UX_CaThuNgan_MaNV_DangMo ON dbo.CaThuNgan(MaNV) WHERE ThoiGianDong IS NULL;
+                    END;
+                    IF OBJECT_ID(N'dbo.GiaoDichVienPhi',N'U') IS NULL
+                        CREATE TABLE dbo.GiaoDichVienPhi(
+                            MaGiaoDich BIGINT IDENTITY(1,1) PRIMARY KEY,
+                            MaHD VARCHAR(10) NULL,
+                            MaPK VARCHAR(10) NOT NULL,
+                            MaCa BIGINT NULL,
+                            MaNV VARCHAR(10) NOT NULL,
+                            MaChiDinh INT NULL,
+                            Loai NVARCHAR(20) NOT NULL CONSTRAINT CK_GiaoDichVienPhi_Loai CHECK(Loai IN(N'Thu',N'TamUng',N'ThuCLS',N'HoanTien')),
+                            SoTien DECIMAL(18,2) NOT NULL CHECK(SoTien>0),
+                            HinhThuc NVARCHAR(30) NOT NULL CHECK(HinhThuc IN(N'Tiền mặt',N'Chuyển khoản QR',N'Thẻ')),
+                            ThoiGian DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+                            GhiChu NVARCHAR(500) NULL,
+                            CONSTRAINT FK_GiaoDichVienPhi_HoaDon FOREIGN KEY(MaHD) REFERENCES dbo.HoaDon(MaHD),
+                            CONSTRAINT FK_GiaoDichVienPhi_PhieuKham FOREIGN KEY(MaPK) REFERENCES dbo.PhieuKham(MaPK),
+                            CONSTRAINT FK_GiaoDichVienPhi_ChiDinh FOREIGN KEY(MaChiDinh) REFERENCES dbo.ChiTietChiDinhDV(MaChiDinh),
+                            CONSTRAINT FK_GiaoDichVienPhi_Ca FOREIGN KEY(MaCa) REFERENCES dbo.CaThuNgan(MaCa),
+                            CONSTRAINT FK_GiaoDichVienPhi_NhanVien FOREIGN KEY(MaNV) REFERENCES dbo.NhanVien(MaNV)
+                        );
+                    IF COL_LENGTH(N'dbo.GiaoDichVienPhi',N'MaChiDinh') IS NULL
+                        ALTER TABLE dbo.GiaoDichVienPhi ADD MaChiDinh INT NULL;
+                    IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE name=N'FK_GiaoDichVienPhi_ChiDinh')
+                        ALTER TABLE dbo.GiaoDichVienPhi ADD CONSTRAINT FK_GiaoDichVienPhi_ChiDinh
+                            FOREIGN KEY(MaChiDinh) REFERENCES dbo.ChiTietChiDinhDV(MaChiDinh);
+                    IF EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.GiaoDichVienPhi')
+                        AND name=N'CK_GiaoDichVienPhi_Loai' AND definition NOT LIKE N'%ThuCLS%')
+                        ALTER TABLE dbo.GiaoDichVienPhi DROP CONSTRAINT CK_GiaoDichVienPhi_Loai;
+                    IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.GiaoDichVienPhi')
+                        AND name=N'CK_GiaoDichVienPhi_Loai')
+                        ALTER TABLE dbo.GiaoDichVienPhi ADD CONSTRAINT CK_GiaoDichVienPhi_Loai
+                            CHECK(Loai IN(N'Thu',N'TamUng',N'ThuCLS',N'HoanTien'));
+                    IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'dbo.GiaoDichVienPhi') AND name=N'IX_GiaoDichVienPhi_MaHD')
+                        CREATE INDEX IX_GiaoDichVienPhi_MaHD ON dbo.GiaoDichVienPhi(MaHD,ThoiGian);
+                    IF OBJECT_ID(N'dbo.YeuCauHoanTien',N'U') IS NULL
+                        CREATE TABLE dbo.YeuCauHoanTien(
+                            MaYeuCau BIGINT IDENTITY(1,1) PRIMARY KEY,
+                            MaHD VARCHAR(10) NOT NULL,
+                            SoTien DECIMAL(18,2) NOT NULL CHECK(SoTien>0),
+                            LyDo NVARCHAR(500) NOT NULL,
+                            MaNV_DeNghi VARCHAR(10) NOT NULL,
+                            NgayDeNghi DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+                            TrangThai NVARCHAR(20) NOT NULL DEFAULT N'Chờ duyệt'
+                                CHECK(TrangThai IN(N'Chờ duyệt',N'Đã duyệt',N'Từ chối')),
+                            MaNV_Duyet VARCHAR(10) NULL,
+                            NgayDuyet DATETIME2 NULL,
+                            GhiChuDuyet NVARCHAR(500) NULL,
+                            CONSTRAINT FK_YeuCauHoanTien_HoaDon FOREIGN KEY(MaHD) REFERENCES dbo.HoaDon(MaHD),
+                            CONSTRAINT FK_YeuCauHoanTien_NguoiDeNghi FOREIGN KEY(MaNV_DeNghi) REFERENCES dbo.NhanVien(MaNV),
+                            CONSTRAINT FK_YeuCauHoanTien_NguoiDuyet FOREIGN KEY(MaNV_Duyet) REFERENCES dbo.NhanVien(MaNV)
+                        );
+                    INSERT INTO dbo.GiaoDichVienPhi(MaHD,MaPK,MaNV,Loai,SoTien,HinhThuc,ThoiGian,GhiChu)
+                    SELECT hd.MaHD,hd.MaPK,hd.MaNV_ThuNgan,N'Thu',
+                        hd.TongTien-hd.TienBaoHiem,hd.HinhThucTT,COALESCE(hd.NgayThanhToan,hd.NgayLap),N'Ghi nhận lịch sử hóa đơn đã thanh toán'
+                    FROM dbo.HoaDon hd
+                    WHERE hd.TrangThai=N'Đã thanh toán' AND hd.TongTien-hd.TienBaoHiem>0
+                      AND NOT EXISTS(SELECT 1 FROM dbo.GiaoDichVienPhi gd WHERE gd.MaHD=hd.MaHD AND gd.Loai=N'Thu');");
+                _advancedWorkflowSchemaReady = true;
+            }
+        }
+
+        private static void EnsureDefaultDoctorShifts()
+        {
+            DatabaseHelper.ExecuteNonQuery(@"
+                INSERT dbo.CaLamViecBacSi(MaNV,Thu,GioBatDau,GioKetThuc)
+                SELECT nv.MaNV,days.Thu,shifts.GioBatDau,shifts.GioKetThuc
+                FROM dbo.NhanVien nv
+                CROSS JOIN (VALUES(1),(2),(3),(4),(5),(6)) days(Thu)
+                CROSS JOIN (VALUES(CONVERT(time,'08:00'),CONVERT(time,'12:00')),
+                                   (CONVERT(time,'13:00'),CONVERT(time,'17:00'))) shifts(GioBatDau,GioKetThuc)
+                WHERE nv.ChucVu=N'BacSi' AND nv.TrangThai=1
+                  AND NOT EXISTS(SELECT 1 FROM dbo.CaLamViecBacSi existing
+                      WHERE existing.MaNV=nv.MaNV AND existing.Thu=days.Thu);");
+        }
+
+        private static bool CoQuyenTruyCapChiDinh(SqlConnection connection, SqlTransaction? transaction, int maChiDinh)
+        {
+            if (SessionState.IsAdmin) return true;
+            if (!SessionState.IsDoctor || SessionState.CurrentUser?.MaNV is not string maNV) return false;
+            using var command = new SqlCommand(@"SELECT COUNT(*) FROM ChiTietChiDinhDV c
+                INNER JOIN PhieuKham pk ON pk.MaPK=c.MaPK
+                WHERE c.MaChiDinh=@ID AND pk.MaNV_BacSi=@MaNV", connection, transaction);
+            command.Parameters.AddWithValue("@ID", maChiDinh);
+            command.Parameters.AddWithValue("@MaNV", maNV);
+            return Convert.ToInt32(command.ExecuteScalar()) > 0;
+        }
 
         private static void EnsureAuditSchema()
         {
@@ -84,7 +329,8 @@ namespace QlyPhongKham.DAL
                     IF OBJECT_ID(N'dbo.LoThuoc',N'U') IS NULL
                         CREATE TABLE dbo.LoThuoc(MaLo INT IDENTITY(1,1) PRIMARY KEY,MaPN VARCHAR(12) NOT NULL,MaThuoc VARCHAR(10) NOT NULL,
                             SoLo NVARCHAR(60) NOT NULL,NgayHetHan DATE NOT NULL,DonGiaNhap DECIMAL(18,2) NOT NULL CHECK(DonGiaNhap>=0),
-                            SoLuongNhap INT NOT NULL CHECK(SoLuongNhap>0),SoLuongCon INT NOT NULL CHECK(SoLuongCon>=0 AND SoLuongCon<=SoLuongNhap),
+                            SoLuongNhap INT NOT NULL CHECK(SoLuongNhap>0),SoLuongCon INT NOT NULL,
+                            CONSTRAINT CK_LoThuoc_SoLuongCon CHECK(SoLuongCon>=0 AND SoLuongCon<=SoLuongNhap),
                             CONSTRAINT FK_LoThuoc_PN FOREIGN KEY(MaPN) REFERENCES dbo.PhieuNhapKho(MaPN),
                             CONSTRAINT FK_LoThuoc_Thuoc FOREIGN KEY(MaThuoc) REFERENCES dbo.Thuoc(MaThuoc));
                     IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'dbo.LoThuoc') AND name=N'IX_LoThuoc_FEFO')
@@ -95,15 +341,14 @@ namespace QlyPhongKham.DAL
                             CONSTRAINT FK_DieuChinhKho_Lo FOREIGN KEY(MaLo) REFERENCES dbo.LoThuoc(MaLo),
                             CONSTRAINT FK_DieuChinhKho_NV FOREIGN KEY(MaNV) REFERENCES dbo.NhanVien(MaNV));
                     IF COL_LENGTH(N'dbo.DonThuoc',N'TrangThaiCapPhat') IS NULL
-                        ALTER TABLE dbo.DonThuoc ADD TrangThaiCapPhat NVARCHAR(20) NOT NULL CONSTRAINT DF_DonThuoc_TrangThaiCapPhat DEFAULT N'Chờ cấp phát';
-                    IF COL_LENGTH(N'dbo.DonThuoc',N'NgayCapPhat') IS NULL ALTER TABLE dbo.DonThuoc ADD NgayCapPhat DATETIME NULL;
-                    IF COL_LENGTH(N'dbo.DonThuoc',N'MaNV_CapPhat') IS NULL ALTER TABLE dbo.DonThuoc ADD MaNV_CapPhat VARCHAR(10) NULL;
-                    IF COL_LENGTH(N'dbo.DonThuoc',N'GhiChuCapPhat') IS NULL ALTER TABLE dbo.DonThuoc ADD GhiChuCapPhat NVARCHAR(255) NULL;
+                        EXEC(N'ALTER TABLE dbo.DonThuoc ADD TrangThaiCapPhat NVARCHAR(20) NOT NULL CONSTRAINT DF_DonThuoc_TrangThaiCapPhat DEFAULT N''Chờ cấp phát'';');
+                    IF COL_LENGTH(N'dbo.DonThuoc',N'NgayCapPhat') IS NULL EXEC(N'ALTER TABLE dbo.DonThuoc ADD NgayCapPhat DATETIME NULL;');
+                    IF COL_LENGTH(N'dbo.DonThuoc',N'MaNV_CapPhat') IS NULL EXEC(N'ALTER TABLE dbo.DonThuoc ADD MaNV_CapPhat VARCHAR(10) NULL;');
+                    IF COL_LENGTH(N'dbo.DonThuoc',N'GhiChuCapPhat') IS NULL EXEC(N'ALTER TABLE dbo.DonThuoc ADD GhiChuCapPhat NVARCHAR(255) NULL;');
                     IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.DonThuoc') AND name=N'CK_DonThuoc_TrangThaiCapPhat')
-                        ALTER TABLE dbo.DonThuoc ADD CONSTRAINT CK_DonThuoc_TrangThaiCapPhat
-                            CHECK(TrangThaiCapPhat IN(N'Chờ cấp phát',N'Đã cấp',N'Không lấy',N'Mua ngoài'));
+                        EXEC(N'ALTER TABLE dbo.DonThuoc ADD CONSTRAINT CK_DonThuoc_TrangThaiCapPhat CHECK(TrangThaiCapPhat IN(N''Chờ cấp phát'',N''Đã cấp'',N''Không lấy'',N''Mua ngoài''));');
                     IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE name=N'FK_DonThuoc_NhanVienCapPhat')
-                        ALTER TABLE dbo.DonThuoc ADD CONSTRAINT FK_DonThuoc_NhanVienCapPhat FOREIGN KEY(MaNV_CapPhat) REFERENCES dbo.NhanVien(MaNV);
+                        EXEC(N'ALTER TABLE dbo.DonThuoc ADD CONSTRAINT FK_DonThuoc_NhanVienCapPhat FOREIGN KEY(MaNV_CapPhat) REFERENCES dbo.NhanVien(MaNV);');
                     IF OBJECT_ID(N'dbo.ChiTietCapPhatThuoc',N'U') IS NULL
                         CREATE TABLE dbo.ChiTietCapPhatThuoc(MaCapPhat INT IDENTITY(1,1) PRIMARY KEY,MaCTDT INT NOT NULL,MaLo INT NOT NULL,MaNV VARCHAR(10) NOT NULL,
                             SoLuong INT NOT NULL CHECK(SoLuong>0),NgayCapPhat DATETIME NOT NULL DEFAULT GETDATE(),
@@ -215,15 +460,30 @@ namespace QlyPhongKham.DAL
             {
                 if (_invoiceSchemaReady) return;
                 DatabaseHelper.ExecuteNonQuery(@"
-                    IF COL_LENGTH(N'dbo.HoaDon', N'NgayThanhToan') IS NULL ALTER TABLE dbo.HoaDon ADD NgayThanhToan DATETIME NULL;
-                    DECLARE @uq sysname;
+                    IF COL_LENGTH(N'dbo.HoaDon', N'PhanTramBaoHiem') IS NULL
+                        ALTER TABLE dbo.HoaDon ADD PhanTramBaoHiem DECIMAL(5,2) NOT NULL CONSTRAINT DF_HoaDon_PhanTramBaoHiem DEFAULT 0;
+                    IF COL_LENGTH(N'dbo.HoaDon', N'TienBaoHiem') IS NULL
+                        ALTER TABLE dbo.HoaDon ADD TienBaoHiem DECIMAL(18,2) NOT NULL CONSTRAINT DF_HoaDon_TienBaoHiem DEFAULT 0;
+                    IF COL_LENGTH(N'dbo.HoaDon', N'NgayThanhToan') IS NULL
+                        ALTER TABLE dbo.HoaDon ADD NgayThanhToan DATETIME NULL;");
+                DatabaseHelper.ExecuteNonQuery(@"
+                    IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.HoaDon') AND name=N'CK_HoaDon_PhanTramBaoHiem')
+                        ALTER TABLE dbo.HoaDon ADD CONSTRAINT CK_HoaDon_PhanTramBaoHiem CHECK(PhanTramBaoHiem BETWEEN 0 AND 100);
+                    DECLARE @uq sysname, @ddl nvarchar(1000);
                     SELECT TOP 1 @uq=i.name FROM sys.indexes i
                     INNER JOIN sys.index_columns ic ON ic.object_id=i.object_id AND ic.index_id=i.index_id
                     INNER JOIN sys.columns c ON c.object_id=ic.object_id AND c.column_id=ic.column_id
                     WHERE i.object_id=OBJECT_ID(N'dbo.HoaDon') AND i.is_unique=1 AND i.has_filter=0 AND c.name=N'MaPK';
                     IF @uq IS NOT NULL AND EXISTS (SELECT 1 FROM sys.key_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.HoaDon') AND name=@uq)
-                        EXEC(N'ALTER TABLE dbo.HoaDon DROP CONSTRAINT ' + QUOTENAME(@uq));
-                    ELSE IF @uq IS NOT NULL EXEC(N'DROP INDEX ' + QUOTENAME(@uq) + N' ON dbo.HoaDon');
+                    BEGIN
+                        SET @ddl=N'ALTER TABLE dbo.HoaDon DROP CONSTRAINT ' + QUOTENAME(@uq);
+                        EXEC sys.sp_executesql @ddl;
+                    END
+                    ELSE IF @uq IS NOT NULL
+                    BEGIN
+                        SET @ddl=N'DROP INDEX ' + QUOTENAME(@uq) + N' ON dbo.HoaDon';
+                        EXEC sys.sp_executesql @ddl;
+                    END
                     IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'dbo.HoaDon') AND name=N'UX_HoaDon_MaPK_ChuaHuy')
                         CREATE UNIQUE INDEX UX_HoaDon_MaPK_ChuaHuy ON dbo.HoaDon(MaPK) WHERE TrangThai<>N'Đã hủy';");
                 _invoiceSchemaReady = true;
@@ -317,44 +577,68 @@ namespace QlyPhongKham.DAL
                         );
 
                     IF COL_LENGTH(N'dbo.PhieuKham', N'MaPhong') IS NULL
-                        ALTER TABLE dbo.PhieuKham ADD MaPhong VARCHAR(10) NULL;
+                        EXEC(N'ALTER TABLE dbo.PhieuKham ADD MaPhong VARCHAR(10) NULL;');
 
                     IF COL_LENGTH(N'dbo.PhieuKham', N'MaLichHen') IS NULL
-                        ALTER TABLE dbo.PhieuKham ADD MaLichHen INT NULL;
+                        EXEC(N'ALTER TABLE dbo.PhieuKham ADD MaLichHen INT NULL;');
                     IF COL_LENGTH(N'dbo.PhieuKham', N'NgayKhamNgay') IS NULL
-                        ALTER TABLE dbo.PhieuKham ADD NgayKhamNgay AS CONVERT(DATE, NgayKham) PERSISTED;
+                        EXEC(N'ALTER TABLE dbo.PhieuKham ADD NgayKhamNgay AS CONVERT(DATE, NgayKham) PERSISTED;');
 
                     IF COL_LENGTH(N'dbo.LichHen', N'LyDoXuLy') IS NULL
-                        ALTER TABLE dbo.LichHen ADD LyDoXuLy NVARCHAR(255) NULL;
+                        EXEC(N'ALTER TABLE dbo.LichHen ADD LyDoXuLy NVARCHAR(255) NULL;');
 
                     IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_PhieuKham_Phong')
-                        ALTER TABLE dbo.PhieuKham ADD CONSTRAINT FK_PhieuKham_Phong
-                            FOREIGN KEY (MaPhong) REFERENCES dbo.PhongKham(MaPhong);
+                        EXEC(N'ALTER TABLE dbo.PhieuKham ADD CONSTRAINT FK_PhieuKham_Phong FOREIGN KEY (MaPhong) REFERENCES dbo.PhongKham(MaPhong);');
 
                     IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_PhieuKham_LichHen')
-                        ALTER TABLE dbo.PhieuKham ADD CONSTRAINT FK_PhieuKham_LichHen
-                            FOREIGN KEY (MaLichHen) REFERENCES dbo.LichHen(MaLichHen);
+                        EXEC(N'ALTER TABLE dbo.PhieuKham ADD CONSTRAINT FK_PhieuKham_LichHen FOREIGN KEY (MaLichHen) REFERENCES dbo.LichHen(MaLichHen);');
                     IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.LichHen') AND name=N'CK_LichHen_TrangThai')
-                        ALTER TABLE dbo.LichHen DROP CONSTRAINT CK_LichHen_TrangThai;
-                    ALTER TABLE dbo.LichHen ADD CONSTRAINT CK_LichHen_TrangThai
-                        CHECK (TrangThai IN (N'Chờ xác nhận',N'Đã xác nhận',N'Đã đến',N'Đã hủy',N'Bị từ chối',N'Không đến'));
+                        EXEC(N'ALTER TABLE dbo.LichHen DROP CONSTRAINT CK_LichHen_TrangThai;');
+                    IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.LichHen') AND name=N'CK_LichHen_TrangThai')
+                        EXEC(N'ALTER TABLE dbo.LichHen ADD CONSTRAINT CK_LichHen_TrangThai CHECK (TrangThai IN (N''Chờ xác nhận'',N''Đã xác nhận'',N''Đã đến'',N''Đã hủy'',N''Bị từ chối'',N''Không đến''));');
                     IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'dbo.PhieuKham') AND name=N'UX_PhieuKham_MaLichHen')
-                        CREATE UNIQUE INDEX UX_PhieuKham_MaLichHen ON dbo.PhieuKham(MaLichHen) WHERE MaLichHen IS NOT NULL;
+                        EXEC(N'CREATE UNIQUE INDEX UX_PhieuKham_MaLichHen ON dbo.PhieuKham(MaLichHen) WHERE MaLichHen IS NOT NULL;');
                     IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'dbo.PhieuKham') AND name=N'UX_PhieuKham_Phong_Ngay_STT')
-                        CREATE UNIQUE INDEX UX_PhieuKham_Phong_Ngay_STT ON dbo.PhieuKham(MaPhong,NgayKhamNgay,STT) WHERE MaPhong IS NOT NULL;
+                        EXEC(N'CREATE UNIQUE INDEX UX_PhieuKham_Phong_Ngay_STT ON dbo.PhieuKham(MaPhong,NgayKhamNgay,STT) WHERE MaPhong IS NOT NULL;');
                     IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'dbo.LichHen') AND name=N'UX_LichHen_BacSi_NgayHen_Active'
                         AND (filter_definition NOT LIKE N'%Bị từ chối%' OR filter_definition NOT LIKE N'%Không đến%'))
-                        DROP INDEX UX_LichHen_BacSi_NgayHen_Active ON dbo.LichHen;
+                        EXEC(N'DROP INDEX UX_LichHen_BacSi_NgayHen_Active ON dbo.LichHen;');
                     IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'dbo.LichHen') AND name=N'UX_LichHen_BacSi_NgayHen_Active')
-                        CREATE UNIQUE INDEX UX_LichHen_BacSi_NgayHen_Active ON dbo.LichHen(MaNV_BacSi,NgayHen)
-                            WHERE MaNV_BacSi IS NOT NULL AND TrangThai<>N'Đã hủy' AND TrangThai<>N'Bị từ chối' AND TrangThai<>N'Không đến';
+                        EXEC(N'CREATE UNIQUE INDEX UX_LichHen_BacSi_NgayHen_Active ON dbo.LichHen(MaNV_BacSi,NgayHen) WHERE MaNV_BacSi IS NOT NULL AND TrangThai<>N''Đã hủy'' AND TrangThai<>N''Bị từ chối'' AND TrangThai<>N''Không đến'';');
 
-                    UPDATE tk
-                    SET Quyen = CASE WHEN nv.ChucVu = N'ThuNgan' THEN N'LeTan' ELSE nv.ChucVu END
+                    IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.NhanVien') AND name=N'CK_NhanVien_ChucVu')
+                        ALTER TABLE dbo.NhanVien DROP CONSTRAINT CK_NhanVien_ChucVu;
+                    IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.TaiKhoan') AND name=N'CK_TaiKhoan_Quyen')
+                        ALTER TABLE dbo.TaiKhoan DROP CONSTRAINT CK_TaiKhoan_Quyen;
+                    IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.NhanVien') AND name=N'CK_NhanVien_ChucVu')
+                        ALTER TABLE dbo.NhanVien ADD CONSTRAINT CK_NhanVien_ChucVu CHECK(ChucVu IN(N'Admin',N'BacSi',N'LeTan',N'ThuNgan'));
+                    IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.TaiKhoan') AND name=N'CK_TaiKhoan_Quyen')
+                        ALTER TABLE dbo.TaiKhoan ADD CONSTRAINT CK_TaiKhoan_Quyen CHECK(Quyen IN(N'Admin',N'BacSi',N'LeTan',N'ThuNgan'));
+
+                    INSERT INTO dbo.PhanCongPhong(MaNV,MaPhong,VaiTro)
+                    SELECT replacement.MaNV, oldAssignment.MaPhong, N'LeTan'
+                    FROM dbo.PhanCongPhong oldAssignment
+                    INNER JOIN dbo.TaiKhoan cashierAccount ON cashierAccount.MaNV=oldAssignment.MaNV
+                        AND (cashierAccount.TenDangNhap=N'thungan' OR cashierAccount.Quyen=N'ThuNgan')
+                    CROSS APPLY (SELECT TOP 1 candidate.MaNV
+                        FROM dbo.NhanVien candidate
+                        WHERE candidate.ChucVu=N'LeTan' AND candidate.TrangThai=1
+                          AND candidate.MaNV<>oldAssignment.MaNV
+                        ORDER BY candidate.MaNV) replacement
+                    WHERE NOT EXISTS(SELECT 1 FROM dbo.PhanCongPhong existing
+                        WHERE existing.MaNV=replacement.MaNV AND existing.MaPhong=oldAssignment.MaPhong);
+                    DELETE assignment
+                    FROM dbo.PhanCongPhong assignment
+                    INNER JOIN dbo.TaiKhoan cashierAccount ON cashierAccount.MaNV=assignment.MaNV
+                        AND (cashierAccount.TenDangNhap=N'thungan' OR cashierAccount.Quyen=N'ThuNgan');
+                    UPDATE nv SET ChucVu=N'ThuNgan'
+                    FROM dbo.NhanVien nv
+                    INNER JOIN dbo.TaiKhoan tk ON tk.MaNV=nv.MaNV
+                    WHERE tk.TenDangNhap=N'thungan' OR tk.Quyen=N'ThuNgan';
+                    UPDATE tk SET Quyen=N'ThuNgan'
                     FROM dbo.TaiKhoan tk
-                    INNER JOIN dbo.NhanVien nv ON nv.MaNV = tk.MaNV
-                    WHERE tk.Quyen = N'ThuNgan';
-                    UPDATE dbo.NhanVien SET ChucVu = N'LeTan' WHERE ChucVu = N'ThuNgan';
+                    INNER JOIN dbo.NhanVien nv ON nv.MaNV=tk.MaNV
+                    WHERE nv.ChucVu=N'ThuNgan';
 
                     INSERT INTO dbo.Khoa (MaKhoa, TenKhoa)
                     SELECT v.MaKhoa, v.TenKhoa
@@ -697,10 +981,24 @@ namespace QlyPhongKham.DAL
             }, offset, pageSize);
         }
 
-        public static bool TaoPhieuKham(PhieuKham pk, string maLeTan)
+        public static DataTable LayBangGoiSoTrongNgay()
+        {
+            return DatabaseHelper.ExecuteQuery(@"
+                SELECT pk.STT,p.TenPhong,pk.TrangThai,pk.NgayKham
+                FROM dbo.PhieuKham pk
+                LEFT JOIN dbo.PhongKham p ON p.MaPhong=pk.MaPhong
+                WHERE CAST(pk.NgayKham AS date)=CAST(GETDATE() AS date)
+                  AND pk.TrangThai IN(N'Chờ khám',N'Đang khám',N'Chờ kết quả CLS')
+                ORDER BY CASE pk.TrangThai WHEN N'Đang khám' THEN 0 WHEN N'Chờ kết quả CLS' THEN 1 ELSE 2 END,
+                         pk.STT,pk.MaPK;");
+        }
+
+        public static bool TaoPhieuKham(PhieuKham pk, string maLeTan, SinhHieu? sinhHieu = null)
         {
             if (!SessionState.IsReceptionist || SessionState.CurrentUser?.MaNV != maLeTan)
                 throw new UnauthorizedAccessException("Chỉ lễ tân đang đăng nhập được cấp phiếu khám.");
+            EnsureClinicalRecordColumns();
+            EnsureVitalSignsSchema();
             using var conn = DatabaseHelper.GetConnection();
             conn.Open();
             using var tx = conn.BeginTransaction(System.Data.IsolationLevel.Serializable);
@@ -720,8 +1018,8 @@ namespace QlyPhongKham.DAL
                 pk.MaPK = $"PK{nextCode:D4}";
                 pk.STT = nextNumber;
                 const string sql = @"
-                    INSERT INTO PhieuKham (MaPK, STT, MaBN, MaNV_BacSi, MaPhong, NgayKham, TrieuChung, TrangThai)
-                    SELECT @MaPK, @STT, @MaBN, @MaBS, @MaPhong, GETDATE(), @TrieuChung, N'Chờ khám'
+                    INSERT INTO PhieuKham (MaPK, STT, MaBN, MaNV_BacSi, MaPhong, NgayKham, TrieuChung, SinhHieu, TrangThai)
+                    SELECT @MaPK, @STT, @MaBN, @MaBS, @MaPhong, GETDATE(), @TrieuChung, @SinhHieu, N'Chờ khám'
                     WHERE EXISTS (SELECT 1 FROM PhanCongPhong pc INNER JOIN NhanVien nv ON nv.MaNV=pc.MaNV
                       WHERE pc.MaNV=@MaBS AND pc.MaPhong=@MaPhong AND pc.VaiTro=N'BacSi' AND nv.ChucVu=N'BacSi' AND nv.TrangThai=1)
                       AND EXISTS (SELECT 1 FROM PhanCongPhong pc INNER JOIN NhanVien nv ON nv.MaNV=pc.MaNV
@@ -731,7 +1029,9 @@ namespace QlyPhongKham.DAL
                 insert.Parameters.AddWithValue("@MaBN", pk.MaBN); insert.Parameters.AddWithValue("@MaBS", pk.MaNV_BacSi);
                 insert.Parameters.AddWithValue("@MaPhong", (object?)pk.MaPhong ?? DBNull.Value); insert.Parameters.AddWithValue("@MaLeTan", maLeTan);
                 insert.Parameters.AddWithValue("@TrieuChung", (object?)pk.TrieuChung ?? DBNull.Value);
+                insert.Parameters.AddWithValue("@SinhHieu", sinhHieu is null ? DBNull.Value : sinhHieu.ToSummary());
                 if (insert.ExecuteNonQuery() != 1) { tx.Rollback(); return false; }
+                if (sinhHieu is not null) LuuSinhHieu(conn, tx, pk.MaPK, sinhHieu, maLeTan);
                 tx.Commit(); return true;
             }
             catch { tx.Rollback(); throw; }
@@ -788,6 +1088,7 @@ namespace QlyPhongKham.DAL
             const string sql = @"
                 SELECT lh.MaLichHen, lh.MaBN, bn.HoTen AS TenBN, lh.MaNV_BacSi,
                        nv.HoTen AS TenBacSi, lh.NgayHen, lh.LyDoKham, lh.LyDoXuLy, lh.TrangThai,
+                       (SELECT COUNT(*) FROM LichHen old WHERE old.MaBN=lh.MaBN AND old.TrangThai=N'Không đến') AS SoLanVangMat,
                        CASE lh.TrangThai
                            WHEN N'Chờ xác nhận' THEN N'Chờ duyệt'
                            WHEN N'Đã xác nhận' THEN N'Đã duyệt'
@@ -822,6 +1123,32 @@ namespace QlyPhongKham.DAL
                 new SqlParameter("@Kw", keyword.Trim()),
                 new SqlParameter("@TrangThai", (object?)trangThai ?? DBNull.Value)
             }, offset, pageSize);
+        }
+
+        public static int DanhDauLichHenKhongDenQuaHan(string maLeTan, int thoiGianChoPhut = 60)
+        {
+            if (!SessionState.IsAdmin && (!SessionState.IsReceptionist || SessionState.CurrentUser?.MaNV != maLeTan))
+                throw new UnauthorizedAccessException("Bạn không có quyền cập nhật trạng thái lịch hẹn.");
+            if (thoiGianChoPhut < 1 || thoiGianChoPhut > 1440)
+                throw new ArgumentOutOfRangeException(nameof(thoiGianChoPhut));
+
+            const string sql = @"
+                UPDATE lh
+                SET TrangThai=N'Không đến',
+                    LyDoXuLy=COALESCE(NULLIF(LTRIM(RTRIM(LyDoXuLy)),N''),N'Tự động đánh dấu sau thời gian chờ 60 phút.')
+                FROM LichHen lh
+                WHERE lh.TrangThai=N'Đã xác nhận'
+                  AND DATEADD(MINUTE,@GraceMinutes,lh.NgayHen)<=GETDATE()
+                  AND (@MaLeTan IS NULL OR EXISTS(
+                      SELECT 1 FROM PhanCongPhong rp
+                      INNER JOIN PhanCongPhong dp ON dp.MaPhong=rp.MaPhong AND dp.VaiTro=N'BacSi'
+                      WHERE rp.MaNV=@MaLeTan AND rp.VaiTro=N'LeTan' AND dp.MaNV=lh.MaNV_BacSi
+                  ))";
+            return DatabaseHelper.ExecuteNonQuery(sql, new[]
+            {
+                new SqlParameter("@GraceMinutes", thoiGianChoPhut),
+                new SqlParameter("@MaLeTan", SessionState.IsAdmin ? DBNull.Value : maLeTan)
+            });
         }
 
         public static int LaySoLichHenChoDuyetLeTan(string maLeTan, DateTime ngay)
@@ -879,11 +1206,13 @@ namespace QlyPhongKham.DAL
             }) > 0;
         }
 
-        public static (string maPK, int stt) CheckInLichHen(int maLichHen, string maLeTan)
+        public static (string maPK, int stt) CheckInLichHen(int maLichHen, string maLeTan, SinhHieu? sinhHieu = null)
         {
             if (!SessionState.IsReceptionist || SessionState.CurrentUser?.MaNV != maLeTan)
                 throw new UnauthorizedAccessException("Chỉ lễ tân đang đăng nhập được check-in lịch.");
             EnsureClinicRoomSchema();
+            EnsureClinicalRecordColumns();
+            EnsureVitalSignsSchema();
             using var conn = DatabaseHelper.GetConnection();
             conn.Open();
             using var tx = conn.BeginTransaction(System.Data.IsolationLevel.Serializable);
@@ -912,14 +1241,17 @@ namespace QlyPhongKham.DAL
                 using (var cmd = new SqlCommand("SELECT ISNULL(MAX(STT),0)+1 FROM PhieuKham WHERE CAST(NgayKham AS date)=CAST(GETDATE() AS date) AND MaPhong=@MaPhong", conn, tx))
                 { cmd.Parameters.AddWithValue("@MaPhong", maPhong); stt = Convert.ToInt32(cmd.ExecuteScalar()); }
                 string maPK = $"PK{code:D4}";
-                using (var insert = new SqlCommand(@"INSERT INTO PhieuKham(MaPK,STT,MaBN,MaNV_BacSi,MaPhong,MaLichHen,NgayKham,TrieuChung,TrangThai)
-                    VALUES(@MaPK,@STT,@MaBN,@MaBS,@MaPhong,@MaLichHen,GETDATE(),@LyDo,N'Chờ khám')", conn, tx))
+                using (var insert = new SqlCommand(@"INSERT INTO PhieuKham(MaPK,STT,MaBN,MaNV_BacSi,MaPhong,MaLichHen,NgayKham,TrieuChung,SinhHieu,TrangThai)
+                    VALUES(@MaPK,@STT,@MaBN,@MaBS,@MaPhong,@MaLichHen,GETDATE(),@LyDo,@SinhHieu,N'Chờ khám')", conn, tx))
                 {
                     insert.Parameters.AddWithValue("@MaPK", maPK); insert.Parameters.AddWithValue("@STT", stt);
                     insert.Parameters.AddWithValue("@MaBN", maBN); insert.Parameters.AddWithValue("@MaBS", maBS);
                     insert.Parameters.AddWithValue("@MaPhong", maPhong); insert.Parameters.AddWithValue("@MaLichHen", maLichHen);
-                    insert.Parameters.AddWithValue("@LyDo", (object?)lyDo ?? DBNull.Value); insert.ExecuteNonQuery();
+                    insert.Parameters.AddWithValue("@LyDo", (object?)lyDo ?? DBNull.Value);
+                    insert.Parameters.AddWithValue("@SinhHieu", sinhHieu is null ? DBNull.Value : sinhHieu.ToSummary());
+                    insert.ExecuteNonQuery();
                 }
+                if (sinhHieu is not null) LuuSinhHieu(conn, tx, maPK, sinhHieu, maLeTan);
                 using (var update = new SqlCommand("UPDATE LichHen SET TrangThai=N'Đã đến' WHERE MaLichHen=@MaLichHen AND TrangThai=N'Đã xác nhận'", conn, tx))
                 { update.Parameters.AddWithValue("@MaLichHen", maLichHen); if (update.ExecuteNonQuery()!=1) throw new InvalidOperationException("Không cập nhật được trạng thái check-in."); }
                 tx.Commit(); return (maPK, stt);
@@ -1011,9 +1343,10 @@ namespace QlyPhongKham.DAL
             if (string.IsNullOrWhiteSpace(lyDo))
                 throw new ArgumentException("Vui lòng nhập lý do khám.");
 
+            EnsureAdvancedWorkflowSchema();
             using var conn = DatabaseHelper.GetConnection();
             conn.Open();
-            using var trans = conn.BeginTransaction();
+            using var trans = conn.BeginTransaction(System.Data.IsolationLevel.Serializable);
             try
             {
                 using var doctorCommand = new SqlCommand(@"
@@ -1028,6 +1361,16 @@ namespace QlyPhongKham.DAL
                 doctorCommand.Parameters.AddWithValue("@MaBS", maBS);
                 if (Convert.ToInt32(doctorCommand.ExecuteScalar()) == 0)
                     throw new InvalidOperationException("Bác sĩ hiện chưa có phòng khám được phân công.");
+
+                using var shiftCommand = new SqlCommand(@"SELECT COUNT(*) FROM dbo.CaLamViecBacSi WITH(UPDLOCK,HOLDLOCK)
+                    WHERE MaNV=@MaBS AND Thu=@Thu AND @Gio>=GioBatDau
+                      AND DATEADD(MINUTE,15,@Gio)<=GioKetThuc
+                      AND DATEDIFF(MINUTE,GioBatDau,@Gio)%15=0", conn, trans);
+                shiftCommand.Parameters.AddWithValue("@MaBS", maBS);
+                shiftCommand.Parameters.AddWithValue("@Thu", ngayHen.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)ngayHen.DayOfWeek);
+                shiftCommand.Parameters.Add("@Gio", System.Data.SqlDbType.Time).Value = ngayHen.TimeOfDay;
+                if (Convert.ToInt32(shiftCommand.ExecuteScalar()) == 0)
+                    throw new InvalidOperationException("Giờ hẹn không nằm trong ca làm việc hoặc không khớp slot 15 phút của bác sĩ.");
 
                 using var duplicateCommand = new SqlCommand(@"
                     SELECT COUNT(*) FROM LichHen
@@ -1083,11 +1426,143 @@ namespace QlyPhongKham.DAL
             }
         }
 
+        public static DataTable LayCaLamViecBacSi()
+        {
+            if (!SessionState.IsAdmin)
+                throw new UnauthorizedAccessException("Chỉ quản trị viên được quản lý ca bác sĩ.");
+            EnsureAdvancedWorkflowSchema();
+            return DatabaseHelper.ExecuteQuery(@"SELECT c.MaCa,c.MaNV,nv.HoTen,
+                    CASE c.Thu WHEN 1 THEN N'Thứ 2' WHEN 2 THEN N'Thứ 3' WHEN 3 THEN N'Thứ 4'
+                        WHEN 4 THEN N'Thứ 5' WHEN 5 THEN N'Thứ 6' WHEN 6 THEN N'Thứ 7' ELSE N'Chủ nhật' END AS NgayTrongTuan,
+                    c.Thu,c.GioBatDau,c.GioKetThuc
+                FROM dbo.CaLamViecBacSi c
+                INNER JOIN dbo.NhanVien nv ON nv.MaNV=c.MaNV
+                ORDER BY nv.HoTen,c.Thu,c.GioBatDau");
+        }
+
+        public static bool LuuCaLamViecBacSi(string maBacSi, int thu, TimeSpan gioBatDau, TimeSpan gioKetThuc)
+        {
+            if (!SessionState.IsAdmin)
+                throw new UnauthorizedAccessException("Chỉ quản trị viên được quản lý ca bác sĩ.");
+            if (thu is < 1 or > 7 || gioBatDau < TimeSpan.Zero || gioKetThuc >= TimeSpan.FromDays(1)
+                || gioKetThuc <= gioBatDau || gioBatDau.Ticks % TimeSpan.TicksPerMinute != 0
+                || gioKetThuc.Ticks % TimeSpan.TicksPerMinute != 0
+                || (int)gioBatDau.TotalMinutes % 15 != 0 || (int)gioKetThuc.TotalMinutes % 15 != 0
+                || (gioKetThuc - gioBatDau).TotalMinutes < 15)
+                throw new ArgumentException("Ca phải nằm trong một ngày, có thời lượng ít nhất 15 phút và khớp lưới 15 phút.");
+            EnsureAdvancedWorkflowSchema();
+            const string sql = @"
+                IF NOT EXISTS(SELECT 1 FROM dbo.NhanVien nv WHERE nv.MaNV=@MaNV AND nv.ChucVu=N'BacSi' AND nv.TrangThai=1)
+                    THROW 50001,N'Bác sĩ không hợp lệ hoặc đã nghỉ.',1;
+                IF EXISTS(SELECT 1 FROM dbo.CaLamViecBacSi
+                    WHERE MaNV=@MaNV AND Thu=@Thu AND @GioBatDau<GioKetThuc AND @GioKetThuc>GioBatDau)
+                    THROW 50002,N'Ca làm việc bị trùng với ca đã cấu hình.',1;
+                INSERT INTO dbo.CaLamViecBacSi(MaNV,Thu,GioBatDau,GioKetThuc)
+                    VALUES(@MaNV,@Thu,@GioBatDau,@GioKetThuc);
+                SELECT 1";
+            return Convert.ToInt32(DatabaseHelper.ExecuteScalar(sql, new[]
+            {
+                new SqlParameter("@MaNV", maBacSi),
+                new SqlParameter("@Thu", thu),
+                new SqlParameter("@GioBatDau", System.Data.SqlDbType.Time) { Value = gioBatDau },
+                new SqlParameter("@GioKetThuc", System.Data.SqlDbType.Time) { Value = gioKetThuc }
+            })) == 1;
+        }
+
+        public static bool XoaCaLamViecBacSi(int maCa)
+        {
+            if (!SessionState.IsAdmin)
+                throw new UnauthorizedAccessException("Chỉ quản trị viên được quản lý ca bác sĩ.");
+            EnsureAdvancedWorkflowSchema();
+            const string sql = @"DELETE c FROM dbo.CaLamViecBacSi c
+                WHERE c.MaCa=@ID
+                  AND NOT EXISTS(SELECT 1 FROM dbo.LichHen lh
+                    WHERE lh.MaNV_BacSi=c.MaNV AND lh.NgayHen>=GETDATE()
+                      AND ((DATEPART(WEEKDAY,lh.NgayHen)+@@DATEFIRST-2)%7)+1=c.Thu
+                      AND CONVERT(time,lh.NgayHen)>=c.GioBatDau AND CONVERT(time,lh.NgayHen)<c.GioKetThuc
+                      AND lh.TrangThai IN(N'Chờ xác nhận',N'Đã xác nhận',N'Đã đến'))";
+            return DatabaseHelper.ExecuteNonQuery(sql, new[] { new SqlParameter("@ID", maCa) }) > 0;
+        }
+
+        public static DataTable LayKhungGioKhaDung(string maBacSi, DateTime ngay, int? maLichHen = null)
+        {
+            EnsureAdvancedWorkflowSchema();
+            EnsureDefaultDoctorShifts();
+            int thu = ngay.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)ngay.DayOfWeek;
+            DataTable shifts = DatabaseHelper.ExecuteQuery(@"SELECT GioBatDau,GioKetThuc
+                FROM dbo.CaLamViecBacSi WHERE MaNV=@MaNV AND Thu=@Thu ORDER BY GioBatDau",
+                new[] { new SqlParameter("@MaNV", maBacSi), new SqlParameter("@Thu", thu) });
+            DataTable occupied = DatabaseHelper.ExecuteQuery(@"SELECT NgayHen FROM dbo.LichHen
+                WHERE MaNV_BacSi=@MaNV AND CONVERT(date,NgayHen)=@Ngay
+                  AND (@Exclude IS NULL OR MaLichHen<>@Exclude)
+                  AND TrangThai IN(N'Chờ xác nhận',N'Đã xác nhận',N'Đã đến')",
+                new[]
+                {
+                    new SqlParameter("@MaNV", maBacSi),
+                    new SqlParameter("@Ngay", ngay.Date),
+                    new SqlParameter("@Exclude", (object?)maLichHen ?? DBNull.Value)
+                });
+            var occupiedTimes = occupied.AsEnumerable()
+                .Select(row => row.Field<DateTime>("NgayHen"))
+                .ToHashSet();
+            var slots = new DataTable();
+            slots.Columns.Add("NgayGio", typeof(DateTime));
+            DateTime now = DateTime.Now;
+            foreach (DataRow shift in shifts.Rows)
+            {
+                TimeSpan start = (TimeSpan)shift["GioBatDau"];
+                TimeSpan end = (TimeSpan)shift["GioKetThuc"];
+                for (TimeSpan slot = start; slot.Add(TimeSpan.FromMinutes(15)) <= end; slot = slot.Add(TimeSpan.FromMinutes(15)))
+                {
+                    DateTime dateTime = ngay.Date.Add(slot);
+                    if (dateTime <= now || occupiedTimes.Contains(dateTime))
+                        continue;
+                    slots.Rows.Add(dateTime);
+                }
+            }
+            return slots;
+        }
+
+        public static DataTable LayLichTrucBacSi(string maBacSi)
+        {
+            EnsureAdvancedWorkflowSchema();
+            EnsureDefaultDoctorShifts();
+            return DatabaseHelper.ExecuteQuery(@"SELECT Thu,GioBatDau,GioKetThuc
+                FROM dbo.CaLamViecBacSi
+                WHERE MaNV=@MaNV
+                ORDER BY Thu,GioBatDau",
+                new[] { new SqlParameter("@MaNV", maBacSi) });
+        }
+
+        public static string MoTaLichTrucBacSi(string maBacSi)
+        {
+            DataTable shifts = LayLichTrucBacSi(maBacSi);
+            if (shifts.Rows.Count == 0)
+                return "Chưa có lịch trực.";
+            string[] dayNames = { "", "T2", "T3", "T4", "T5", "T6", "T7", "CN" };
+            var groupedDays = shifts.AsEnumerable()
+                .GroupBy(row => row.Field<byte>("Thu"))
+                .OrderBy(group => group.Key)
+                .Select(group => new
+                {
+                    Day = group.Key,
+                    Hours = string.Join(", ", group.Select(row =>
+                        $"{((TimeSpan)row["GioBatDau"]).ToString(@"hh\:mm")}-{((TimeSpan)row["GioKetThuc"]).ToString(@"hh\:mm")}"))
+                })
+                .ToList();
+            if (groupedDays.Count == 6
+                && groupedDays.Select(group => group.Day).SequenceEqual(new byte[] { 1, 2, 3, 4, 5, 6 })
+                && groupedDays.Select(group => group.Hours).Distinct().Count() == 1)
+                return $"Lịch trực: T2-T7, {groupedDays[0].Hours}";
+            return "Lịch trực: " + string.Join(" | ", groupedDays.Select(group => $"{dayNames[group.Day]} {group.Hours}"));
+        }
+
         public static bool LuuLichHen(int? maLichHen, string maBN, string? maBS, DateTime ngayHen, string lyDo, string trangThai)
         {
             ngayHen = new DateTime(ngayHen.Ticks - (ngayHen.Ticks % TimeSpan.TicksPerMinute), ngayHen.Kind);
             if (!SessionState.IsAdmin && !SessionState.IsReceptionist)
                 throw new UnauthorizedAccessException("Bạn không có quyền quản lý lịch hẹn.");
+            EnsureAdvancedWorkflowSchema();
             const string sql = @"
                 SET XACT_ABORT ON;
                 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
@@ -1099,6 +1574,12 @@ namespace QlyPhongKham.DAL
                    OR @MaBS IS NULL OR NOT EXISTS (
                        SELECT 1 FROM NhanVien nv INNER JOIN PhanCongPhong pc ON pc.MaNV=nv.MaNV AND pc.VaiTro=N'BacSi'
                        WHERE nv.MaNV=@MaBS AND nv.ChucVu=N'BacSi' AND nv.TrangThai=1
+                   )
+                   OR NOT EXISTS (
+                       SELECT 1 FROM dbo.CaLamViecBacSi c
+                       WHERE c.MaNV=@MaBS AND c.Thu=@Thu
+                         AND @Gio>=c.GioBatDau AND DATEADD(MINUTE,15,@Gio)<=c.GioKetThuc
+                         AND DATEDIFF(MINUTE,c.GioBatDau,@Gio)%15=0
                    )
                    OR (@MaLeTan IS NOT NULL AND NOT EXISTS (
                        SELECT 1 FROM PhanCongPhong receptionRoom
@@ -1137,9 +1618,170 @@ namespace QlyPhongKham.DAL
                 new SqlParameter("@MaBN", maBN),
                 new SqlParameter("@MaBS", (object?)maBS ?? DBNull.Value),
                 new SqlParameter("@NgayHen", ngayHen),
+                new SqlParameter("@Thu", ngayHen.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)ngayHen.DayOfWeek),
+                new SqlParameter("@Gio", System.Data.SqlDbType.Time) { Value = ngayHen.TimeOfDay },
                 new SqlParameter("@LyDoKham", (object?)lyDo ?? DBNull.Value),
                 new SqlParameter("@TrangThai", trangThai)
             })) > 0;
+        }
+
+        public static DateTime TaoLichTaiKham(string maPK, int soNgay)
+        {
+            if (!SessionState.IsDoctor)
+                throw new UnauthorizedAccessException("Chỉ bác sĩ được tạo lịch tái khám.");
+            if (soNgay is not (7 or 14 or 30))
+                throw new ArgumentOutOfRangeException(nameof(soNgay), "Số ngày tái khám chỉ hỗ trợ 7, 14 hoặc 30 ngày.");
+
+            EnsureVisitLineageSchema();
+            string maBS = SessionState.CurrentUser!.MaNV;
+            DataTable visit = DatabaseHelper.ExecuteQuery(
+                @"SELECT MaBN,MaNV_BacSi,NgayKham,TrangThai FROM dbo.PhieuKham WHERE MaPK=@MaPK",
+                new[] { new SqlParameter("@MaPK", maPK) });
+            if (visit.Rows.Count != 1 || visit.Rows[0]["MaNV_BacSi"].ToString() != maBS)
+                throw new InvalidOperationException("Không tìm thấy phiếu khám thuộc bác sĩ đang đăng nhập.");
+            if (visit.Rows[0]["TrangThai"].ToString() != "Đã khám xong")
+                throw new InvalidOperationException("Chỉ có thể tạo lịch tái khám từ phiếu đã hoàn tất.");
+
+            DateTime followUpDate = DateTime.Today.AddDays(soNgay);
+            DataTable slots = LayKhungGioKhaDung(maBS, followUpDate);
+            if (slots.Rows.Count == 0)
+                throw new InvalidOperationException("Bác sĩ chưa có slot 15 phút khả dụng vào ngày tái khám. Hãy cấu hình ca làm việc hoặc chọn lại sau.");
+            DateTime dateTime = Convert.ToDateTime(slots.Rows[0]["NgayGio"]);
+            string reason = $"Tái khám sau {soNgay} ngày (phiếu {maPK})";
+
+            using var connection = DatabaseHelper.GetConnection();
+            connection.Open();
+            using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+            try
+            {
+                using var lockAppointment = new SqlCommand(
+                    "SELECT COUNT(*) FROM dbo.LichHen WITH(UPDLOCK,HOLDLOCK) WHERE MaNV_BacSi=@MaBS AND NgayHen=@NgayHen AND TrangThai IN(N'Chờ xác nhận',N'Đã xác nhận',N'Đã đến')",
+                    connection, transaction);
+                lockAppointment.Parameters.AddWithValue("@MaBS", maBS);
+                lockAppointment.Parameters.AddWithValue("@NgayHen", dateTime);
+                if (Convert.ToInt32(lockAppointment.ExecuteScalar()) > 0)
+                    throw new InvalidOperationException("Slot vừa được đặt bởi lịch hẹn khác. Vui lòng thử lại.");
+
+                using var insert = new SqlCommand(@"
+                    INSERT dbo.LichHen(MaBN,MaNV_BacSi,NgayHen,LyDoKham,TrangThai,MaPK_TaiKham)
+                    VALUES(@MaBN,@MaBS,@NgayHen,@LyDo,N'Chờ xác nhận',@MaPK);", connection, transaction);
+                insert.Parameters.AddWithValue("@MaBN", visit.Rows[0]["MaBN"].ToString() ?? "");
+                insert.Parameters.AddWithValue("@MaBS", maBS);
+                insert.Parameters.AddWithValue("@NgayHen", dateTime);
+                insert.Parameters.AddWithValue("@LyDo", reason);
+                insert.Parameters.AddWithValue("@MaPK", maPK);
+                insert.ExecuteNonQuery();
+                transaction.Commit();
+            }
+            catch
+            {
+                if (transaction.Connection != null)
+                    transaction.Rollback();
+                throw;
+            }
+            GhiNhatKy("Tạo lịch tái khám", maPK, dateTime.ToString("yyyy-MM-dd HH:mm"));
+            return dateTime;
+        }
+
+        public static (string maPK, int stt) ChuyenPhongKham(string maPKGoc, string maBacSiMoi, string maPhongMoi, string lyDo)
+        {
+            if (!SessionState.IsDoctor)
+                throw new UnauthorizedAccessException("Chỉ bác sĩ được chuyển phòng khám.");
+            if (string.IsNullOrWhiteSpace(lyDo) || lyDo.Trim().Length > 500)
+                throw new ArgumentException("Cần nhập lý do chuyển phòng (tối đa 500 ký tự).", nameof(lyDo));
+            EnsureClinicRoomSchema();
+            EnsureClinicalRecordColumns();
+            EnsureVisitLineageSchema();
+
+            string maBS = SessionState.CurrentUser!.MaNV;
+            using var connection = DatabaseHelper.GetConnection();
+            connection.Open();
+            using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+            string childId = "";
+            int nextNumber = 0;
+            try
+            {
+                string maBN;
+                string? trieuChung;
+                string? sinhHieu;
+                string trangThai;
+                using (var visit = new SqlCommand(@"
+                    SELECT MaBN,TrieuChung,SinhHieu,TrangThai
+                    FROM dbo.PhieuKham WITH(UPDLOCK,HOLDLOCK)
+                    WHERE MaPK=@MaPK AND MaNV_BacSi=@MaBS;", connection, transaction))
+                {
+                    visit.Parameters.AddWithValue("@MaPK", maPKGoc);
+                    visit.Parameters.AddWithValue("@MaBS", maBS);
+                    using var reader = visit.ExecuteReader();
+                    if (!reader.Read())
+                        throw new InvalidOperationException("Không tìm thấy phiếu khám thuộc bác sĩ đang đăng nhập.");
+                    maBN = reader.GetString(0);
+                    trieuChung = reader.IsDBNull(1) ? null : reader.GetString(1);
+                    sinhHieu = reader.IsDBNull(2) ? null : reader.GetString(2);
+                    trangThai = reader.GetString(3);
+                }
+                if (trangThai is not ("Chờ khám" or "Đang khám"))
+                    throw new InvalidOperationException("Chỉ có thể chuyển phiếu đang chờ khám hoặc đang khám.");
+                if (maBS == maBacSiMoi)
+                    throw new InvalidOperationException("Hãy chọn bác sĩ khác để chuyển ca.");
+
+                using (var assignment = new SqlCommand(@"
+                    SELECT COUNT(*) FROM dbo.PhanCongPhong pc
+                    INNER JOIN dbo.NhanVien nv ON nv.MaNV=pc.MaNV
+                    WHERE pc.MaNV=@MaBS AND pc.MaPhong=@MaPhong AND pc.VaiTro=N'BacSi'
+                      AND nv.ChucVu=N'BacSi' AND nv.TrangThai=1;", connection, transaction))
+                {
+                    assignment.Parameters.AddWithValue("@MaBS", maBacSiMoi);
+                    assignment.Parameters.AddWithValue("@MaPhong", maPhongMoi);
+                    if (Convert.ToInt32(assignment.ExecuteScalar()) != 1)
+                        throw new InvalidOperationException("Bác sĩ không được phân công tại phòng đã chọn.");
+                }
+
+                int nextCode;
+                using (var code = new SqlCommand("SELECT ISNULL(MAX(TRY_CONVERT(int,SUBSTRING(MaPK,3,8))),0)+1 FROM dbo.PhieuKham WITH(UPDLOCK,HOLDLOCK)", connection, transaction))
+                    nextCode = Convert.ToInt32(code.ExecuteScalar());
+                using (var number = new SqlCommand(@"
+                    SELECT ISNULL(MAX(STT),0)+1 FROM dbo.PhieuKham WITH(UPDLOCK,HOLDLOCK)
+                    WHERE CAST(NgayKham AS date)=CAST(GETDATE() AS date) AND MaPhong=@MaPhong;", connection, transaction))
+                {
+                    number.Parameters.AddWithValue("@MaPhong", maPhongMoi);
+                    nextNumber = Convert.ToInt32(number.ExecuteScalar());
+                }
+                childId = $"PK{nextCode:D4}";
+                using (var insert = new SqlCommand(@"
+                    INSERT dbo.PhieuKham(MaPK,STT,MaBN,MaNV_BacSi,MaPhong,MaPK_Goc,LyDoChuyen,NgayKham,TrieuChung,SinhHieu,TrangThai)
+                    VALUES(@MaPK,@STT,@MaBN,@MaBS,@MaPhong,@MaPKGoc,@LyDo,GETDATE(),@TrieuChung,@SinhHieu,N'Chờ khám');", connection, transaction))
+                {
+                    insert.Parameters.AddWithValue("@MaPK", childId);
+                    insert.Parameters.AddWithValue("@STT", nextNumber);
+                    insert.Parameters.AddWithValue("@MaBN", maBN);
+                    insert.Parameters.AddWithValue("@MaBS", maBacSiMoi);
+                    insert.Parameters.AddWithValue("@MaPhong", maPhongMoi);
+                    insert.Parameters.AddWithValue("@MaPKGoc", maPKGoc);
+                    insert.Parameters.AddWithValue("@LyDo", lyDo.Trim());
+                    insert.Parameters.AddWithValue("@TrieuChung", (object?)trieuChung ?? DBNull.Value);
+                    insert.Parameters.AddWithValue("@SinhHieu", (object?)sinhHieu ?? DBNull.Value);
+                    insert.ExecuteNonQuery();
+                }
+                using (var update = new SqlCommand(@"
+                    UPDATE dbo.PhieuKham SET TrangThai=N'Đã chuyển phòng'
+                    WHERE MaPK=@MaPK AND MaNV_BacSi=@MaBS AND TrangThai IN(N'Chờ khám',N'Đang khám');", connection, transaction))
+                {
+                    update.Parameters.AddWithValue("@MaPK", maPKGoc);
+                    update.Parameters.AddWithValue("@MaBS", maBS);
+                    if (update.ExecuteNonQuery() != 1)
+                        throw new InvalidOperationException("Phiếu gốc đã thay đổi trạng thái; không thể chuyển phòng.");
+                }
+                transaction.Commit();
+            }
+            catch
+            {
+                if (transaction.Connection != null)
+                    transaction.Rollback();
+                throw;
+            }
+            GhiNhatKy("Chuyển phòng khám", maPKGoc, $"Phiếu mới {childId}; lý do: {lyDo.Trim()}");
+            return (childId, nextNumber);
         }
 
         public static bool HuyLichHen(int maLichHen)
@@ -1544,6 +2186,7 @@ namespace QlyPhongKham.DAL
                 }
 
                 trans.Commit();
+                GhiNhatKy("Phân công phòng", maNV, string.Join(",", distinctRooms));
             }
             catch
             {
@@ -1554,9 +2197,11 @@ namespace QlyPhongKham.DAL
 
         public static bool HuyPhanCongPhong(string maNV)
         {
-            return DatabaseHelper.ExecuteNonQuery(
+            var r = DatabaseHelper.ExecuteNonQuery(
                 "DELETE FROM PhanCongPhong WHERE MaNV = @MaNV",
                 new[] { new SqlParameter("@MaNV", maNV) }) > 0;
+            if (r) GhiNhatKy("Hủy phân công phòng", maNV);
+            return r;
         }
 
         public static DataTable LayDanhSachBenhNhanBacSi(string maBS, string keyword = "", int? offset = null, int? pageSize = null)
@@ -1675,12 +2320,96 @@ namespace QlyPhongKham.DAL
             return DatabaseHelper.ExecuteQuery(sql, new[] { new SqlParameter("@MaPK", maPK) });
         }
 
+        public static DataTable LayTaiLieuCLS(int maChiDinh)
+        {
+            EnsureAdvancedWorkflowSchema();
+            using var connection = DatabaseHelper.GetConnection();
+            connection.Open();
+            if (!CoQuyenTruyCapChiDinh(connection, null, maChiDinh))
+                throw new UnauthorizedAccessException("Bạn không có quyền truy cập tài liệu của chỉ định này.");
+            using var command = new SqlCommand(@"SELECT MaTaiLieu,TenTep,LoaiNoiDung,KichThuoc,NgayTaiLen
+                FROM dbo.TaiLieuCLS WHERE MaChiDinh=@ID ORDER BY NgayTaiLen DESC", connection);
+            command.Parameters.AddWithValue("@ID", maChiDinh);
+            var table = new DataTable();
+            using var adapter = new SqlDataAdapter(command);
+            adapter.Fill(table);
+            return table;
+        }
+
+        public static long LuuTaiLieuCLS(int maChiDinh, string tenTep, string loaiNoiDung, byte[] duLieu)
+        {
+            if (!SessionState.IsAdmin && !SessionState.IsDoctor)
+                throw new UnauthorizedAccessException("Chỉ bác sĩ hoặc quản trị viên được lưu tài liệu CLS.");
+            if (string.IsNullOrWhiteSpace(tenTep) || tenTep.Trim().Length > 255)
+                throw new ArgumentException("Tên tệp không hợp lệ.", nameof(tenTep));
+            if (duLieu.Length == 0 || duLieu.Length > 10 * 1024 * 1024)
+                throw new ArgumentException("Tệp phải có dung lượng từ 1 byte đến 10 MB.", nameof(duLieu));
+
+            string extension = System.IO.Path.GetExtension(tenTep).ToLowerInvariant();
+            bool isPdf = extension == ".pdf" && duLieu.Length >= 5
+                && duLieu[0] == 0x25 && duLieu[1] == 0x50 && duLieu[2] == 0x44 && duLieu[3] == 0x46 && duLieu[4] == 0x2D;
+            bool isPng = extension == ".png" && duLieu.Length >= 8
+                && duLieu[0] == 0x89 && duLieu[1] == 0x50 && duLieu[2] == 0x4E && duLieu[3] == 0x47
+                && duLieu[4] == 0x0D && duLieu[5] == 0x0A && duLieu[6] == 0x1A && duLieu[7] == 0x0A;
+            bool isJpeg = (extension is ".jpg" or ".jpeg") && duLieu.Length >= 3
+                && duLieu[0] == 0xFF && duLieu[1] == 0xD8 && duLieu[2] == 0xFF;
+            string normalizedContentType = isPdf ? "application/pdf"
+                : isPng ? "image/png"
+                : isJpeg ? "image/jpeg"
+                : throw new ArgumentException("Chỉ chấp nhận PDF, PNG hoặc JPEG hợp lệ.", nameof(duLieu));
+            if (!string.Equals(loaiNoiDung, normalizedContentType, StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("Định dạng nội dung không khớp với tệp.", nameof(loaiNoiDung));
+
+            EnsureAdvancedWorkflowSchema();
+            using var connection = DatabaseHelper.GetConnection();
+            connection.Open();
+            if (!CoQuyenTruyCapChiDinh(connection, null, maChiDinh))
+                throw new UnauthorizedAccessException("Bạn không có quyền lưu tài liệu cho chỉ định này.");
+            using var command = new SqlCommand(@"INSERT INTO dbo.TaiLieuCLS(MaChiDinh,TenTep,LoaiNoiDung,DuLieu,KichThuoc,MaNV_TaiLen)
+                OUTPUT INSERTED.MaTaiLieu
+                VALUES(@ID,@TenTep,@LoaiNoiDung,@DuLieu,@KichThuoc,@MaNV)", connection);
+            command.Parameters.AddWithValue("@ID", maChiDinh);
+            command.Parameters.AddWithValue("@TenTep", System.IO.Path.GetFileName(tenTep.Trim()));
+            command.Parameters.AddWithValue("@LoaiNoiDung", normalizedContentType);
+            command.Parameters.Add("@DuLieu", System.Data.SqlDbType.VarBinary, -1).Value = duLieu;
+            command.Parameters.AddWithValue("@KichThuoc", duLieu.LongLength);
+            command.Parameters.AddWithValue("@MaNV", SessionState.CurrentUser!.MaNV);
+            return Convert.ToInt64(command.ExecuteScalar());
+        }
+
+        public static (string tenTep, string loaiNoiDung, byte[] duLieu) TaiTaiLieuCLS(long maTaiLieu)
+        {
+            EnsureAdvancedWorkflowSchema();
+            using var connection = DatabaseHelper.GetConnection();
+            connection.Open();
+            using var command = new SqlCommand(@"SELECT MaChiDinh,TenTep,LoaiNoiDung,DuLieu
+                FROM dbo.TaiLieuCLS WHERE MaTaiLieu=@ID", connection);
+            command.Parameters.AddWithValue("@ID", maTaiLieu);
+            int maChiDinh;
+            string tenTep;
+            string loaiNoiDung;
+            byte[] duLieu;
+            using (var reader = command.ExecuteReader())
+            {
+                if (!reader.Read())
+                    throw new InvalidOperationException("Không tìm thấy tài liệu CLS.");
+                maChiDinh = reader.GetInt32(0);
+                tenTep = reader.GetString(1);
+                loaiNoiDung = reader.GetString(2);
+                duLieu = (byte[])reader["DuLieu"];
+            }
+            if (!CoQuyenTruyCapChiDinh(connection, null, maChiDinh))
+                throw new UnauthorizedAccessException("Bạn không có quyền tải tài liệu của chỉ định này.");
+            return (tenTep, loaiNoiDung, duLieu);
+        }
+
         public static bool ChiDinhDichVu(string maPK, string maDV, decimal donGia)
         {
             if (!SessionState.IsDoctor) throw new UnauthorizedAccessException("Chỉ bác sĩ được chỉ định dịch vụ.");
+            EnsureAdvancedWorkflowSchema();
             string sql = @"
-                INSERT INTO ChiTietChiDinhDV (MaPK, MaDV, DonGiaThoiDiem, TrangThai)
-                SELECT @MaPK, @MaDV, dv.DonGia, N'Chờ thực hiện' FROM DichVu dv WHERE dv.MaDV=@MaDV
+                INSERT INTO ChiTietChiDinhDV (MaPK, MaDV, DonGiaThoiDiem, TrangThai,DaThanhToanCLS)
+                SELECT @MaPK, @MaDV, dv.DonGia, N'Chờ thực hiện',0 FROM DichVu dv WHERE dv.MaDV=@MaDV
                   AND EXISTS (SELECT 1 FROM PhieuKham pk WHERE pk.MaPK=@MaPK AND pk.MaNV_BacSi=@MaBS AND pk.TrangThai IN (N'Chờ khám', N'Đang khám')
                     AND NOT EXISTS (SELECT 1 FROM HoaDon hd WHERE hd.MaPK=pk.MaPK AND hd.TrangThai<>N'Đã hủy'));
                 IF @@ROWCOUNT > 0 UPDATE PhieuKham SET TrangThai=N'Chờ kết quả CLS' WHERE MaPK=@MaPK";
@@ -1696,20 +2425,24 @@ namespace QlyPhongKham.DAL
         public static bool CapNhatKetQuaDV(int maChiDinh, string ketQua)
         {
             if (!SessionState.IsDoctor) throw new UnauthorizedAccessException("Chỉ bác sĩ được cập nhật kết quả CLS.");
+            EnsureAdvancedWorkflowSchema();
             string sql = @"
                 UPDATE ChiTietChiDinhDV
                 SET KetQua = @KetQua, TrangThai = N'Đã có kết quả'
-                WHERE MaChiDinh = @ID AND EXISTS (SELECT 1 FROM PhieuKham pk WHERE pk.MaPK=ChiTietChiDinhDV.MaPK AND pk.MaNV_BacSi=@MaBS AND pk.TrangThai=N'Chờ kết quả CLS')
+                WHERE MaChiDinh = @ID AND DaThanhToanCLS=1
+                  AND EXISTS (SELECT 1 FROM PhieuKham pk WHERE pk.MaPK=ChiTietChiDinhDV.MaPK AND pk.MaNV_BacSi=@MaBS AND pk.TrangThai=N'Chờ kết quả CLS')
                   AND NOT EXISTS (SELECT 1 FROM HoaDon hd WHERE hd.MaPK=ChiTietChiDinhDV.MaPK AND hd.TrangThai<>N'Đã hủy');
-                UPDATE pk SET TrangThai=N'Đang khám' FROM PhieuKham pk
-                WHERE pk.TrangThai=N'Chờ kết quả CLS' AND pk.MaNV_BacSi=@MaBS AND pk.MaPK=(SELECT MaPK FROM ChiTietChiDinhDV WHERE MaChiDinh=@ID)
-                  AND NOT EXISTS (SELECT 1 FROM ChiTietChiDinhDV c WHERE c.MaPK=pk.MaPK AND c.TrangThai<>N'Đã có kết quả')";
-            return DatabaseHelper.ExecuteNonQuery(sql, new[]
+                DECLARE @Updated INT=@@ROWCOUNT;
+                IF @Updated>0 UPDATE pk SET TrangThai=N'Đang khám' FROM PhieuKham pk
+                    WHERE pk.TrangThai=N'Chờ kết quả CLS' AND pk.MaNV_BacSi=@MaBS AND pk.MaPK=(SELECT MaPK FROM ChiTietChiDinhDV WHERE MaChiDinh=@ID)
+                      AND NOT EXISTS (SELECT 1 FROM ChiTietChiDinhDV c WHERE c.MaPK=pk.MaPK AND c.TrangThai<>N'Đã có kết quả');
+                SELECT @Updated";
+            return Convert.ToInt32(DatabaseHelper.ExecuteScalar(sql, new[]
             {
                 new SqlParameter("@ID", maChiDinh),
                 new SqlParameter("@MaBS", SessionState.CurrentUser!.MaNV),
                 new SqlParameter("@KetQua", ketQua)
-            }) > 0;
+            })) > 0;
         }
 
         // 5. THUỐC & KHO DƯỢC
@@ -1924,18 +2657,26 @@ namespace QlyPhongKham.DAL
 
         public static DataTable LayDanhSachHoaDon(string keyword = "", string? trangThai = null, int? offset = null, int? pageSize = null)
         {
+            if (!SessionState.IsAdmin && !SessionState.IsCashier)
+                throw new UnauthorizedAccessException("Chỉ thu ngân hoặc quản trị viên được tra cứu hóa đơn.");
             string sql = @"
                 SELECT hd.MaHD, hd.MaPK, bn.HoTen AS TenBN, nv.HoTen AS ThuNgan,
                        hd.NgayLap, hd.TienDichVu, hd.TienThuoc, hd.GiamGia, hd.TongTien,
+                       hd.PhanTramBaoHiem,hd.TienBaoHiem,
+                       ISNULL(receipts.DaThu,0) AS DaThu,
+                       hd.TongTien-hd.TienBaoHiem-ISNULL(receipts.DaThu,0) AS ConNo,
                        hd.HinhThucTT, hd.TrangThai
                 FROM HoaDon hd
                 INNER JOIN PhieuKham pk ON hd.MaPK = pk.MaPK
                 INNER JOIN BenhNhan bn ON pk.MaBN = bn.MaBN
                 INNER JOIN NhanVien nv ON hd.MaNV_ThuNgan = nv.MaNV
+                OUTER APPLY(SELECT SUM(CASE WHEN g.Loai=N'HoanTien' THEN -g.SoTien ELSE g.SoTien END) DaThu
+                    FROM dbo.GiaoDichVienPhi g WHERE g.MaHD=hd.MaHD) receipts
                 WHERE (@Kw = '' OR hd.MaHD LIKE '%' + @Kw + '%'
                     OR hd.MaPK LIKE '%' + @Kw + '%' OR bn.HoTen LIKE '%' + @Kw + '%')
                   AND (@TrangThai IS NULL OR @TrangThai = N'Tất cả trạng thái' OR hd.TrangThai = @TrangThai)
                 ORDER BY hd.NgayLap DESC, hd.MaHD DESC";
+            EnsureAdvancedWorkflowSchema();
             return ExecutePagedQuery(sql, new[]
             {
                 new SqlParameter("@Kw", keyword.Trim()),
@@ -1945,6 +2686,8 @@ namespace QlyPhongKham.DAL
 
         public static DataTable LayChiTietHoaDon(string maHD)
         {
+            if (!SessionState.IsAdmin && !SessionState.IsCashier)
+                throw new UnauthorizedAccessException("Chỉ thu ngân hoặc quản trị viên được xem chi tiết hóa đơn.");
             const string sql = @"
                 SELECT N'Dịch vụ' AS Loai, dv.TenDV AS TenHang, 1 AS SoLuong,
                        ct.DonGiaThoiDiem AS DonGia, ct.DonGiaThoiDiem AS ThanhTien
@@ -1981,65 +2724,537 @@ namespace QlyPhongKham.DAL
             return (tienDV, tienThuoc);
         }
 
-        public static bool TaoHoaDon(HoaDon hd)
+        public static long MoCaThuNgan(decimal tienDauCa)
         {
-            if (!SessionState.IsAdmin && !SessionState.IsReceptionist)
-                throw new UnauthorizedAccessException("Chỉ thu ngân hoặc quản trị viên được lập hóa đơn.");
-            EnsureInvoiceSchema();
-            string sql = @"
-                INSERT INTO HoaDon (MaHD, MaPK, MaNV_ThuNgan, NgayLap, NgayThanhToan, TienDichVu, TienThuoc, GiamGia, TongTien, HinhThucTT, TrangThai)
-                SELECT @MaHD, pk.MaPK, @MaNV, GETDATE(), CASE WHEN @TrangThai=N'Đã thanh toán' THEN GETDATE() ELSE NULL END, cost.TienDV, cost.TienThuoc, @GiamGia,
-                       cost.TienDV + cost.TienThuoc - @GiamGia, @HinhThucTT, @TrangThai
-                FROM PhieuKham pk
-                CROSS APPLY (SELECT ISNULL((SELECT SUM(DonGiaThoiDiem) FROM ChiTietChiDinhDV WHERE MaPK=pk.MaPK),0) TienDV,
-                                    ISNULL((SELECT SUM(ct.SoLuong*ct.DonGiaThoiDiem) FROM DonThuoc dt INNER JOIN ChiTietDonThuoc ct ON ct.MaDonThuoc=dt.MaDonThuoc WHERE dt.MaPK=pk.MaPK),0) TienThuoc) cost
-                WHERE pk.MaPK=@MaPK AND pk.TrangThai=N'Đã khám xong'
-                  AND NOT EXISTS (SELECT 1 FROM HoaDon old WHERE old.MaPK=pk.MaPK AND old.TrangThai<>N'Đã hủy')
-                  AND NOT EXISTS (SELECT 1 FROM ChiTietChiDinhDV c WHERE c.MaPK=pk.MaPK AND c.TrangThai<>N'Đã có kết quả')
-                  AND @GiamGia >= 0 AND @GiamGia <= cost.TienDV + cost.TienThuoc
-                  AND @HinhThucTT IN (N'Tiền mặt', N'Chuyển khoản QR', N'Thẻ')
-                  AND @TrangThai IN (N'Chưa thanh toán', N'Đã thanh toán')";
-            bool created = DatabaseHelper.ExecuteNonQuery(sql, new[]
+            if (!SessionState.IsAdmin && !SessionState.IsCashier)
+                throw new UnauthorizedAccessException("Chỉ thu ngân hoặc quản trị viên được mở ca thu ngân.");
+            if (tienDauCa < 0)
+                throw new ArgumentOutOfRangeException(nameof(tienDauCa), "Tiền đầu ca không được âm.");
+            EnsureAdvancedWorkflowSchema();
+            using var connection = DatabaseHelper.GetConnection();
+            connection.Open();
+            using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+            try
             {
-                new SqlParameter("@MaHD", hd.MaHD),
-                new SqlParameter("@MaPK", hd.MaPK),
-                new SqlParameter("@MaNV", SessionState.CurrentUser!.MaNV),
-                new SqlParameter("@TienDV", hd.TienDichVu),
-                new SqlParameter("@TienThuoc", hd.TienThuoc),
-                new SqlParameter("@GiamGia", hd.GiamGia),
-                new SqlParameter("@TongTien", hd.TongTien),
-                new SqlParameter("@HinhThucTT", hd.HinhThucTT),
-                new SqlParameter("@TrangThai", hd.TrangThai)
-            }) > 0;
-            if (created) GhiNhatKy("Lập hóa đơn", hd.MaHD, $"Phiếu khám {hd.MaPK}; trạng thái {hd.TrangThai}");
-            return created;
+                using var command = new SqlCommand(@"INSERT INTO dbo.CaThuNgan(MaNV,TienDauCa)
+                    OUTPUT INSERTED.MaCa VALUES(@MaNV,@TienDauCa)", connection, transaction);
+                command.Parameters.AddWithValue("@MaNV", SessionState.CurrentUser!.MaNV);
+                command.Parameters.AddWithValue("@TienDauCa", tienDauCa);
+                long maCa = Convert.ToInt64(command.ExecuteScalar());
+                transaction.Commit();
+                GhiNhatKy("Mở ca thu ngân", maCa.ToString(), $"Tiền đầu ca {tienDauCa:N0}");
+                return maCa;
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
         }
 
-        public static bool ThanhToanHoaDon(string maHD, string hinhThuc)
+        public static DataTable LayThongTinCaThuNgan()
         {
-            if (!SessionState.IsAdmin && !SessionState.IsReceptionist)
-                throw new UnauthorizedAccessException("Chỉ thu ngân hoặc quản trị viên được thanh toán hóa đơn.");
-            const string sql = @"
-                UPDATE HoaDon
-                SET TrangThai = N'Đã thanh toán', HinhThucTT = @HinhThuc, NgayThanhToan = GETDATE()
-                WHERE MaHD = @MaHD AND TrangThai = N'Chưa thanh toán'";
-            bool paid = DatabaseHelper.ExecuteNonQuery(sql, new[]
+            if (!SessionState.IsAdmin && !SessionState.IsCashier)
+                throw new UnauthorizedAccessException("Chỉ thu ngân hoặc quản trị viên được xem ca thu ngân.");
+            EnsureAdvancedWorkflowSchema();
+            return DatabaseHelper.ExecuteQuery(@"SELECT TOP (1) c.MaCa,c.ThoiGianMo,c.TienDauCa,
+                    c.TienDauCa+ISNULL(SUM(CASE WHEN g.Loai IN(N'Thu',N'TamUng',N'ThuCLS') THEN g.SoTien ELSE -g.SoTien END),0) AS TienDuKien
+                FROM dbo.CaThuNgan c LEFT JOIN dbo.GiaoDichVienPhi g ON g.MaCa=c.MaCa
+                WHERE c.MaNV=@MaNV AND c.ThoiGianDong IS NULL
+                GROUP BY c.MaCa,c.ThoiGianMo,c.TienDauCa ORDER BY c.ThoiGianMo DESC",
+                new[] { new SqlParameter("@MaNV", SessionState.CurrentUser!.MaNV) });
+        }
+
+        public static bool DongCaThuNgan(decimal tienThucTe, string ghiChu = "")
+        {
+            if (!SessionState.IsAdmin && !SessionState.IsCashier)
+                throw new UnauthorizedAccessException("Chỉ thu ngân hoặc quản trị viên được đóng ca thu ngân.");
+            if (tienThucTe < 0)
+                throw new ArgumentOutOfRangeException(nameof(tienThucTe), "Tiền kiểm đếm không được âm.");
+            if (ghiChu.Trim().Length > 500)
+                throw new ArgumentException("Ghi chú đóng ca tối đa 500 ký tự.", nameof(ghiChu));
+            EnsureAdvancedWorkflowSchema();
+            using var connection = DatabaseHelper.GetConnection();
+            connection.Open();
+            using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+            try
             {
-                new SqlParameter("@MaHD", maHD),
-                new SqlParameter("@HinhThuc", hinhThuc)
-            }) > 0;
-            if (paid) GhiNhatKy("Thanh toán hóa đơn", maHD, $"Hình thức {hinhThuc}");
-            return paid;
+                long maCa;
+                using (var read = new SqlCommand(@"SELECT MaCa FROM dbo.CaThuNgan WITH(UPDLOCK,HOLDLOCK)
+                    WHERE MaNV=@MaNV AND ThoiGianDong IS NULL", connection, transaction))
+                {
+                    read.Parameters.AddWithValue("@MaNV", SessionState.CurrentUser!.MaNV);
+                    object? value = read.ExecuteScalar();
+                    if (value is null || value == DBNull.Value)
+                        throw new InvalidOperationException("Không có ca thu ngân đang mở.");
+                    maCa = Convert.ToInt64(value);
+                }
+                using var update = new SqlCommand(@"UPDATE dbo.CaThuNgan
+                    SET ThoiGianDong=SYSDATETIME(),TienThucTe=@TienThucTe,GhiChuDongCa=@GhiChu
+                    WHERE MaCa=@MaCa AND ThoiGianDong IS NULL", connection, transaction);
+                update.Parameters.AddWithValue("@MaCa", maCa);
+                update.Parameters.AddWithValue("@TienThucTe", tienThucTe);
+                update.Parameters.AddWithValue("@GhiChu", string.IsNullOrWhiteSpace(ghiChu) ? DBNull.Value : ghiChu.Trim());
+                if (update.ExecuteNonQuery() != 1)
+                    throw new InvalidOperationException("Ca đã được đóng ở một phiên khác.");
+                using var expected = new SqlCommand(@"SELECT TienDauCa+ISNULL(SUM(CASE WHEN Loai IN(N'Thu',N'TamUng',N'ThuCLS')
+                    THEN SoTien ELSE -SoTien END),0) FROM dbo.CaThuNgan c
+                    LEFT JOIN dbo.GiaoDichVienPhi g ON g.MaCa=c.MaCa WHERE c.MaCa=@MaCa GROUP BY TienDauCa", connection, transaction);
+                expected.Parameters.AddWithValue("@MaCa", maCa);
+                decimal expectedAmount = Convert.ToDecimal(expected.ExecuteScalar());
+                transaction.Commit();
+                GhiNhatKy("Đóng ca thu ngân", maCa.ToString(),
+                    $"Dự kiến {expectedAmount:N0}; thực tế {tienThucTe:N0}; chênh lệch {tienThucTe - expectedAmount:N0}");
+                return true;
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+        }
+
+        public static bool TaoHoaDon(HoaDon hd, decimal phanTramBaoHiem = 0)
+        {
+            if (!SessionState.IsAdmin && !SessionState.IsCashier)
+                throw new UnauthorizedAccessException("Chỉ thu ngân hoặc quản trị viên được lập hóa đơn.");
+            if (phanTramBaoHiem is < 0 or > 100)
+                throw new ArgumentOutOfRangeException(nameof(phanTramBaoHiem), "Tỷ lệ bảo hiểm phải từ 0 đến 100.");
+            EnsureInvoiceSchema();
+            EnsureAdvancedWorkflowSchema();
+            using var connection = DatabaseHelper.GetConnection();
+            connection.Open();
+            using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+            try
+            {
+                using var command = new SqlCommand(@"
+                    INSERT INTO HoaDon(MaHD,MaPK,MaNV_ThuNgan,NgayLap,NgayThanhToan,TienDichVu,TienThuoc,GiamGia,TongTien,
+                        PhanTramBaoHiem,TienBaoHiem,HinhThucTT,TrangThai)
+                    SELECT @MaHD,pk.MaPK,@MaNV,GETDATE(),NULL,cost.TienDV,cost.TienThuoc,@GiamGia,
+                        cost.TienDV+cost.TienThuoc-@GiamGia,@Rate,
+                        ROUND((cost.TienDV+cost.TienThuoc-@GiamGia)*@Rate/100,0),@HinhThuc,N'Chưa thanh toán'
+                    FROM PhieuKham pk
+                    CROSS APPLY(SELECT ISNULL((SELECT SUM(DonGiaThoiDiem) FROM ChiTietChiDinhDV WHERE MaPK=pk.MaPK),0) TienDV,
+                        ISNULL((SELECT SUM(ct.SoLuong*ct.DonGiaThoiDiem) FROM DonThuoc dt
+                            INNER JOIN ChiTietDonThuoc ct ON ct.MaDonThuoc=dt.MaDonThuoc WHERE dt.MaPK=pk.MaPK),0) TienThuoc) cost
+                    WHERE pk.MaPK=@MaPK AND pk.TrangThai=N'Đã khám xong'
+                      AND NOT EXISTS(SELECT 1 FROM HoaDon old WHERE old.MaPK=pk.MaPK AND old.TrangThai<>N'Đã hủy')
+                      AND NOT EXISTS(SELECT 1 FROM ChiTietChiDinhDV c WHERE c.MaPK=pk.MaPK AND c.TrangThai<>N'Đã có kết quả')
+                      AND @GiamGia>=0 AND @GiamGia<=cost.TienDV+cost.TienThuoc
+                      AND @Rate BETWEEN 0 AND 100
+                      AND @HinhThuc IN(N'Tiền mặt',N'Chuyển khoản QR',N'Thẻ')
+                      AND ISNULL((SELECT SUM(g.SoTien) FROM dbo.GiaoDichVienPhi g
+                          WHERE g.MaPK=pk.MaPK AND g.MaHD IS NULL AND g.Loai IN(N'TamUng',N'ThuCLS')),0)
+                          <= cost.TienDV+cost.TienThuoc-@GiamGia-ROUND((cost.TienDV+cost.TienThuoc-@GiamGia)*@Rate/100,0)", connection, transaction);
+                command.Parameters.AddWithValue("@MaHD", hd.MaHD);
+                command.Parameters.AddWithValue("@MaPK", hd.MaPK);
+                command.Parameters.AddWithValue("@MaNV", SessionState.CurrentUser!.MaNV);
+                command.Parameters.AddWithValue("@GiamGia", hd.GiamGia);
+                command.Parameters.AddWithValue("@Rate", phanTramBaoHiem);
+                command.Parameters.AddWithValue("@HinhThuc", hd.HinhThucTT);
+                if (command.ExecuteNonQuery() != 1)
+                {
+                    transaction.Commit();
+                    return false;
+                }
+                using (var assign = new SqlCommand(@"UPDATE dbo.GiaoDichVienPhi SET MaHD=@MaHD
+                    WHERE MaPK=@MaPK AND MaHD IS NULL AND Loai IN(N'TamUng',N'ThuCLS')", connection, transaction))
+                {
+                    assign.Parameters.AddWithValue("@MaHD", hd.MaHD);
+                    assign.Parameters.AddWithValue("@MaPK", hd.MaPK);
+                    assign.ExecuteNonQuery();
+                }
+                using (var settle = new SqlCommand(@"UPDATE dbo.HoaDon SET TrangThai=N'Đã thanh toán',NgayThanhToan=GETDATE()
+                    WHERE MaHD=@MaHD AND TongTien-TienBaoHiem<=ISNULL((SELECT SUM(CASE WHEN Loai=N'HoanTien' THEN -SoTien ELSE SoTien END)
+                        FROM dbo.GiaoDichVienPhi WHERE MaHD=@MaHD),0)", connection, transaction))
+                {
+                    settle.Parameters.AddWithValue("@MaHD", hd.MaHD);
+                    settle.ExecuteNonQuery();
+                }
+                transaction.Commit();
+                GhiNhatKy("Lập hóa đơn", hd.MaHD,
+                    $"Phiếu khám {hd.MaPK}; bảo hiểm {phanTramBaoHiem:0.##}%");
+                return true;
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+        }
+
+        public static bool ThanhToanHoaDon(string maHD, string hinhThuc, decimal? soTien = null)
+        {
+            if (!SessionState.IsAdmin && !SessionState.IsCashier)
+                throw new UnauthorizedAccessException("Chỉ thu ngân hoặc quản trị viên được thanh toán hóa đơn.");
+            if (hinhThuc is not ("Tiền mặt" or "Chuyển khoản QR" or "Thẻ"))
+                throw new ArgumentOutOfRangeException(nameof(hinhThuc), "Hình thức thanh toán không hợp lệ.");
+            EnsureAdvancedWorkflowSchema();
+            using var connection = DatabaseHelper.GetConnection();
+            connection.Open();
+            using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+            try
+            {
+                string maPK;
+                decimal balance;
+                using (var invoice = new SqlCommand(@"SELECT MaPK,TongTien-TienBaoHiem FROM dbo.HoaDon WITH(UPDLOCK,HOLDLOCK)
+                    WHERE MaHD=@MaHD AND TrangThai=N'Chưa thanh toán'", connection, transaction))
+                {
+                    invoice.Parameters.AddWithValue("@MaHD", maHD);
+                    using var reader = invoice.ExecuteReader();
+                    if (!reader.Read())
+                        throw new InvalidOperationException("Hóa đơn không còn ở trạng thái chờ thanh toán.");
+                    maPK = reader.GetString(0);
+                    balance = reader.GetDecimal(1);
+                }
+                using (var paid = new SqlCommand(@"SELECT ISNULL(SUM(CASE WHEN Loai=N'HoanTien' THEN -SoTien ELSE SoTien END),0)
+                    FROM dbo.GiaoDichVienPhi WHERE MaHD=@MaHD", connection, transaction))
+                {
+                    paid.Parameters.AddWithValue("@MaHD", maHD);
+                    balance -= Convert.ToDecimal(paid.ExecuteScalar());
+                }
+                decimal amount = soTien ?? balance;
+                if (amount <= 0 || amount > balance)
+                    throw new ArgumentOutOfRangeException(nameof(soTien), $"Số tiền thu phải lớn hơn 0 và không vượt quá công nợ {balance:N0}.");
+                long maCa;
+                using (var shift = new SqlCommand(@"SELECT MaCa FROM dbo.CaThuNgan WITH(UPDLOCK,HOLDLOCK)
+                    WHERE MaNV=@MaNV AND ThoiGianDong IS NULL", connection, transaction))
+                {
+                    shift.Parameters.AddWithValue("@MaNV", SessionState.CurrentUser!.MaNV);
+                    object? value = shift.ExecuteScalar();
+                    if (value is null || value == DBNull.Value)
+                        throw new InvalidOperationException("Mở ca thu ngân trước khi ghi nhận giao dịch.");
+                    maCa = Convert.ToInt64(value);
+                }
+                using (var insert = new SqlCommand(@"INSERT INTO dbo.GiaoDichVienPhi(MaHD,MaPK,MaCa,MaNV,Loai,SoTien,HinhThuc)
+                    VALUES(@MaHD,@MaPK,@MaCa,@MaNV,N'Thu',@SoTien,@HinhThuc)", connection, transaction))
+                {
+                    insert.Parameters.AddWithValue("@MaHD", maHD);
+                    insert.Parameters.AddWithValue("@MaPK", maPK);
+                    insert.Parameters.AddWithValue("@MaCa", maCa);
+                    insert.Parameters.AddWithValue("@MaNV", SessionState.CurrentUser!.MaNV);
+                    insert.Parameters.AddWithValue("@SoTien", amount);
+                    insert.Parameters.AddWithValue("@HinhThuc", hinhThuc);
+                    insert.ExecuteNonQuery();
+                }
+                using (var settle = new SqlCommand(@"UPDATE dbo.HoaDon
+                    SET TrangThai=CASE WHEN TongTien-TienBaoHiem<=ISNULL((SELECT SUM(CASE WHEN Loai=N'HoanTien' THEN -SoTien ELSE SoTien END)
+                        FROM dbo.GiaoDichVienPhi WHERE MaHD=@MaHD),0) THEN N'Đã thanh toán' ELSE N'Chưa thanh toán' END,
+                        HinhThucTT=@HinhThuc,
+                        NgayThanhToan=CASE WHEN TongTien-TienBaoHiem<=ISNULL((SELECT SUM(CASE WHEN Loai=N'HoanTien' THEN -SoTien ELSE SoTien END)
+                        FROM dbo.GiaoDichVienPhi WHERE MaHD=@MaHD),0) THEN GETDATE() ELSE NULL END
+                    WHERE MaHD=@MaHD", connection, transaction))
+                {
+                    settle.Parameters.AddWithValue("@MaHD", maHD);
+                    settle.Parameters.AddWithValue("@HinhThuc", hinhThuc);
+                    settle.ExecuteNonQuery();
+                }
+                transaction.Commit();
+                GhiNhatKy("Thanh toán hóa đơn", maHD, $"Thu {amount:N0}; hình thức {hinhThuc}; ca {maCa}");
+                return true;
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+        }
+
+        public static bool TamUngPhieuKham(string maPK, decimal soTien, string hinhThuc, string? ghiChu = null)
+        {
+            if (!SessionState.IsAdmin && !SessionState.IsCashier)
+                throw new UnauthorizedAccessException("Chỉ thu ngân hoặc quản trị viên được ghi nhận tạm ứng.");
+            if (soTien <= 0)
+                throw new ArgumentOutOfRangeException(nameof(soTien), "Số tiền tạm ứng phải lớn hơn 0.");
+            if (hinhThuc is not ("Tiền mặt" or "Chuyển khoản QR" or "Thẻ"))
+                throw new ArgumentOutOfRangeException(nameof(hinhThuc), "Hình thức thanh toán không hợp lệ.");
+            if (ghiChu?.Trim().Length > 500)
+                throw new ArgumentException("Ghi chú tối đa 500 ký tự.", nameof(ghiChu));
+            EnsureAdvancedWorkflowSchema();
+
+            using var connection = DatabaseHelper.GetConnection();
+            connection.Open();
+            using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+            try
+            {
+                decimal total;
+                using (var ticket = new SqlCommand(@"SELECT ISNULL((SELECT SUM(DonGiaThoiDiem) FROM ChiTietChiDinhDV WHERE MaPK=pk.MaPK),0)
+                    +ISNULL((SELECT SUM(ct.SoLuong*ct.DonGiaThoiDiem) FROM DonThuoc dt
+                        INNER JOIN ChiTietDonThuoc ct ON ct.MaDonThuoc=dt.MaDonThuoc WHERE dt.MaPK=pk.MaPK),0)
+                    FROM PhieuKham pk WITH(UPDLOCK,HOLDLOCK)
+                    WHERE pk.MaPK=@MaPK AND pk.TrangThai=N'Đã khám xong'
+                      AND NOT EXISTS(SELECT 1 FROM HoaDon hd WHERE hd.MaPK=pk.MaPK AND hd.TrangThai<>N'Đã hủy')
+                      AND NOT EXISTS(SELECT 1 FROM ChiTietChiDinhDV c WHERE c.MaPK=pk.MaPK AND c.TrangThai<>N'Đã có kết quả')",
+                    connection, transaction))
+                {
+                    ticket.Parameters.AddWithValue("@MaPK", maPK);
+                    object? value = ticket.ExecuteScalar();
+                    if (value is null || value == DBNull.Value)
+                        throw new InvalidOperationException("Chỉ có thể tạm ứng cho phiếu khám đã hoàn tất và chưa lập hóa đơn.");
+                    total = Convert.ToDecimal(value);
+                }
+                decimal advance;
+                using (var existing = new SqlCommand(@"SELECT ISNULL(SUM(SoTien),0) FROM dbo.GiaoDichVienPhi
+                    WHERE MaPK=@MaPK AND MaHD IS NULL AND Loai IN(N'TamUng',N'ThuCLS')", connection, transaction))
+                {
+                    existing.Parameters.AddWithValue("@MaPK", maPK);
+                    advance = Convert.ToDecimal(existing.ExecuteScalar());
+                }
+                if (soTien + advance > total)
+                    throw new InvalidOperationException($"Tổng tạm ứng không được vượt quá chi phí tạm tính {total:N0}.");
+                long maCa;
+                using (var shift = new SqlCommand(@"SELECT MaCa FROM dbo.CaThuNgan WITH(UPDLOCK,HOLDLOCK)
+                    WHERE MaNV=@MaNV AND ThoiGianDong IS NULL", connection, transaction))
+                {
+                    shift.Parameters.AddWithValue("@MaNV", SessionState.CurrentUser!.MaNV);
+                    object? value = shift.ExecuteScalar();
+                    if (value is null || value == DBNull.Value)
+                        throw new InvalidOperationException("Mở ca thu ngân trước khi ghi nhận giao dịch.");
+                    maCa = Convert.ToInt64(value);
+                }
+                using var insert = new SqlCommand(@"INSERT INTO dbo.GiaoDichVienPhi(MaPK,MaCa,MaNV,Loai,SoTien,HinhThuc,GhiChu)
+                    VALUES(@MaPK,@MaCa,@MaNV,N'TamUng',@SoTien,@HinhThuc,@GhiChu)", connection, transaction);
+                insert.Parameters.AddWithValue("@MaPK", maPK);
+                insert.Parameters.AddWithValue("@MaCa", maCa);
+                insert.Parameters.AddWithValue("@MaNV", SessionState.CurrentUser!.MaNV);
+                insert.Parameters.AddWithValue("@SoTien", soTien);
+                insert.Parameters.AddWithValue("@HinhThuc", hinhThuc);
+                insert.Parameters.AddWithValue("@GhiChu", string.IsNullOrWhiteSpace(ghiChu) ? DBNull.Value : ghiChu.Trim());
+                insert.ExecuteNonQuery();
+                transaction.Commit();
+                GhiNhatKy("Thu tạm ứng", maPK, $"Thu {soTien:N0}; hình thức {hinhThuc}; ca {maCa}");
+                return true;
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+        }
+
+        public static DataTable LayChiDinhChoThanhToanCLS()
+        {
+            if (!SessionState.IsAdmin && !SessionState.IsCashier)
+                throw new UnauthorizedAccessException("Chỉ thu ngân hoặc quản trị viên được xem chỉ định CLS chờ thu.");
+            EnsureAdvancedWorkflowSchema();
+            return DatabaseHelper.ExecuteQuery(@"SELECT c.MaChiDinh,c.MaPK,bn.HoTen AS TenBN,dv.TenDV,
+                    c.DonGiaThoiDiem,c.TrangThai,pk.NgayKham
+                FROM dbo.ChiTietChiDinhDV c
+                INNER JOIN dbo.PhieuKham pk ON pk.MaPK=c.MaPK
+                INNER JOIN dbo.BenhNhan bn ON bn.MaBN=pk.MaBN
+                INNER JOIN dbo.DichVu dv ON dv.MaDV=c.MaDV
+                WHERE c.TrangThai=N'Chờ thực hiện' AND c.DaThanhToanCLS=0
+                  AND NOT EXISTS(SELECT 1 FROM dbo.HoaDon hd WHERE hd.MaPK=pk.MaPK AND hd.TrangThai<>N'Đã hủy')
+                ORDER BY pk.NgayKham,c.MaChiDinh");
+        }
+
+        public static bool ThanhToanChiDinhCLS(int maChiDinh, string hinhThuc)
+        {
+            if (!SessionState.IsAdmin && !SessionState.IsCashier)
+                throw new UnauthorizedAccessException("Chỉ thu ngân hoặc quản trị viên được thu phí CLS.");
+            if (hinhThuc is not ("Tiền mặt" or "Chuyển khoản QR" or "Thẻ"))
+                throw new ArgumentOutOfRangeException(nameof(hinhThuc), "Hình thức thanh toán không hợp lệ.");
+            EnsureAdvancedWorkflowSchema();
+            using var connection = DatabaseHelper.GetConnection();
+            connection.Open();
+            using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+            try
+            {
+                string maPK;
+                decimal amount;
+                using (var order = new SqlCommand(@"SELECT c.MaPK,c.DonGiaThoiDiem
+                    FROM dbo.ChiTietChiDinhDV c WITH(UPDLOCK,HOLDLOCK)
+                    INNER JOIN dbo.PhieuKham pk ON pk.MaPK=c.MaPK
+                    WHERE c.MaChiDinh=@ID AND c.TrangThai=N'Chờ thực hiện' AND c.DaThanhToanCLS=0
+                      AND NOT EXISTS(SELECT 1 FROM dbo.HoaDon hd WHERE hd.MaPK=pk.MaPK AND hd.TrangThai<>N'Đã hủy')",
+                    connection, transaction))
+                {
+                    order.Parameters.AddWithValue("@ID", maChiDinh);
+                    using var reader = order.ExecuteReader();
+                    if (!reader.Read())
+                        throw new InvalidOperationException("Chỉ định CLS đã thanh toán hoặc không còn chờ thực hiện.");
+                    maPK = reader.GetString(0);
+                    amount = reader.GetDecimal(1);
+                }
+                long maCa;
+                using (var shift = new SqlCommand(@"SELECT MaCa FROM dbo.CaThuNgan WITH(UPDLOCK,HOLDLOCK)
+                    WHERE MaNV=@MaNV AND ThoiGianDong IS NULL", connection, transaction))
+                {
+                    shift.Parameters.AddWithValue("@MaNV", SessionState.CurrentUser!.MaNV);
+                    object? value = shift.ExecuteScalar();
+                    if (value is null || value == DBNull.Value)
+                        throw new InvalidOperationException("Mở ca thu ngân trước khi thu phí CLS.");
+                    maCa = Convert.ToInt64(value);
+                }
+                using (var insert = new SqlCommand(@"INSERT INTO dbo.GiaoDichVienPhi(MaPK,MaChiDinh,MaCa,MaNV,Loai,SoTien,HinhThuc)
+                    VALUES(@MaPK,@MaChiDinh,@MaCa,@MaNV,N'ThuCLS',@SoTien,@HinhThuc)", connection, transaction))
+                {
+                    insert.Parameters.AddWithValue("@MaPK", maPK);
+                    insert.Parameters.AddWithValue("@MaChiDinh", maChiDinh);
+                    insert.Parameters.AddWithValue("@MaCa", maCa);
+                    insert.Parameters.AddWithValue("@MaNV", SessionState.CurrentUser!.MaNV);
+                    insert.Parameters.AddWithValue("@SoTien", amount);
+                    insert.Parameters.AddWithValue("@HinhThuc", hinhThuc);
+                    insert.ExecuteNonQuery();
+                }
+                using (var paid = new SqlCommand(@"UPDATE dbo.ChiTietChiDinhDV SET DaThanhToanCLS=1
+                    WHERE MaChiDinh=@ID AND DaThanhToanCLS=0", connection, transaction))
+                {
+                    paid.Parameters.AddWithValue("@ID", maChiDinh);
+                    if (paid.ExecuteNonQuery() != 1)
+                        throw new InvalidOperationException("Chỉ định CLS đã được thu ở một phiên khác.");
+                }
+                transaction.Commit();
+                GhiNhatKy("Thu phí cận lâm sàng", maChiDinh.ToString(),
+                    $"Phiếu {maPK}; số tiền {amount:N0}; ca {maCa}");
+                return true;
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+        }
+
+        public static DataTable LayGiaoDichVienPhi(string maHD)
+        {
+            if (!SessionState.IsAdmin && !SessionState.IsCashier)
+                throw new UnauthorizedAccessException("Chỉ thu ngân hoặc quản trị viên được tra cứu giao dịch.");
+            EnsureAdvancedWorkflowSchema();
+            return DatabaseHelper.ExecuteQuery(@"SELECT g.MaGiaoDich,g.Loai,g.SoTien,g.HinhThuc,g.ThoiGian,g.GhiChu,
+                    nv.HoTen AS NguoiThu,g.MaCa
+                FROM dbo.GiaoDichVienPhi g INNER JOIN dbo.NhanVien nv ON nv.MaNV=g.MaNV
+                WHERE g.MaHD=@MaHD ORDER BY g.ThoiGian,g.MaGiaoDich",
+                new[] { new SqlParameter("@MaHD", maHD) });
+        }
+
+        public static DataTable LayYeuCauHoanTien(string? trangThai = null)
+        {
+            if (!SessionState.IsAdmin && !SessionState.IsCashier)
+                throw new UnauthorizedAccessException("Chỉ thu ngân hoặc quản trị viên được tra cứu yêu cầu hoàn tiền.");
+            EnsureAdvancedWorkflowSchema();
+            return DatabaseHelper.ExecuteQuery(@"SELECT y.MaYeuCau,y.MaHD,y.SoTien,y.LyDo,y.TrangThai,y.NgayDeNghi,
+                    requester.HoTen AS NguoiDeNghi,approver.HoTen AS NguoiDuyet,y.NgayDuyet,y.GhiChuDuyet
+                FROM dbo.YeuCauHoanTien y
+                INNER JOIN dbo.NhanVien requester ON requester.MaNV=y.MaNV_DeNghi
+                LEFT JOIN dbo.NhanVien approver ON approver.MaNV=y.MaNV_Duyet
+                WHERE @Status IS NULL OR y.TrangThai=@Status
+                ORDER BY y.NgayDeNghi DESC",
+                new[] { new SqlParameter("@Status", (object?)trangThai ?? DBNull.Value) });
+        }
+
+        public static bool TaoYeuCauHoanTien(string maHD, decimal soTien, string lyDo)
+        {
+            if (!SessionState.IsAdmin && !SessionState.IsCashier)
+                throw new UnauthorizedAccessException("Chỉ thu ngân hoặc quản trị viên được đề nghị hoàn tiền.");
+            if (soTien <= 0)
+                throw new ArgumentOutOfRangeException(nameof(soTien), "Số tiền hoàn phải lớn hơn 0.");
+            if (string.IsNullOrWhiteSpace(lyDo) || lyDo.Trim().Length > 500)
+                throw new ArgumentException("Cần ghi lý do hoàn tiền (tối đa 500 ký tự).", nameof(lyDo));
+            EnsureAdvancedWorkflowSchema();
+            using var connection = DatabaseHelper.GetConnection();
+            connection.Open();
+            using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+            try
+            {
+                using var command = new SqlCommand(@"INSERT INTO dbo.YeuCauHoanTien(MaHD,SoTien,LyDo,MaNV_DeNghi)
+                    SELECT hd.MaHD,@SoTien,@LyDo,@MaNV
+                    FROM dbo.HoaDon hd WITH(UPDLOCK,HOLDLOCK)
+                    WHERE hd.MaHD=@MaHD AND hd.TrangThai IN(N'Đã thanh toán',N'Chưa thanh toán')
+                      AND @SoTien<=ISNULL((SELECT SUM(CASE WHEN g.Loai=N'HoanTien' THEN -g.SoTien ELSE g.SoTien END)
+                          FROM dbo.GiaoDichVienPhi g WHERE g.MaHD=hd.MaHD),0)
+                          -ISNULL((SELECT SUM(y.SoTien) FROM dbo.YeuCauHoanTien y
+                              WHERE y.MaHD=hd.MaHD AND y.TrangThai=N'Chờ duyệt'),0)", connection, transaction);
+                command.Parameters.AddWithValue("@MaHD", maHD);
+                command.Parameters.AddWithValue("@SoTien", soTien);
+                command.Parameters.AddWithValue("@LyDo", lyDo.Trim());
+                command.Parameters.AddWithValue("@MaNV", SessionState.CurrentUser!.MaNV);
+                bool created = command.ExecuteNonQuery() == 1;
+                if (!created)
+                    throw new InvalidOperationException("Số tiền yêu cầu vượt quá khoản đã thu còn có thể hoàn, hoặc hóa đơn chưa thanh toán.");
+                transaction.Commit();
+                GhiNhatKy("Đề nghị hoàn tiền", maHD, $"Số tiền {soTien:N0}; lý do {lyDo.Trim()}");
+                return true;
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+        }
+
+        public static bool XuLyYeuCauHoanTien(long maYeuCau, bool chapNhan, string? ghiChu = null)
+        {
+            if (!SessionState.IsAdmin)
+                throw new UnauthorizedAccessException("Chỉ quản trị viên được duyệt hoặc từ chối hoàn tiền.");
+            if (ghiChu?.Trim().Length > 500)
+                throw new ArgumentException("Ghi chú duyệt tối đa 500 ký tự.", nameof(ghiChu));
+            EnsureAdvancedWorkflowSchema();
+            using var connection = DatabaseHelper.GetConnection();
+            connection.Open();
+            using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+            try
+            {
+                string maHD;
+                string maPK;
+                decimal amount;
+                string method;
+                using (var request = new SqlCommand(@"SELECT y.MaHD,hd.MaPK,y.SoTien,hd.HinhThucTT
+                    FROM dbo.YeuCauHoanTien y WITH(UPDLOCK,HOLDLOCK)
+                    INNER JOIN dbo.HoaDon hd WITH(UPDLOCK,HOLDLOCK) ON hd.MaHD=y.MaHD
+                    WHERE y.MaYeuCau=@ID AND y.TrangThai=N'Chờ duyệt'", connection, transaction))
+                {
+                    request.Parameters.AddWithValue("@ID", maYeuCau);
+                    using var reader = request.ExecuteReader();
+                    if (!reader.Read())
+                        throw new InvalidOperationException("Yêu cầu không còn ở trạng thái chờ duyệt.");
+                    maHD = reader.GetString(0);
+                    maPK = reader.GetString(1);
+                    amount = reader.GetDecimal(2);
+                    method = reader.GetString(3);
+                }
+                if (chapNhan)
+                {
+                    using var insert = new SqlCommand(@"INSERT INTO dbo.GiaoDichVienPhi(MaHD,MaPK,MaNV,Loai,SoTien,HinhThuc,GhiChu)
+                        VALUES(@MaHD,@MaPK,@MaNV,N'HoanTien',@SoTien,@HinhThuc,@GhiChu)", connection, transaction);
+                    insert.Parameters.AddWithValue("@MaHD", maHD);
+                    insert.Parameters.AddWithValue("@MaPK", maPK);
+                    insert.Parameters.AddWithValue("@MaNV", SessionState.CurrentUser!.MaNV);
+                    insert.Parameters.AddWithValue("@SoTien", amount);
+                    insert.Parameters.AddWithValue("@HinhThuc", method);
+                    insert.Parameters.AddWithValue("@GhiChu", string.IsNullOrWhiteSpace(ghiChu) ? DBNull.Value : ghiChu.Trim());
+                    insert.ExecuteNonQuery();
+                }
+                using var update = new SqlCommand(@"UPDATE dbo.YeuCauHoanTien
+                    SET TrangThai=@Status,MaNV_Duyet=@MaNV,NgayDuyet=SYSDATETIME(),GhiChuDuyet=@Note
+                    WHERE MaYeuCau=@ID AND TrangThai=N'Chờ duyệt'", connection, transaction);
+                update.Parameters.AddWithValue("@Status", chapNhan ? "Đã duyệt" : "Từ chối");
+                update.Parameters.AddWithValue("@MaNV", SessionState.CurrentUser!.MaNV);
+                update.Parameters.AddWithValue("@Note", string.IsNullOrWhiteSpace(ghiChu) ? DBNull.Value : ghiChu.Trim());
+                if (update.ExecuteNonQuery() != 1)
+                    throw new InvalidOperationException("Yêu cầu đã được xử lý ở một phiên khác.");
+                transaction.Commit();
+                GhiNhatKy(chapNhan ? "Duyệt hoàn tiền" : "Từ chối hoàn tiền", maHD,
+                    $"Yêu cầu {maYeuCau}; số tiền {amount:N0}");
+                return true;
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
         }
 
         public static bool HuyHoaDonChuaThanhToan(string maHD)
         {
-            if (!SessionState.IsAdmin && !SessionState.IsReceptionist)
+            if (!SessionState.IsAdmin && !SessionState.IsCashier)
                 throw new UnauthorizedAccessException("Chỉ thu ngân hoặc quản trị viên được hủy hóa đơn.");
+            EnsureAdvancedWorkflowSchema();
             const string sql = @"
                 UPDATE HoaDon
                 SET TrangThai = N'Đã hủy'
-                WHERE MaHD = @MaHD AND TrangThai = N'Chưa thanh toán'";
+                WHERE MaHD = @MaHD AND TrangThai = N'Chưa thanh toán'
+                  AND NOT EXISTS(SELECT 1 FROM dbo.GiaoDichVienPhi WHERE MaHD=@MaHD)";
             bool canceled = DatabaseHelper.ExecuteNonQuery(sql, new[]
             {
                 new SqlParameter("@MaHD", maHD)
@@ -2117,8 +3332,8 @@ namespace QlyPhongKham.DAL
         {
             if (!SessionState.IsAdmin) throw new UnauthorizedAccessException("Chỉ quản trị viên được quản lý hồ sơ nhân viên.");
             EnsureProfileImageSchema();
-            if (nv.ChucVu is not ("Admin" or "BacSi" or "LeTan"))
-                throw new ArgumentOutOfRangeException(nameof(nv), "Chức vụ không hợp lệ. Thu ngân dùng chung vai trò Lễ tân.");
+            if (nv.ChucVu is not ("Admin" or "BacSi" or "LeTan" or "ThuNgan"))
+                throw new ArgumentOutOfRangeException(nameof(nv), "Chức vụ không hợp lệ.");
 
             if (nv.ChucVu == "BacSi")
             {
@@ -2235,7 +3450,7 @@ namespace QlyPhongKham.DAL
         public static bool LuuTaiKhoan(string maNV, string tenDangNhap, string matKhau, string quyen, bool isNew)
         {
             if (!SessionState.IsAdmin) throw new UnauthorizedAccessException("Chỉ quản trị viên được quản lý tài khoản nhân viên.");
-            if (quyen is not ("Admin" or "BacSi" or "LeTan"))
+            if (quyen is not ("Admin" or "BacSi" or "LeTan" or "ThuNgan"))
                 throw new ArgumentOutOfRangeException(nameof(quyen), "Vai trò tài khoản không hợp lệ.");
 
             if (quyen == "BacSi")
@@ -2321,7 +3536,8 @@ namespace QlyPhongKham.DAL
         // 9. DANH SÁCH CHỜ THANH TOÁN (đã khám xong, chưa có hóa đơn)
         public static DataTable LayDanhSachChoThanhToan(int? offset = null, int? pageSize = null, string? maLeTan = null)
         {
-            maLeTan ??= SessionState.IsReceptionist ? SessionState.CurrentUser?.MaNV : null;
+            if (!SessionState.IsAdmin && !SessionState.IsCashier)
+                throw new UnauthorizedAccessException("Chỉ thu ngân hoặc quản trị viên được xem hồ sơ chờ lập hóa đơn.");
             string sql = @"
                 SELECT pk.MaPK, pk.STT, pk.NgayKham, bn.HoTen AS TenBN, bn.SoDienThoai,
                        nv.HoTen AS TenBacSi, pk.ChanDoan, pk.TrangThai
@@ -2787,8 +4003,9 @@ namespace QlyPhongKham.DAL
         public static DataRow? LayChiTietPhieuKhamDayDu(string maPK, string maBS)
         {
             EnsureClinicalRecordColumns();
+            EnsureVisitLineageSchema();
             string sql = @"
-                SELECT pk.MaPK, pk.STT, pk.NgayKham, pk.TrieuChung, pk.KhamLamSang, pk.SinhHieu, pk.ChanDoan, pk.LoiDan, pk.TrangThai,
+                SELECT pk.MaPK, pk.MaPK_Goc, pk.LyDoChuyen, pk.STT, pk.NgayKham, pk.TrieuChung, pk.KhamLamSang, pk.SinhHieu, pk.ChanDoan, pk.LoiDan, pk.TrangThai,
                        bn.MaBN, bn.HoTen AS TenBN, bn.GioiTinh, bn.NgaySinh, bn.SoDienThoai, bn.DiaChi, bn.TienSuBenh,
                        CASE WHEN bn.NgaySinh IS NULL THEN NULL ELSE DATEDIFF(YEAR, bn.NgaySinh, GETDATE()) - CASE WHEN DATEADD(YEAR, DATEDIFF(YEAR, bn.NgaySinh, GETDATE()), bn.NgaySinh) > CAST(GETDATE() AS DATE) THEN 1 ELSE 0 END END AS Tuoi,
                        nv.MaNV AS MaBacSi, nv.HoTen AS TenBacSi, nv.ChuyenKhoa

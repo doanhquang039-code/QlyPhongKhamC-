@@ -76,12 +76,12 @@ namespace QlyPhongKham.Forms
                 "-- Tự nhập tài khoản --",
                 "Quản trị viên (admin / 123456)",
                 "Bác sĩ khám (bacsi_nam / 123456)",
-                "Lễ tân & Thu ngân (letan / 123456)",
-                "Lễ tân & Thu ngân (thungan / 123456)",
+                "Lễ tân (letan / 123456)",
+                "Thu ngân (thungan / 123456)",
                 "TEST Admin (test_admin / 123456)",
                 "TEST Bác sĩ Nội (test_bs / 123456)",
                 "TEST Bác sĩ Tai Mũi Họng (test_bs2 / 123456)",
-                "TEST Lễ tân & Thu ngân (test_letan / 123456)",
+                "TEST Lễ tân (test_letan / 123456)",
                 "TEST Bệnh nhân (test_bn01 / 123456)"
             });
             cboQuickPick.SelectedIndex = 1;

@@ -351,7 +351,7 @@ namespace QlyPhongKham.Forms
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = F_Base
             };
-            cboRoleFilter.Items.AddRange(new object[] { "Tất cả chức vụ", "Admin", "BacSi", "LeTan" });
+            cboRoleFilter.Items.AddRange(new object[] { "Tất cả chức vụ", "Admin", "BacSi", "LeTan", "ThuNgan" });
             cboRoleFilter.SelectedIndex = 0;
             toolPanel.Controls.AddRange(new Control[] { btnAddNV, btnEditNV, btnDisableNV, btnCapTK, btnAssignRoom, btnRefreshNV, txtSearchNV, cboRoleFilter });
 
@@ -604,11 +604,12 @@ namespace QlyPhongKham.Forms
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 WrapContents = false
             };
-            var addRoom = PrimaryBtn("➕ Thêm", 0, 0, 105);
-            var editRoom = SecondaryBtn("✏ Sửa", 0, 0, 95, 34, C_Orange);
-            var deleteRoom = SecondaryBtn("🗑 Xóa", 0, 0, 95, 34, C_Red);
-            var refreshRooms = SecondaryBtn("↻ Làm mới", 0, 0, 110, 34, C_Blue);
-            roomButtons.Controls.AddRange(new Control[] { addRoom, editRoom, deleteRoom, refreshRooms });
+            var addRoom = PrimaryBtn("➕ Thêm", 0, 0, 82);
+            var editRoom = SecondaryBtn("✏ Sửa", 0, 0, 72, 34, C_Orange);
+            var deleteRoom = SecondaryBtn("🗑 Xóa", 0, 0, 72, 34, C_Red);
+            var refreshRooms = SecondaryBtn("↻ Làm mới", 0, 0, 92, 34, C_Blue);
+            var doctorShifts = SecondaryBtn("🕒 Ca bác sĩ", 0, 0, 125, 34, C_Teal);
+            roomButtons.Controls.AddRange(new Control[] { addRoom, editRoom, deleteRoom, refreshRooms, doctorShifts });
             roomPanel.Controls.Add(roomButtons);
 
             DataRow? GetSelected(DataGridView grid)
@@ -685,6 +686,11 @@ namespace QlyPhongKham.Forms
                     RunAdminAction(() => ClinicDAL.XoaPhongKham(maPhong));
             };
             refreshRooms.Click += (s, e) => LoadData();
+            doctorShifts.Click += (s, e) =>
+            {
+                using var dialog = new FormCaLamViecBacSi();
+                dialog.ShowDialog(this);
+            };
 
             LoadData();
             panelContent.Controls.Add(wrapper);

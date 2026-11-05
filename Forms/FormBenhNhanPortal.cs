@@ -15,7 +15,7 @@ namespace QlyPhongKham.Forms
         private static readonly Color TealLight = Color.FromArgb(229, 246, 243);
         private static readonly Color PageBackground = Color.FromArgb(243, 246, 248);
         private static readonly Color TextColor = Color.FromArgb(30, 48, 62);
-        private static readonly Color Muted = Color.FromArgb(105, 122, 134);
+        private static readonly Color Muted = Color.FromArgb(82, 99, 112);
 
         private readonly TaiKhoanBenhNhan _patient;
         private readonly Panel _content;
@@ -39,7 +39,7 @@ namespace QlyPhongKham.Forms
             MinimumSize = new Size(1080, 700);
             StartPosition = FormStartPosition.CenterScreen;
             BackColor = PageBackground;
-            Font = new Font("Segoe UI", 9F);
+            Font = new Font("Segoe UI", 10F);
 
             var sidebar = new Panel { Dock = DockStyle.Left, Width = 218, BackColor = Navy };
             var brand = new Panel { Dock = DockStyle.Top, Height = 72, BackColor = Navy };
@@ -72,7 +72,7 @@ namespace QlyPhongKham.Forms
                 Text = _patient.HoTen,
                 Location = new Point(12, 12),
                 Size = new Size(185, 22),
-                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                Font = new Font("Segoe UI", 10F, FontStyle.Bold),
                 ForeColor = Color.White,
                 AutoEllipsis = true
             });
@@ -143,7 +143,7 @@ namespace QlyPhongKham.Forms
                 Location = new Point(24, 12),
                 AutoSize = true,
                 ForeColor = Muted,
-                Font = new Font("Segoe UI", 8.5F)
+                Font = new Font("Segoe UI", 9.5F)
             };
             _pageTitle = new Label
             {
@@ -151,7 +151,7 @@ namespace QlyPhongKham.Forms
                 Location = new Point(24, 31),
                 AutoSize = true,
                 ForeColor = TextColor,
-                Font = new Font("Segoe UI", 13F, FontStyle.Bold)
+                Font = new Font("Segoe UI", 15F, FontStyle.Bold)
             };
             _refreshButton = CreateButton("Làm mới", primary: false);
             _refreshButton.Size = new Size(100, 32);
@@ -166,7 +166,7 @@ namespace QlyPhongKham.Forms
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 TextAlign = ContentAlignment.MiddleRight,
                 ForeColor = TextColor,
-                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                Font = new Font("Segoe UI", 10F, FontStyle.Bold),
                 AutoEllipsis = true
             };
             header.Controls.AddRange(new Control[] { _breadcrumb, _pageTitle, _refreshButton, userLabel });
@@ -207,7 +207,7 @@ namespace QlyPhongKham.Forms
                 ForeColor = Color.FromArgb(207, 221, 229),
                 FlatStyle = FlatStyle.Flat,
                 TextAlign = ContentAlignment.MiddleLeft,
-                Font = new Font("Segoe UI", 9F),
+                Font = new Font("Segoe UI", 10F),
                 Cursor = Cursors.Hand
             };
             button.FlatAppearance.BorderSize = 0;
@@ -269,13 +269,14 @@ namespace QlyPhongKham.Forms
                     .FirstOrDefault(row => row["TrangThai"].ToString() != "Đã thanh toán");
 
                 var page = CreatePageFlow();
-                var intro = CreateCard(120);
-                intro.Controls.Add(CreateLabel($"Xin chào, {_patient.HoTen}", 18, 15, 800, 32, 18, true, TextColor));
+                var intro = CreateCard(132);
+                AddCardAccent(intro);
+                intro.Controls.Add(CreateLabel($"Xin chào, {_patient.HoTen}", 22, 16, 850, 34, 20, true, Navy));
                 intro.Controls.Add(CreateLabel("Chúc bạn một ngày khỏe mạnh. Theo dõi lịch hẹn và hồ sơ sức khỏe của bạn tại đây.",
-                    20, 53, 800, 25, false, Muted));
+                    22, 55, 900, 24, 10.5F, false, Muted));
                 var bookButton = CreateButton("＋  Đặt lịch khám", true);
-                bookButton.Location = new Point(20, 82);
-                bookButton.Size = new Size(155, 32);
+                bookButton.Location = new Point(22, 88);
+                bookButton.Size = new Size(168, 36);
                 bookButton.Click += (s, e) =>
                 {
                     if (OpenBookingDialog())
@@ -284,72 +285,81 @@ namespace QlyPhongKham.Forms
                 intro.Controls.Add(bookButton);
                 page.Controls.Add(intro);
 
-                var columns = CreateColumns(510);
+                var columns = CreateColumns(540, 60);
                 var left = CreateColumn();
                 var right = CreateColumn();
 
-                var appointmentCard = CreateCard(224);
-                appointmentCard.Controls.Add(CreateLabel("Lịch hẹn sắp tới", 16, 14, 360, 20, 11, true, TextColor));
+                var appointmentCard = CreateCard(248);
+                AddCardAccent(appointmentCard);
+                appointmentCard.Controls.Add(CreateLabel("LỊCH HẸN SẮP TỚI", 20, 16, 360, 24, 12, true, Navy));
                 if (upcoming != null)
                 {
-                    appointmentCard.Controls.Add(CreateTag(upcoming["TrangThai"].ToString() ?? "Chờ xác nhận", 16, 46));
+                    appointmentCard.Controls.Add(CreateTag(upcoming["TrangThaiDuyet"].ToString() ?? "Chờ xác nhận", 20, 48));
                     appointmentCard.Controls.Add(CreateLabel(
                         ((DateTime)upcoming["NgayHen"]).ToString("dd/MM/yyyy  •  HH:mm"),
-                        16, 82, 330, 24, 15, true, Teal));
-                    appointmentCard.Controls.Add(CreateLabel($"Bác sĩ: {Value(upcoming, "TenBacSi")}", 16, 116, 360, 22, 9, true, TextColor));
-                    appointmentCard.Controls.Add(CreateLabel($"Chuyên khoa: {Value(upcoming, "ChuyenKhoa")}", 16, 142, 360, 20, 9, false, Muted));
-                    appointmentCard.Controls.Add(CreateLabel($"Phòng: {Value(upcoming, "TenPhong")}", 16, 165, 360, 20, 9, false, Muted));
+                        20, 84, 440, 30, 17, true, Teal));
+                    appointmentCard.Controls.Add(CreateLabel($"Bác sĩ  ·  {Value(upcoming, "TenBacSi")}", 20, 122, 440, 24, 10, true, TextColor));
+                    appointmentCard.Controls.Add(CreateLabel($"Chuyên khoa  ·  {Value(upcoming, "ChuyenKhoa")}", 20, 151, 440, 22, 10, false, Muted));
+                    appointmentCard.Controls.Add(CreateLabel($"Phòng khám  ·  {Value(upcoming, "TenPhong")}", 20, 178, 440, 22, 10, false, Muted));
                 }
                 else
                 {
-                    appointmentCard.Controls.Add(CreateLabel("Bạn chưa có lịch hẹn sắp tới.", 16, 64, 350, 24, 10, false, Muted));
+                    appointmentCard.Controls.Add(CreateLabel("Bạn chưa có lịch hẹn sắp tới.", 20, 72, 350, 24, 10, false, Muted));
                 }
                 var seeAppointments = CreateButton("Xem lịch hẹn", false);
-                seeAppointments.Location = new Point(16, 184);
-                seeAppointments.Size = new Size(130, 28);
+                seeAppointments.Location = new Point(20, 208);
+                seeAppointments.Size = new Size(145, 32);
                 seeAppointments.Click += (s, e) => ShowAppointments();
                 appointmentCard.Controls.Add(seeAppointments);
                 left.Controls.Add(appointmentCard);
 
-                var historyCard = CreateCard(240);
-                historyCard.Controls.Add(CreateLabel("Hồ sơ và tài liệu mới", 16, 14, 360, 20, 11, true, TextColor));
-                historyCard.Controls.Add(CreateLabel($"Số lượt khám đã ghi nhận: {history.Rows.Count}", 16, 44, 360, 20, 9, false, Muted));
+                var historyCard = CreateCard(232);
+                AddCardAccent(historyCard);
+                historyCard.Controls.Add(CreateLabel("HỒ SƠ VÀ TÀI LIỆU MỚI", 20, 16, 400, 24, 12, true, Navy));
+                historyCard.Controls.Add(CreateLabel($"Số lượt khám đã ghi nhận  ·  {history.Rows.Count}", 20, 52, 420, 22, 10, false, Muted));
                 historyCard.Controls.Add(CreateLabel($"Ngày sinh: {FormatValue(profile["NgaySinh"])}   •   Giới tính: {Value(profile, "GioiTinh")}",
-                    16, 70, 380, 24, 9, false, TextColor));
-                historyCard.Controls.Add(CreateLabel($"Điện thoại: {FormatValue(profile["SoDienThoai"])}", 16, 100, 360, 20, 9, false, TextColor));
+                    20, 82, 460, 24, 10, false, TextColor));
+                historyCard.Controls.Add(CreateLabel($"Điện thoại: {FormatValue(profile["SoDienThoai"])}", 20, 112, 400, 22, 10, false, TextColor));
                 var historyButton = CreateButton("Mở hồ sơ khám bệnh", false);
-                historyButton.Location = new Point(16, 145);
-                historyButton.Size = new Size(165, 32);
+                historyButton.Location = new Point(20, 158);
+                historyButton.Size = new Size(180, 34);
                 historyButton.Click += (s, e) => ShowHealthRecords();
                 historyCard.Controls.Add(historyButton);
                 left.Controls.Add(historyCard);
 
-                var billCard = CreateCard(224);
-                billCard.Controls.Add(CreateLabel("Hóa đơn / viện phí", 16, 14, 300, 20, 11, true, TextColor));
+                var billCard = CreateCard(248);
+                AddCardAccent(billCard);
+                billCard.Controls.Add(CreateLabel("HÓA ĐƠN / VIỆN PHÍ", 20, 16, 360, 28, 12, true, Navy));
                 if (unpaid != null)
                 {
-                    billCard.Controls.Add(CreateTag("Chưa thanh toán", 16, 48, Color.FromArgb(255, 245, 219), Color.FromArgb(153, 104, 0)));
-                    billCard.Controls.Add(CreateLabel($"{Convert.ToDecimal(unpaid["TongTien"]):N0} đ", 16, 87, 300, 32, 20, true, Teal));
-                    billCard.Controls.Add(CreateLabel($"Hóa đơn: {Value(unpaid, "MaHD")}", 16, 125, 300, 20, 9, false, Muted));
+                    billCard.Controls.Add(CreateTag("Chưa thanh toán", 20, 50, Color.FromArgb(255, 245, 219), Color.FromArgb(153, 104, 0)));
+                    billCard.Controls.Add(CreateLabel($"{Convert.ToDecimal(unpaid["TongTien"]):N0} đ", 20, 88, 320, 34, 21, true, Teal));
+                    billCard.Controls.Add(CreateLabel($"Hóa đơn  ·  {Value(unpaid, "MaHD")}", 20, 128, 300, 22, 10, false, Muted));
                 }
                 else
                 {
-                    billCard.Controls.Add(CreateLabel("Bạn không có hóa đơn chưa thanh toán.", 16, 65, 300, 40, 9, false, Muted));
+                    var noUnpaidBill = CreateWrappedLabel(
+                        "Bạn không có hóa đơn chưa thanh toán.",
+                        20, 68, 330, 10, false, Muted);
+                    billCard.Controls.Add(noUnpaidBill);
                 }
                 var billsButton = CreateButton("Xem viện phí", true);
-                billsButton.Location = new Point(16, 166);
-                billsButton.Size = new Size(135, 32);
+                billsButton.Location = new Point(20, 186);
+                billsButton.Size = new Size(145, 34);
                 billsButton.Click += (s, e) => ShowBills();
                 billCard.Controls.Add(billsButton);
                 right.Controls.Add(billCard);
 
-                var reminderCard = CreateCard(240);
-                reminderCard.Controls.Add(CreateLabel("Nhắc nhở chăm sóc sức khỏe", 16, 14, 300, 38, 11, true, TextColor));
-                reminderCard.Controls.Add(CreateLabel("Theo dõi lịch tái khám theo hướng dẫn của bác sĩ. Nếu triệu chứng trở nặng, hãy liên hệ cơ sở y tế.",
-                    16, 60, 280, 65, 9, false, Muted));
+                var reminderCard = CreateCard(252);
+                AddCardAccent(reminderCard);
+                reminderCard.Controls.Add(CreateLabel("NHẮC NHỞ SỨC KHỎE", 20, 16, 360, 28, 12, true, Navy));
+                var reminderText = CreateWrappedLabel(
+                    "Theo dõi lịch tái khám theo hướng dẫn của bác sĩ. Nếu triệu chứng trở nặng, hãy liên hệ cơ sở y tế.",
+                    20, 58, 350, 10, false, Muted);
+                reminderCard.Controls.Add(reminderText);
                 var supportButton = CreateButton("Mở trợ lý An Tâm", false);
-                supportButton.Location = new Point(16, 145);
-                supportButton.Size = new Size(165, 32);
+                supportButton.Location = new Point(20, 164);
+                supportButton.Size = new Size(180, 34);
                 supportButton.Click += (s, e) => ShowAssistant();
                 reminderCard.Controls.Add(supportButton);
                 right.Controls.Add(reminderCard);
@@ -388,13 +398,20 @@ namespace QlyPhongKham.Forms
                 var listCard = CreateCard(440);
                 listCard.Controls.Add(CreateLabel("Lịch hẹn của tôi", 16, 14, 400, 22, 11, true, TextColor));
                 var grid = CreateGrid(16, 48, 900, 325);
+                void ConfigureAppointmentColumns()
+                {
+                    HideColumns(grid, "MaBacSi", "TrangThai");
+                    if (grid.Columns.Contains("TrangThaiDuyet"))
+                        grid.Columns["TrangThaiDuyet"]!.HeaderText = "Trạng thái";
+                    if (grid.Columns.Contains("TrangThaiDuyet"))
+                        grid.Columns["TrangThaiDuyet"]!.DisplayIndex =
+                            grid.Columns.Count - 1;
+                }
+                grid.DataBindingComplete += (s, e) => ConfigureAppointmentColumns();
                 var appointments = ClinicDAL.LayLichHenBenhNhan(_patient.MaBN);
                 grid.DataSource = appointments;
                 grid.Size = new Size(Math.Max(0, listCard.ClientSize.Width - 32), 325);
-                HideColumns(grid, "MaBacSi", "TrangThai");
-                DataGridViewColumn? statusColumn = grid.Columns["TrangThaiDuyet"];
-                if (statusColumn != null)
-                    statusColumn.HeaderText = "Trạng thái";
+                ConfigureAppointmentColumns();
                 listCard.SizeChanged += (s, e) => grid.Size = new Size(Math.Max(0, listCard.ClientSize.Width - 32), 325);
                 listCard.Controls.Add(grid);
                 var detailButton = CreateButton("Xem chi tiết", false);
@@ -511,6 +528,17 @@ namespace QlyPhongKham.Forms
                 listCard.Margin = new Padding(0, 12, 0, 0);
                 var grid = CreateGrid(16, 48, 900, 370);
                 grid.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+                void ConfigureAppointmentColumns()
+                {
+                    HideColumns(grid, "MaBacSi", "TrangThai");
+                    if (grid.Columns.Contains("TrangThaiDuyet"))
+                    {
+                        grid.Columns["TrangThaiDuyet"]!.HeaderText = "Trạng thái";
+                        grid.Columns["TrangThaiDuyet"]!.DisplayIndex =
+                            grid.Columns.Count - 1;
+                    }
+                }
+                grid.DataBindingComplete += (s, e) => ConfigureAppointmentColumns();
                 var emptyLabel = CreateLabel("Bạn chưa có lịch hẹn. Bấm “Đặt lịch mới” để gửi yêu cầu.",
                     24, 190, 700, 28, 10, false, Muted);
                 emptyLabel.Visible = false;
@@ -518,10 +546,7 @@ namespace QlyPhongKham.Forms
                 {
                     DataTable appointments = ClinicDAL.LayLichHenBenhNhan(_patient.MaBN);
                     grid.DataSource = appointments;
-                    HideColumns(grid, "MaBacSi", "TrangThai");
-                    DataGridViewColumn? statusColumn = grid.Columns["TrangThaiDuyet"];
-                    if (statusColumn != null)
-                        statusColumn.HeaderText = "Trạng thái";
+                    ConfigureAppointmentColumns();
                     emptyLabel.Visible = appointments.Rows.Count == 0;
                     grid.Visible = appointments.Rows.Count > 0;
                 }
@@ -721,21 +746,22 @@ namespace QlyPhongKham.Forms
                     DropDownStyle = ComboBoxStyle.DropDownList,
                     Font = Font
                 };
-                void LoadTimeSlots()
+                void LoadTimeSlots(DateTime? preferred = null)
                 {
-                    string? previous = time.SelectedItem?.ToString();
                     time.Items.Clear();
-                    for (int hour = 8; hour <= 16; hour++)
+                    if (doctor.SelectedValue == null)
+                        return;
+                    DataTable availableSlots = ClinicDAL.LayKhungGioKhaDung(
+                        doctor.SelectedValue.ToString() ?? "",
+                        date.Value.Date,
+                        appointment == null ? null : Convert.ToInt32(appointment["MaLichHen"]));
+                    foreach (DataRow slot in availableSlots.Rows)
                     {
-                        foreach (string slot in new[] { $"{hour:00}:00", $"{hour:00}:30" })
-                        {
-                            DateTime slotTime = date.Value.Date.Add(TimeSpan.Parse(slot));
-                            if (date.Value.Date > DateTime.Today || slotTime > DateTime.Now)
-                                time.Items.Add(slot);
-                        }
+                        time.Items.Add(Convert.ToDateTime(slot["NgayGio"]).ToString("HH:mm"));
                     }
-                    if (previous != null && time.Items.Contains(previous))
-                        time.SelectedItem = previous;
+                    string preferredText = preferred?.ToString("HH:mm") ?? "";
+                    if (time.Items.Contains(preferredText))
+                        time.SelectedItem = preferredText;
                     else if (time.Items.Count > 0)
                         time.SelectedIndex = 0;
                 }
@@ -828,7 +854,7 @@ namespace QlyPhongKham.Forms
                         ? ""
                         : appointment["LyDoKham"].ToString() ?? "";
                 }
-                LoadTimeSlots();
+                LoadTimeSlots(appointment == null ? null : appointment.Field<DateTime>("NgayHen"));
                 if (appointment != null)
                 {
                     string existingTime = appointment.Field<DateTime>("NgayHen").ToString("HH:mm");
@@ -837,6 +863,7 @@ namespace QlyPhongKham.Forms
                     time.SelectedItem = existingTime;
                 }
                 date.ValueChanged += (s, e) => LoadTimeSlots();
+                doctor.SelectedValueChanged += (s, e) => LoadTimeSlots();
 
                 var noDoctor = new Label
                 {
@@ -982,23 +1009,25 @@ namespace QlyPhongKham.Forms
                     DropDownStyle = ComboBoxStyle.DropDownList,
                     Font = Font
                 };
-                void LoadTimeSlots()
+                void LoadTimeSlots(DateTime? preferred = null)
                 {
                     time.Items.Clear();
-                    for (int hour = 8; hour <= 16; hour++)
+                    if (doctor.SelectedValue == null)
+                        return;
+                    DataTable availableSlots = ClinicDAL.LayKhungGioKhaDung(
+                        doctor.SelectedValue.ToString() ?? "",
+                        date.Value.Date,
+                        appointment == null ? null : Convert.ToInt32(appointment["MaLichHen"]));
+                    foreach (DataRow slot in availableSlots.Rows)
                     {
-                        foreach (string slot in new[] { $"{hour:00}:00", $"{hour:00}:30" })
-                        {
-                            DateTime appointmentTime = date.Value.Date.Add(TimeSpan.Parse(slot));
-                            if (date.Value.Date > DateTime.Today || appointmentTime > DateTime.Now)
-                                time.Items.Add(slot);
-                        }
+                        time.Items.Add(Convert.ToDateTime(slot["NgayGio"]).ToString("HH:mm"));
                     }
-                    if (time.Items.Count > 0)
+                    string preferredText = preferred?.ToString("HH:mm") ?? "";
+                    if (time.Items.Contains(preferredText))
+                        time.SelectedItem = preferredText;
+                    else if (time.Items.Count > 0)
                         time.SelectedIndex = 0;
                 }
-                LoadTimeSlots();
-                date.ValueChanged += (s, e) => LoadTimeSlots();
                 formCard.Controls.Add(time);
                 formCard.Controls.Add(CreateLabel("Lý do khám", 18, 315, 160, 20, 9, true, TextColor));
                 var reason = new TextBox
@@ -1050,20 +1079,33 @@ namespace QlyPhongKham.Forms
                 }
 
                 specialty.SelectedIndexChanged += (s, e) => LoadDoctors();
-                doctor.SelectedIndexChanged += (s, e) => UpdateDoctorInfo();
+                doctor.SelectedIndexChanged += (s, e) =>
+                {
+                    UpdateDoctorInfo();
+                    LoadTimeSlots();
+                };
+                date.ValueChanged += (s, e) => LoadTimeSlots();
                 if (specialty.Items.Count > 0)
                 {
                     LoadDoctors();
                     if (appointment != null)
                     {
                         doctor.SelectedValue = appointment["MaBacSi"];
-                        string existingTime = appointment.Field<DateTime>("NgayHen").ToString("HH:mm");
-                        if (!time.Items.Contains(existingTime))
-                            time.Items.Add(existingTime);
-                        time.SelectedItem = existingTime;
                         reason.Text = appointment["LyDoKham"] == DBNull.Value
                             ? ""
                             : appointment["LyDoKham"].ToString() ?? "";
+                    }
+                    LoadTimeSlots(appointment == null ? null : appointment.Field<DateTime>("NgayHen"));
+                    if (appointment != null)
+                    {
+                        DateTime existingAppointment = appointment.Field<DateTime>("NgayHen");
+                        string existingTime = existingAppointment.ToString("HH:mm");
+                        if (date.Value.Date == existingAppointment.Date)
+                        {
+                            if (!time.Items.Contains(existingTime))
+                                time.Items.Add(existingTime);
+                            time.SelectedItem = existingTime;
+                        }
                     }
                 }
                 else
@@ -1077,7 +1119,7 @@ namespace QlyPhongKham.Forms
                 {
                     if (time.SelectedItem == null)
                     {
-                        MessageBox.Show("Ngày hôm nay không còn khung giờ đặt lịch. Vui lòng chọn ngày khác.",
+                        MessageBox.Show("Bác sĩ không có slot 15 phút khả dụng. Vui lòng chọn ngày khác.",
                             "Không còn giờ khám", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         return;
                     }
@@ -1290,7 +1332,7 @@ namespace QlyPhongKham.Forms
             var transcript = new TextBox
             {
                 Location = new Point(16, 48),
-                Size = new Size(0, 310),
+                Size = new Size(Math.Max(0, chat.ClientSize.Width - 32), 310),
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 Multiline = true,
                 ReadOnly = true,
@@ -1303,20 +1345,22 @@ namespace QlyPhongKham.Forms
             var question = new TextBox
             {
                 Location = new Point(16, 372),
-                Size = new Size(0, 34),
+                Size = new Size(Math.Max(150, chat.ClientSize.Width - 130), 34),
                 Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 PlaceholderText = "Nhập câu hỏi..."
             };
             var send = CreateButton("Gửi", true);
-            send.Location = new Point(0, 372);
+            send.Location = new Point(chat.ClientSize.Width - 96, 372);
             send.Size = new Size(80, 34);
             send.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            question.Width = 500;
-            send.Left = 530;
             void PositionChatControls()
             {
+                transcript.Width = Math.Max(0, chat.ClientSize.Width - 32);
+                transcript.Height = Math.Max(120, chat.ClientSize.Height - 150);
+                question.Top = chat.ClientSize.Height - question.Height - 16;
                 question.Width = Math.Max(150, chat.ClientSize.Width - 130);
                 send.Left = chat.ClientSize.Width - send.Width - 16;
+                send.Top = question.Top;
             }
             chat.SizeChanged += (s, e) => PositionChatControls();
             PositionChatControls();
@@ -1420,7 +1464,7 @@ namespace QlyPhongKham.Forms
                     control.Width = availableWidth;
         }
 
-        private TableLayoutPanel CreateColumns(int height)
+        private TableLayoutPanel CreateColumns(int height, int leftColumnPercent = 66)
         {
             var layout = new TableLayoutPanel
             {
@@ -1433,8 +1477,8 @@ namespace QlyPhongKham.Forms
                 Margin = new Padding(0, 0, 0, 12),
                 BackColor = PageBackground
             };
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 66));
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, leftColumnPercent));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100 - leftColumnPercent));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             layout.SizeChanged += (s, e) =>
             {
@@ -1486,19 +1530,44 @@ namespace QlyPhongKham.Forms
             return card;
         }
 
+        private static void AddCardAccent(Panel card)
+        {
+            card.Controls.Add(new Panel
+            {
+                Location = Point.Empty,
+                Size = new Size(card.Width, 4),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                BackColor = Teal
+            });
+        }
+
         private static Label CreateLabel(string text, int x, int y, int width, int height, bool bold, Color color)
             => CreateLabel(text, x, y, width, height, 9F, bold, color);
 
         private static Label CreateLabel(string text, int x, int y, int width, int height, float size, bool bold, Color color)
         {
+            float readableSize = size <= 8.5F ? 9.5F : size <= 10F ? 10.5F : size <= 12F ? 12F : size;
             return new Label
             {
                 Text = text,
                 Location = new Point(x, y),
                 Size = new Size(width, height),
-                Font = new Font("Segoe UI", size, bold ? FontStyle.Bold : FontStyle.Regular),
+                Font = new Font("Segoe UI", readableSize, bold ? FontStyle.Bold : FontStyle.Regular),
                 ForeColor = color,
                 AutoEllipsis = true
+            };
+        }
+
+        private static Label CreateWrappedLabel(string text, int x, int y, int maxWidth, float size, bool bold, Color color)
+        {
+            return new Label
+            {
+                Text = text,
+                Location = new Point(x, y),
+                AutoSize = true,
+                MaximumSize = new Size(maxWidth, 0),
+                Font = new Font("Segoe UI", size <= 10F ? 10.5F : size, bold ? FontStyle.Bold : FontStyle.Regular),
+                ForeColor = color
             };
         }
 
@@ -1510,7 +1579,7 @@ namespace QlyPhongKham.Forms
                 BackColor = primary ? Teal : Color.White,
                 ForeColor = primary ? Color.White : TextColor,
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 9F, primary ? FontStyle.Bold : FontStyle.Regular),
+                Font = new Font("Segoe UI", 10F, primary ? FontStyle.Bold : FontStyle.Regular),
                 Cursor = Cursors.Hand
             };
             button.FlatAppearance.BorderColor = primary ? Teal : Color.FromArgb(213, 223, 228);
@@ -1528,7 +1597,7 @@ namespace QlyPhongKham.Forms
                 Padding = new Padding(8, 4, 8, 4),
                 BackColor = back ?? TealLight,
                 ForeColor = fore ?? Teal,
-                Font = new Font("Segoe UI", 8F, FontStyle.Bold)
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold)
             };
         }
 
@@ -1549,17 +1618,17 @@ namespace QlyPhongKham.Forms
                 BackgroundColor = Color.White,
                 BorderStyle = BorderStyle.None,
                 GridColor = Color.FromArgb(232, 237, 240),
-                Font = new Font("Segoe UI", 8.5F),
+                Font = new Font("Segoe UI", 9.5F),
                 ColumnHeadersHeight = 36,
                 EnableHeadersVisualStyles = false
             };
             grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(247, 249, 250);
             grid.ColumnHeadersDefaultCellStyle.ForeColor = Muted;
-            grid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+            grid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             grid.DefaultCellStyle.SelectionBackColor = TealLight;
             grid.DefaultCellStyle.SelectionForeColor = TextColor;
             grid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(250, 252, 252);
-            grid.RowTemplate.Height = 32;
+            grid.RowTemplate.Height = 36;
             return grid;
         }
 

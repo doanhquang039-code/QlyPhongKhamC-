@@ -22,8 +22,8 @@ namespace QlyPhongKham.Forms
             var txtMK   = new TextBox { Location = new Point(150, 90), Size = new Size(220, 26), UseSystemPasswordChar = true };
             var txtMK2  = new TextBox { Location = new Point(150, 125), Size = new Size(220, 26), UseSystemPasswordChar = true };
             var cboQ    = new ComboBox { Location = new Point(150, 160), Size = new Size(160, 26), DropDownStyle = ComboBoxStyle.DropDownList };
-            cboQ.Items.AddRange(new object[] { "Admin", "BacSi", "LeTan" });
-            cboQ.SelectedItem = chucVu == "ThuNgan" ? "LeTan" : chucVu;
+            cboQ.Items.AddRange(new object[] { "Admin", "BacSi", "LeTan", "ThuNgan" });
+            cboQ.SelectedItem = chucVu;
 
             Controls.AddRange(new Control[] {
                 new Label { Text = "Mã nhân viên:", Location = new Point(20, 23), AutoSize = true }, txtMaNV,

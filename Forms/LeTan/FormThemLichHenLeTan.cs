@@ -11,9 +11,11 @@ namespace QlyPhongKham.Forms
         private readonly int? _maLichHen;
         private readonly ComboBox _patient;
         private readonly ComboBox _doctor;
-        private readonly DateTimePicker _appointmentTime;
+        private readonly DateTimePicker _appointmentDate;
+        private readonly ComboBox _appointmentTime;
         private readonly TextBox _reason;
         private readonly string _appointmentStatus;
+        private readonly bool _hasAssignedDoctors;
 
         public FormThemLichHenLeTan(string maLeTan, DataRow? appointment = null)
         {
@@ -60,22 +62,42 @@ namespace QlyPhongKham.Forms
             _patient.DisplayMember = "HoTen";
             _patient.ValueMember = "MaBN";
             _doctor = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
-            _doctor.DataSource = ClinicDAL.LayDanhSachBacSiTheoNhanVien(maLeTan);
+            DataTable doctors = ClinicDAL.LayDanhSachBacSiTheoNhanVien(maLeTan);
+            _hasAssignedDoctors = doctors.Rows.Count > 0;
+            if (_hasAssignedDoctors)
+            {
+                _doctor.DataSource = doctors;
+            }
+            else
+            {
+                _doctor.Items.Add("Chưa có bác sĩ chung phòng được phân công");
+                _doctor.SelectedIndex = 0;
+            }
             _doctor.DisplayMember = "HoTen";
             _doctor.ValueMember = "MaNV";
-            _appointmentTime = new DateTimePicker
+            _appointmentDate = new DateTimePicker
             {
                 Dock = DockStyle.Fill,
-                Format = DateTimePickerFormat.Custom,
-                CustomFormat = "dd/MM/yyyy HH:mm",
-                ShowUpDown = true,
-                Value = DateTime.Now.AddHours(1)
+                Format = DateTimePickerFormat.Short,
+                Value = DateTime.Today.AddDays(1)
             };
+            _appointmentTime = new ComboBox
+            {
+                Width = 100,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            var timePanel = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false };
+            timePanel.Controls.AddRange(new Control[]
+            {
+                _appointmentDate,
+                new Label { Text = "Giờ", AutoSize = true, Padding = new Padding(6, 8, 0, 0) },
+                _appointmentTime
+            });
             _reason = new TextBox { Dock = DockStyle.Fill, Multiline = true, MaxLength = 255, ScrollBars = ScrollBars.Vertical };
 
             AddField(layout, "Bệnh nhân *", _patient, 1);
             AddField(layout, "Bác sĩ *", _doctor, 2);
-            AddField(layout, "Ngày giờ hẹn *", _appointmentTime, 3);
+            AddField(layout, "Ngày giờ hẹn *", timePanel, 3);
             AddField(layout, "Lý do khám", _reason, 4);
 
             var buttons = new FlowLayoutPanel
@@ -98,9 +120,38 @@ namespace QlyPhongKham.Forms
                 _patient.SelectedValue = appointment["MaBN"];
                 _doctor.SelectedValue = appointment["MaNV_BacSi"];
                 if (appointment["NgayHen"] != DBNull.Value)
-                    _appointmentTime.Value = Convert.ToDateTime(appointment["NgayHen"]);
+                    _appointmentDate.Value = Convert.ToDateTime(appointment["NgayHen"]).Date;
                 _reason.Text = appointment["LyDoKham"] == DBNull.Value ? "" : appointment["LyDoKham"].ToString() ?? "";
             }
+            _appointmentDate.ValueChanged += (sender, args) => LoadAvailableSlots();
+            _doctor.SelectedValueChanged += (sender, args) => LoadAvailableSlots();
+            LoadAvailableSlots(appointment == null || appointment["NgayHen"] == DBNull.Value
+                ? null
+                : Convert.ToDateTime(appointment["NgayHen"]));
+        }
+
+        private void LoadAvailableSlots(DateTime? preferred = null)
+        {
+            _appointmentTime.Items.Clear();
+            if (_doctor.SelectedValue == null)
+                return;
+            DataTable slots = ClinicDAL.LayKhungGioKhaDung(
+                _doctor.SelectedValue.ToString() ?? "",
+                _appointmentDate.Value.Date,
+                _maLichHen);
+            foreach (DataRow row in slots.Rows)
+                _appointmentTime.Items.Add(Convert.ToDateTime(row["NgayGio"]).ToString("HH:mm"));
+            if (slots.Rows.Count == 0)
+            {
+                _appointmentTime.Items.Add("Chưa có giờ - nhờ Admin cấu hình ca");
+                _appointmentTime.SelectedIndex = 0;
+            }
+            _appointmentTime.Enabled = true;
+            string preferredText = preferred?.ToString("HH:mm") ?? "";
+            if (_appointmentTime.Items.Contains(preferredText))
+                _appointmentTime.SelectedItem = preferredText;
+            else if (_appointmentTime.Items.Count > 0)
+                _appointmentTime.SelectedIndex = 0;
         }
 
         private static void AddField(TableLayoutPanel layout, string label, Control control, int row)
@@ -117,20 +168,29 @@ namespace QlyPhongKham.Forms
 
         private void Save(object? sender, EventArgs e)
         {
-            if (_patient.SelectedValue == null || _doctor.SelectedValue == null)
+            if (_patient.SelectedValue == null || !_hasAssignedDoctors || _doctor.SelectedValue == null)
             {
                 MessageBox.Show("Cần có hồ sơ bệnh nhân và bác sĩ được phân công phòng trước khi đặt lịch.",
                     "Thiếu thông tin", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
+            if (_appointmentTime.SelectedItem == null
+                || !TimeSpan.TryParse(_appointmentTime.SelectedItem.ToString(), out _))
+            {
+                MessageBox.Show("Bác sĩ không có slot 15 phút khả dụng trong ngày đã chọn. Hãy chọn ngày khác hoặc nhờ quản trị viên cấu hình ca.",
+                    "Không có giờ hẹn", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
             try
             {
+                DateTime appointmentDateTime = _appointmentDate.Value.Date.Add(
+                    TimeSpan.Parse(_appointmentTime.SelectedItem.ToString() ?? ""));
                 bool saved = ClinicDAL.LuuLichHen(
                     _maLichHen,
                     _patient.SelectedValue.ToString() ?? "",
                     _doctor.SelectedValue.ToString(),
-                    _appointmentTime.Value,
+                    appointmentDateTime,
                     _reason.Text.Trim(),
                     _appointmentStatus);
                 if (!saved)

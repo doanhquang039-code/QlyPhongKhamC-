@@ -57,7 +57,18 @@ namespace QlyPhongKham.Forms
             }, 0, 0);
             layout.SetColumnSpan(layout.GetControlFromPosition(0, 0)!, 2);
 
-            _patient = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
+            var patientPanel = new Panel { Dock = DockStyle.Fill };
+            _patient = new ComboBox { Dock = DockStyle.Top, DropDownStyle = ComboBoxStyle.DropDownList };
+            var lblEmailHint = new Label { Dock = DockStyle.Bottom, Height = 18, ForeColor = Color.FromArgb(100, 116, 139), Font = new Font("Segoe UI", 8F), Text = "✉ Đang tải email..." };
+            patientPanel.Controls.Add(_patient);
+            patientPanel.Controls.Add(lblEmailHint);
+            _patient.SelectedValueChanged += (s, e) =>
+            {
+                string ma = _patient.SelectedValue?.ToString() ?? "";
+                string? em = ClinicDAL.LayEmailBenhNhanTheoMa(ma);
+                lblEmailHint.Text = string.IsNullOrEmpty(em) ? "⚠ Bệnh nhân chưa có email" : $"✉ Email: {em}";
+                lblEmailHint.ForeColor = string.IsNullOrEmpty(em) ? Color.FromArgb(217, 119, 6) : Color.FromArgb(16, 185, 129);
+            };
             _patient.DataSource = ClinicDAL.LayDanhSachBenhNhan();
             _patient.DisplayMember = "HoTen";
             _patient.ValueMember = "MaBN";
@@ -95,7 +106,7 @@ namespace QlyPhongKham.Forms
             });
             _reason = new TextBox { Dock = DockStyle.Fill, Multiline = true, MaxLength = 255, ScrollBars = ScrollBars.Vertical };
 
-            AddField(layout, "Bệnh nhân *", _patient, 1);
+            AddField(layout, "Bệnh nhân *", patientPanel, 1);
             AddField(layout, "Bác sĩ *", _doctor, 2);
             AddField(layout, "Ngày giờ hẹn *", timePanel, 3);
             AddField(layout, "Lý do khám", _reason, 4);

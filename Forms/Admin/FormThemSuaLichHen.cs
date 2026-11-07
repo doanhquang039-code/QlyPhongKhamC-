@@ -3,6 +3,7 @@ using System.Data;
 using System.Drawing;
 using System.Windows.Forms;
 using QlyPhongKham.DAL;
+using QlyPhongKham.Helpers;
 
 namespace QlyPhongKham.Forms
 {
@@ -208,18 +209,47 @@ namespace QlyPhongKham.Forms
             {
                 DateTime appointmentDateTime = _appointmentDate.Value.Date.Add(
                     TimeSpan.Parse(_appointmentTime.SelectedItem.ToString() ?? ""));
+                string trangThai = _status.SelectedItem?.ToString() ?? "Chờ xác nhận";
                 bool saved = ClinicDAL.LuuLichHen(
                     _maLichHen,
                     maBN,
                     string.IsNullOrWhiteSpace(maBS) ? null : maBS,
                     appointmentDateTime,
                     _reason.Text.Trim(),
-                    _status.SelectedItem?.ToString() ?? "Chờ xác nhận");
+                    trangThai);
                 if (!saved)
                 {
                     MessageBox.Show("Không lưu được lịch hẹn. Kiểm tra bệnh nhân, bác sĩ và trạng thái rồi thử lại.",
                         "Lỗi lưu lịch hẹn", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
+                }
+
+                // Gửi email và thông báo nếu lịch hẹn được xác nhận
+                if (trangThai == "Đã xác nhận")
+                {
+                    try
+                    {
+                        string tenBN = _patient.Text;
+                        string tenBS = _doctor.Text;
+                        string? emailBN = ClinicDAL.LayEmailBenhNhanTheoMa(maBN);
+                        if (!string.IsNullOrEmpty(emailBN))
+                        {
+                            string body = EmailHelper.BuildXacNhanLichHenBody(tenBN, tenBS, appointmentDateTime, _reason.Text.Trim());
+                            EmailHelper.SendAsync(emailBN, $"[An Tâm Clinic] Xác nhận lịch hẹn khám bệnh - {appointmentDateTime:dd/MM/yyyy HH:mm}", body);
+                        }
+
+                        if (!string.IsNullOrEmpty(maBS))
+                        {
+                            NotificationHelper.Push(maBS, "Lịch hẹn mới đã xác nhận",
+                                $"Bệnh nhân {tenBN} có lịch hẹn lúc {appointmentDateTime:dd/MM/yyyy HH:mm}. Lý do: {_reason.Text.Trim()}",
+                                "LichHen");
+                        }
+
+                        NotificationHelper.PushToAdmins("Lịch hẹn đã xác nhận",
+                            $"Lịch hẹn khám của bệnh nhân {tenBN} (Bác sĩ: {tenBS}) lúc {appointmentDateTime:dd/MM/yyyy HH:mm} đã được xác nhận.",
+                            "LichHen");
+                    }
+                    catch { }
                 }
 
                 DialogResult = DialogResult.OK;

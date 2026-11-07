@@ -119,13 +119,24 @@ namespace QlyPhongKham.DAL
             }
         }
 
+        private static void AttachParameters(SqlCommand command, SqlParameter[]? parameters)
+        {
+            if (parameters == null) return;
+            foreach (var p in parameters)
+            {
+                if (p == null) continue;
+                // Luôn clone parameter để tránh lỗi "SqlParameter is already contained by another SqlParameterCollection"
+                var paramToAdd = (SqlParameter)((ICloneable)p).Clone();
+                command.Parameters.Add(paramToAdd);
+            }
+        }
+
         public static DataTable ExecuteQuery(string query, SqlParameter[]? parameters = null)
         {
             var dataTable = new DataTable();
             using var connection = GetConnection();
             using var command = new SqlCommand(query, connection);
-            if (parameters != null)
-                command.Parameters.AddRange(parameters);
+            AttachParameters(command, parameters);
             using var adapter = new SqlDataAdapter(command);
             adapter.Fill(dataTable);
             return dataTable;
@@ -135,8 +146,7 @@ namespace QlyPhongKham.DAL
         {
             using var connection = GetConnection();
             using var command = new SqlCommand(query, connection);
-            if (parameters != null)
-                command.Parameters.AddRange(parameters);
+            AttachParameters(command, parameters);
             connection.Open();
             return command.ExecuteNonQuery();
         }
@@ -145,8 +155,7 @@ namespace QlyPhongKham.DAL
         {
             using var connection = GetConnection();
             using var command = new SqlCommand(query, connection);
-            if (parameters != null)
-                command.Parameters.AddRange(parameters);
+            AttachParameters(command, parameters);
             connection.Open();
             return command.ExecuteScalar();
         }

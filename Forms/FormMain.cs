@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Data;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
@@ -101,7 +102,9 @@ namespace QlyPhongKham.Forms
         internal Button btnNavThuNgan   = null!;
         internal Button btnNavNhanVien  = null!;
         internal Button btnNavBaoCao    = null!;
+    internal Button btnNavNhatKy     = null!;
         internal Button btnNavKhoaPhong = null!;
+        internal Button btnNavDichVu    = null!;
         internal Panel  panelSidebar    = null!;
         internal Panel  panelContent    = null!;
         private Panel _sidebarHeader = null!;
@@ -114,6 +117,11 @@ namespace QlyPhongKham.Forms
         private  Panel  topBar          = null!;
         private Button btnRefreshPage = null!;
         private Action? _refreshPageAction;
+
+        // ── Bell notification ──
+        private Button _btnBell = null!;
+        private Label  _lblBellBadge = null!;
+        private System.Windows.Forms.Timer? _notifTimer;
 
         // ── Palette "An Tâm" ──
         internal static readonly Color C_Sidebar    = Color.FromArgb(15,  32,  54);
@@ -200,10 +208,12 @@ namespace QlyPhongKham.Forms
             btnNavBenhNhan  = CreateNavBtn("👤", "Bệnh nhân",         124);
             btnNavKhamBenh  = CreateNavBtn("🩺", "Phòng khám",        170);
             btnNavKhoThuoc  = CreateNavBtn("💊", "Kho thuốc",         216);
-            btnNavThuNgan   = CreateNavBtn("💰", "Thu ngân & HĐ",     262);
-            btnNavNhanVien  = CreateNavBtn("👥", "Nhân sự",            308);
-            btnNavBaoCao    = CreateNavBtn("📊", "Báo cáo",            354);
-            btnNavKhoaPhong = CreateNavBtn("🏥", "Khoa / Phòng khám",  400);
+            btnNavDichVu    = CreateNavBtn("🔬", "Bảng giá dịch vụ",   262);
+            btnNavThuNgan   = CreateNavBtn("💰", "Thu ngân & HĐ",     308);
+            btnNavNhanVien  = CreateNavBtn("👥", "Nhân sự",            354);
+            btnNavBaoCao    = CreateNavBtn("📊", "Báo cáo",            400);
+            btnNavKhoaPhong = CreateNavBtn("🏥", "Khoa / Phòng khám",  446);
+            btnNavNhatKy    = CreateNavBtn("📜", "Nhật ký",            492);
 
             btnNavTongQuan.Click += (s, e) =>
             {
@@ -229,8 +239,12 @@ namespace QlyPhongKham.Forms
             };
             btnNavKhoThuoc.Click += (s, e) =>
             {
-                if (SessionState.IsDoctor) ShowBacSiTraCuuView();
+                if (SessionState.IsDoctor) ShowBacSiThuocView();
                 else if (SessionState.IsReceptionist || SessionState.IsAdmin) ShowKhoThuocView();
+            };
+            btnNavDichVu.Click += (s, e) =>
+            {
+                ShowBacSiDichVuView();
             };
             btnNavThuNgan.Click  += (s, e) =>
             {
@@ -243,6 +257,11 @@ namespace QlyPhongKham.Forms
             {
                 if (SessionState.IsAdmin)
                     ShowKhoaPhongView();
+            };
+            btnNavNhatKy.Click += (s, e) =>
+            {
+                if (SessionState.IsAdmin)
+                    ShowNhatKyView();
             };
 
             var profileCard = new Panel
@@ -311,7 +330,7 @@ namespace QlyPhongKham.Forms
             btnCfg.FlatAppearance.BorderSize = 0;
             btnCfg.Click += (s, e) => new FormConfigDb().ShowDialog();
 
-            _sidebarNavigation.Controls.AddRange(new Control[] { lblSection, btnNavTongQuan, btnNavLichHen, btnNavBenhNhan, btnNavKhamBenh, btnNavKhoThuoc, btnNavThuNgan, btnNavNhanVien, btnNavBaoCao, btnNavKhoaPhong });
+            _sidebarNavigation.Controls.AddRange(new Control[] { lblSection, btnNavTongQuan, btnNavLichHen, btnNavBenhNhan, btnNavKhamBenh, btnNavKhoThuoc, btnNavDichVu, btnNavThuNgan, btnNavNhanVien, btnNavBaoCao, btnNavKhoaPhong, btnNavNhatKy });
             _sidebarFooter.Controls.AddRange(new Control[] { profileCard, btnLogout, btnCfg });
             panelSidebar.Controls.Add(_sidebarNavigation);
             panelSidebar.Controls.Add(_sidebarFooter);
@@ -407,19 +426,205 @@ namespace QlyPhongKham.Forms
 
             lblBreadcrumb = new Label { Text = "Quản trị viên  ›  Tổng quan", Font = F_Small, ForeColor = C_TextGray, Location = new Point(24, 12), AutoSize = true };
             lblPageTitle  = new Label { Text = "Tổng quan", Font = new Font("Segoe UI", 12f, FontStyle.Bold), ForeColor = C_TextDark, Location = new Point(24, 30), AutoSize = true };
-            var lblDate   = new Label { Text = $"📅  {DateTime.Now:dddd, dd/MM/yyyy}", Font = F_Small, ForeColor = C_TextGray, AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right };
-            lblDate.Location = new Point(topBar.Width - 220, 22);
-            lblDate.Anchor   = AnchorStyles.Top | AnchorStyles.Right;
+            var lblDate   = new Label { Text = $"📅  {DateTime.Now:dddd, dd/MM/yyyy}", Font = F_Small, ForeColor = C_TextGray, AutoSize = true };
 
             btnRefreshPage = SecondaryBtn("↻ Làm mới", 0, 15, 100, 34, C_Blue);
-            btnRefreshPage.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnRefreshPage.Click += (s, e) => _refreshPageAction?.Invoke();
-            void PositionRefreshButton() => btnRefreshPage.Location = new Point(topBar.ClientSize.Width - 330, 15);
-            topBar.SizeChanged += (s, e) => PositionRefreshButton();
-            PositionRefreshButton();
 
-            topBar.Controls.AddRange(new Control[] { lblBreadcrumb, lblPageTitle, btnRefreshPage, lblDate });
+            // ── Bell button ──────────────────────────────────────────
+            _btnBell = new Button
+            {
+                Text      = "🔔",
+                Size      = new Size(40, 40),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.Transparent,
+                ForeColor = C_TextDark,
+                Font      = new Font("Segoe UI", 15f),
+                Cursor    = Cursors.Hand
+            };
+            _btnBell.FlatAppearance.BorderSize = 0;
+            _btnBell.FlatAppearance.MouseOverBackColor = Color.FromArgb(20, 0, 0, 0);
+
+            _lblBellBadge = new Label
+            {
+                Text      = "",
+                Size      = new Size(18, 18),
+                BackColor = C_Red,
+                ForeColor = Color.White,
+                Font      = new Font("Segoe UI", 7f, FontStyle.Bold),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Visible   = false
+            };
+
+            _btnBell.Click += (s, e) => ShowNotificationPanel();
+
+            void PositionTopBarRightControls()
+            {
+                // Sắp xếp thứ tự từ phải qua trái với khoảng cách hợp lý:
+                // [lblDate]  (cách 20px)  [btnRefreshPage]  (cách 12px)  [🔔 icon]  (cách lề phải 20px)
+                int rightEdge = topBar.ClientSize.Width - 20;
+
+                _btnBell.Location      = new Point(rightEdge - _btnBell.Width, (topBar.ClientSize.Height - _btnBell.Height) / 2);
+                _lblBellBadge.Location = new Point(_btnBell.Right - 14, _btnBell.Top - 2);
+
+                btnRefreshPage.Location = new Point(_btnBell.Left - 12 - btnRefreshPage.Width, (topBar.ClientSize.Height - btnRefreshPage.Height) / 2);
+
+                lblDate.Location = new Point(btnRefreshPage.Left - 20 - lblDate.Width, (topBar.ClientSize.Height - lblDate.Height) / 2);
+            }
+            topBar.SizeChanged += (s, e) => PositionTopBarRightControls();
+            PositionTopBarRightControls();
+
+            topBar.Controls.AddRange(new Control[] { lblBreadcrumb, lblPageTitle, btnRefreshPage, lblDate, _btnBell, _lblBellBadge });
             this.Controls.Add(topBar);
+
+            // Poll thông báo mỗi 30 giây
+            if (SessionState.CurrentUser != null)
+            {
+                Helpers.NotificationHelper.EnsureSchema();
+                _notifTimer = new System.Windows.Forms.Timer { Interval = 30_000 };
+                _notifTimer.Tick += (s, e) => RefreshBellBadge();
+                _notifTimer.Start();
+                RefreshBellBadge();
+                FormClosed += (s, e) => { _notifTimer?.Stop(); _notifTimer?.Dispose(); };
+            }
+        }
+
+        private void RefreshBellBadge()
+        {
+            try
+            {
+                string maNV = SessionState.CurrentUser?.MaNV ?? "";
+                if (string.IsNullOrEmpty(maNV)) return;
+                int count = Helpers.NotificationHelper.LaySoChuaDoc(maNV);
+                if (_lblBellBadge.InvokeRequired)
+                {
+                    _lblBellBadge.Invoke(() => UpdateBadge(count));
+                }
+                else
+                {
+                    UpdateBadge(count);
+                }
+            }
+            catch { }
+        }
+
+        private void UpdateBadge(int count)
+        {
+            _lblBellBadge.Visible = count > 0;
+            _lblBellBadge.Text    = count > 99 ? "99+" : count.ToString();
+        }
+
+        private void ShowNotificationPanel()
+        {
+            string maNV = SessionState.CurrentUser?.MaNV ?? "";
+            var dt = Helpers.NotificationHelper.LayThongBao(maNV);
+
+            var popup = new Form
+            {
+                Text            = "🔔 Thông báo",
+                Size            = new Size(460, 500),
+                StartPosition   = FormStartPosition.Manual,
+                FormBorderStyle = FormBorderStyle.FixedSingle,
+                MaximizeBox     = false,
+                MinimizeBox     = false,
+                BackColor       = Color.White,
+                TopMost         = true
+            };
+            // Hiển thị popup bên dưới bell
+            var bellScreen = _btnBell.PointToScreen(Point.Empty);
+            popup.Location = new Point(
+                Math.Max(0, bellScreen.X + _btnBell.Width - popup.Width),
+                bellScreen.Y + _btnBell.Height + 4);
+
+            var header = new Panel { Dock = DockStyle.Top, Height = 48, BackColor = C_Sidebar, Padding = new Padding(12, 10, 12, 0) };
+            header.Controls.Add(new Label { Text = "Thông báo hệ thống", ForeColor = Color.White, Font = F_Bold, AutoSize = true, Location = new Point(12, 14) });
+            var btnMarkAll = new Button
+            {
+                Text = "Đánh dấu tất cả đã đọc", Size = new Size(170, 26),
+                FlatStyle = FlatStyle.Flat, BackColor = C_Teal, ForeColor = Color.White,
+                Font = F_Small, Anchor = AnchorStyles.Top | AnchorStyles.Right
+            };
+            btnMarkAll.FlatAppearance.BorderSize = 0;
+            btnMarkAll.Location = new Point(popup.ClientSize.Width - btnMarkAll.Width - 12, 11);
+            header.Controls.Add(btnMarkAll);
+
+            var listPanel = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(8) };
+
+            void RenderNotifications()
+            {
+                listPanel.Controls.Clear();
+                int y = 8;
+                if (dt.Rows.Count == 0)
+                {
+                    listPanel.Controls.Add(new Label
+                    {
+                        Text = "Không có thông báo nào.", Font = F_Base, ForeColor = C_TextGray,
+                        Location = new Point(12, 20), AutoSize = true
+                    });
+                    return;
+                }
+                foreach (DataRow r in dt.Rows)
+                {
+                    bool daDoc = Convert.ToBoolean(r["DaDoc"]);
+                    var card = new Panel
+                    {
+                        Location  = new Point(8, y),
+                        Size      = new Size(listPanel.ClientSize.Width - 28, 68),
+                        BackColor = daDoc ? Color.White : Color.FromArgb(236, 253, 250),
+                        Cursor    = Cursors.Hand
+                    };
+                    card.Paint += (s, e) =>
+                    {
+                        using var pen = new Pen(C_Border, 1);
+                        e.Graphics.DrawRectangle(pen, 0, 0, card.Width - 1, card.Height - 1);
+                        if (!daDoc)
+                        {
+                            using var accent = new System.Drawing.SolidBrush(C_Teal);
+                            e.Graphics.FillRectangle(accent, 0, 0, 4, card.Height);
+                        }
+                    };
+                    card.Controls.Add(new Label
+                    {
+                        Text     = r["TieuDe"].ToString(),
+                        Location = new Point(12, 6), Size = new Size(card.Width - 100, 20),
+                        Font     = F_Bold, ForeColor = C_TextDark, AutoEllipsis = true
+                    });
+                    card.Controls.Add(new Label
+                    {
+                        Text     = r["NoiDung"].ToString(),
+                        Location = new Point(12, 26), Size = new Size(card.Width - 24, 28),
+                        Font     = F_Small, ForeColor = C_TextGray, AutoEllipsis = true
+                    });
+                    card.Controls.Add(new Label
+                    {
+                        Text     = Convert.ToDateTime(r["NgayTao"]).ToString("dd/MM HH:mm"),
+                        Location = new Point(card.Width - 92, 6), Size = new Size(80, 18),
+                        Font     = F_Small, ForeColor = C_TextGray, TextAlign = ContentAlignment.MiddleRight
+                    });
+                    long maThongBao = Convert.ToInt64(r["MaThongBao"]);
+                    card.Click += (s, e) =>
+                    {
+                        Helpers.NotificationHelper.DanhDauDaDoc(maNV, maThongBao);
+                        RefreshBellBadge();
+                        popup.Close();
+                    };
+                    listPanel.Controls.Add(card);
+                    y += card.Height + 6;
+                }
+            }
+            RenderNotifications();
+
+            btnMarkAll.Click += (s, e) =>
+            {
+                Helpers.NotificationHelper.DanhDauDaDoc(maNV);
+                foreach (DataRow r in dt.Rows) r["DaDoc"] = true;
+                RenderNotifications();
+                UpdateBadge(0);
+            };
+
+            popup.Controls.Add(listPanel);
+            popup.Controls.Add(header);
+            popup.Show(this);
         }
 
         internal void SetRefreshPageAction(Action refreshAction)
@@ -502,22 +707,27 @@ namespace QlyPhongKham.Forms
                 btnNavNhanVien.Visible = false;
                 btnNavBaoCao.Visible   = false;
                 btnNavKhoaPhong.Visible = false;
+                btnNavNhatKy.Visible   = false;
 
                 btnNavLichHen.Visible  = true;
                 btnNavLichHen.Text     = "  📅  Lịch khám";
-                btnNavLichHen.Location = new Point(8, 78);
+                btnNavLichHen.Location = new Point(8, 32);
 
                 btnNavBenhNhan.Visible = true;
                 btnNavBenhNhan.Text    = "  👤  Bệnh nhân";
-                btnNavBenhNhan.Location = new Point(8, 124);
+                btnNavBenhNhan.Location = new Point(8, 78);
 
                 btnNavKhamBenh.Visible = true;
                 btnNavKhamBenh.Text    = "  🩺  Khám & Kê đơn";
-                btnNavKhamBenh.Location = new Point(8, 170);
+                btnNavKhamBenh.Location = new Point(8, 124);
 
                 btnNavKhoThuoc.Visible = true;
-                btnNavKhoThuoc.Text    = "  🔍  Tra cứu";
-                btnNavKhoThuoc.Location = new Point(8, 216);
+                btnNavKhoThuoc.Text    = "  💊  Danh mục thuốc";
+                btnNavKhoThuoc.Location = new Point(8, 170);
+
+                btnNavDichVu.Visible   = true;
+                btnNavDichVu.Text      = "  🔬  Bảng giá dịch vụ";
+                btnNavDichVu.Location  = new Point(8, 216);
 
                 ShowBacSiLichKhamView();
             }
@@ -538,10 +748,12 @@ namespace QlyPhongKham.Forms
                 btnNavKhoThuoc.Visible = true;
                 btnNavKhoThuoc.Text = "  💊  Kho thuốc";
                 btnNavKhoThuoc.Location = new Point(8, 216);
+                btnNavDichVu.Visible   = false;
                 btnNavThuNgan.Visible = false;
                 btnNavNhanVien.Visible = false;
                 btnNavBaoCao.Visible   = false;
                 btnNavKhoaPhong.Visible = false;
+                btnNavNhatKy.Visible   = false;
                 ApplyResponsiveLayout();
                 ShowLeTanDashboard();
             }
@@ -552,9 +764,11 @@ namespace QlyPhongKham.Forms
                 btnNavBenhNhan.Visible = false;
                 btnNavKhamBenh.Visible = false;
                 btnNavKhoThuoc.Visible = false;
+                btnNavDichVu.Visible   = false;
                 btnNavNhanVien.Visible = false;
                 btnNavBaoCao.Visible = false;
                 btnNavKhoaPhong.Visible = false;
+                btnNavNhatKy.Visible   = false;
                 btnNavThuNgan.Visible = true;
                 btnNavThuNgan.Text = "  💳  Thanh toán";
                 btnNavThuNgan.Location = new Point(8, 32);
@@ -569,10 +783,12 @@ namespace QlyPhongKham.Forms
                 btnNavKhamBenh.Visible = true;
                 btnNavKhamBenh.Text = "  🩺  Phiếu khám";
                 btnNavKhoThuoc.Visible = true;
+                btnNavDichVu.Visible   = true;
                 btnNavThuNgan.Visible = true;
                 btnNavNhanVien.Visible = true;
                 btnNavBaoCao.Visible = true;
                 btnNavKhoaPhong.Visible = true;
+                btnNavNhatKy.Visible   = true;
                 ApplyResponsiveLayout();
                 ShowDashboard();
             }
@@ -585,7 +801,7 @@ namespace QlyPhongKham.Forms
         {
             "Admin" => "Quản trị viên",
             "BacSi" => "Bác sĩ khám bệnh",
-            "LeTan" => "Lễ tân",
+            "LeTan" => "Y tá",
             "ThuNgan" => "Thu ngân",
             _ => quyen
         };

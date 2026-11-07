@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
 using QlyPhongKham.DAL;
@@ -15,7 +17,7 @@ namespace QlyPhongKham.Forms
         {
             SetRefreshPageAction(ShowLeTanDashboard);
             SetActiveNav(btnNavTongQuan);
-            SetPageHeader("Lễ tân  ›  Trang chủ", "Tổng quan tiếp đón");
+            SetPageHeader("Y tá  ›  Trang chủ", "Tổng quan tiếp đón & điều phối");
             panelContent.Controls.Clear();
 
             try
@@ -29,19 +31,30 @@ namespace QlyPhongKham.Forms
                 DateTime today = DateTime.Today;
                 int todayAppointments = appointments.AsEnumerable()
                     .Count(row => row.Field<DateTime>("NgayHen").Date == today
-                        && allowedDoctors.Contains(row["MaNV_BacSi"].ToString() ?? ""));
+                        && (allowedDoctors.Count == 0 || allowedDoctors.Contains(row["MaNV_BacSi"].ToString() ?? "")));
                 int todayNoShows = appointments.AsEnumerable()
                     .Count(row => row.Field<DateTime>("NgayHen").Date == today
                         && row["TrangThai"].ToString() == "Không đến"
-                        && allowedDoctors.Contains(row["MaNV_BacSi"].ToString() ?? ""));
+                        && (allowedDoctors.Count == 0 || allowedDoctors.Contains(row["MaNV_BacSi"].ToString() ?? "")));
                 int waitingApproval = appointments.AsEnumerable()
-                    .Count(row => row.Field<DateTime>("NgayHen").Date == today
-                        && row["TrangThai"].ToString() == "Chờ xác nhận"
-                        && allowedDoctors.Contains(row["MaNV_BacSi"].ToString() ?? ""));
+                    .Count(row => row["TrangThai"].ToString() == "Chờ xác nhận"
+                        && (allowedDoctors.Count == 0 || allowedDoctors.Contains(row["MaNV_BacSi"].ToString() ?? "")));
 
                 var wrapper = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
-                var title = MakeLbl("TIẾP NHẬN BỆNH NHÂN", 12, 8, bold: true);
+                var roomInfo = ClinicDAL.LayThongTinPhongNhanVien(maNV);
+                string roomText = !string.IsNullOrEmpty(roomInfo.maPhong)
+                    ? $"📍 Đang trực tại: {roomInfo.tenPhong} ({roomInfo.tenKhoa})  •  Tổ phụ trách: {roomInfo.soBacSi} Bác sĩ & {roomInfo.soYTa} Y tá / Điều dưỡng"
+                    : "📍 Quầy tiếp đón trung tâm  •  Phụ trách toàn bộ phòng khám";
+                var title = MakeLbl("TIẾP NHẬN BỆNH NHÂN", 12, 6, bold: true);
                 title.Font = new Font("Segoe UI", 13F, FontStyle.Bold);
+                var lblRoomBadge = new Label
+                {
+                    Text = roomText,
+                    Location = new Point(230, 10),
+                    AutoSize = true,
+                    Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                    ForeColor = C_TealDark
+                };
                 var btnReceive = PrimaryBtn("＋ Tiếp nhận", 12, 40, 135, 36);
                 var btnBook = SecondaryBtn("＋ Thêm lịch hẹn", 157, 40, 145, 36, C_Teal);
                 btnReceive.Click += (s, e) => ShowTiepDonView();
@@ -59,10 +72,10 @@ namespace QlyPhongKham.Forms
                 for (int index = 0; index < 4; index++)
                     cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
                 cards.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-                cards.Controls.Add(MakeLeTanKpi("HÀNG CHỜ KHÁM", queue.Rows.Count.ToString(), "Phiếu trong phạm vi phòng được giao", C_Teal), 0, 0);
-                cards.Controls.Add(MakeLeTanKpi("LỊCH HẸN HÔM NAY", todayAppointments.ToString(), "Lịch hẹn toàn phòng khám", C_Blue), 1, 0);
-                cards.Controls.Add(MakeLeTanKpi("CHỜ DUYỆT", waitingApproval.ToString(), "Lịch chưa được xác nhận", C_Orange), 2, 0);
-                cards.Controls.Add(MakeLeTanKpi("KHÔNG ĐẾN", todayNoShows.ToString(), "Lịch vắng trong ngày", C_Purple), 3, 0);
+                cards.Controls.Add(MakeLeTanKpi("HÀNG CHỜ KHÁM", queue.Rows.Count.ToString(), "Phiếu trong phạm vi phòng được giao", C_Teal, () => ShowTiepDonView()), 0, 0);
+                cards.Controls.Add(MakeLeTanKpi("LỊCH HẸN HÔM NAY", todayAppointments.ToString(), "Lịch hẹn trong ngày hôm nay", C_Blue, () => ShowLeTanLichKhamView(selectedDate: today)), 1, 0);
+                cards.Controls.Add(MakeLeTanKpi("CHỜ DUYỆT", waitingApproval.ToString(), "Lịch đặt chờ duyệt toàn viện", C_Orange, () => ShowLeTanLichKhamView(status: "Chờ xác nhận")), 2, 0);
+                cards.Controls.Add(MakeLeTanKpi("KHÔNG ĐẾN", todayNoShows.ToString(), "Lịch vắng trong ngày", C_Purple, () => ShowLeTanLichKhamView(status: "Không đến", selectedDate: today)), 3, 0);
 
                 var queueCard = new Panel
                 {
@@ -81,7 +94,7 @@ namespace QlyPhongKham.Forms
                 queueGrid.DataSource = queue;
                 queueCard.Controls.Add(queueGrid);
 
-                wrapper.Controls.AddRange(new Control[] { title, btnReceive, btnBook, cards, queueCard });
+                wrapper.Controls.AddRange(new Control[] { title, lblRoomBadge, btnReceive, btnBook, cards, queueCard });
                 panelContent.Controls.Add(wrapper);
             }
             catch (Exception ex)
@@ -91,35 +104,49 @@ namespace QlyPhongKham.Forms
             }
         }
 
-        private Panel MakeLeTanKpi(string title, string value, string subtitle, Color accent)
+        private Panel MakeLeTanKpi(string title, string value, string subtitle, Color accent, Action? onClick = null)
         {
             var card = new Panel { Dock = DockStyle.Fill, Margin = new Padding(5), BackColor = Color.White };
             card.Paint += PaintCardBorder;
             card.Controls.Add(new Panel { Dock = DockStyle.Left, Width = 4, BackColor = accent });
-            card.Controls.Add(new Label
+            var lblTitle = new Label
             {
                 Text = title,
                 Location = new Point(16, 12),
                 AutoSize = true,
                 Font = new Font("Segoe UI", 8F, FontStyle.Bold),
                 ForeColor = C_TextGray
-            });
-            card.Controls.Add(new Label
+            };
+            var lblValue = new Label
             {
                 Text = value,
                 Location = new Point(16, 34),
                 AutoSize = true,
                 Font = new Font("Segoe UI", 22F, FontStyle.Bold),
                 ForeColor = accent
-            });
-            card.Controls.Add(new Label
+            };
+            var lblSub = new Label
             {
                 Text = subtitle,
                 Location = new Point(16, 74),
                 AutoSize = true,
                 Font = F_Small,
                 ForeColor = C_TextGray
-            });
+            };
+            card.Controls.AddRange(new Control[] { lblTitle, lblValue, lblSub });
+
+            if (onClick != null)
+            {
+                card.Cursor = Cursors.Hand;
+                card.Click += (s, e) => onClick();
+                lblTitle.Cursor = Cursors.Hand;
+                lblTitle.Click += (s, e) => onClick();
+                lblValue.Cursor = Cursors.Hand;
+                lblValue.Click += (s, e) => onClick();
+                lblSub.Cursor = Cursors.Hand;
+                lblSub.Click += (s, e) => onClick();
+            }
+
             return card;
         }
 
@@ -127,7 +154,12 @@ namespace QlyPhongKham.Forms
         {
             SetRefreshPageAction(() => ShowLeTanLichKhamView(keyword, status, selectedDate));
             SetActiveNav(btnNavKhamBenh);
-            SetPageHeader("Lễ tân & Thu ngân  ›  Lịch khám", "Quản lý lịch khám và yêu cầu đặt lịch");
+            string maNVCurrent = SessionState.CurrentUser?.MaNV ?? "";
+            var roomInfo = ClinicDAL.LayThongTinPhongNhanVien(maNVCurrent);
+            string headerSubtitle = !string.IsNullOrEmpty(roomInfo.maPhong)
+                ? $"Lịch khám & yêu cầu hẹn: {roomInfo.tenPhong} ({roomInfo.tenKhoa})  •  Tổ: {roomInfo.soBacSi} Bác sĩ & {roomInfo.soYTa} Y tá"
+                : "Quản lý lịch khám và yêu cầu đặt lịch toàn viện";
+            SetPageHeader("Y tá  ›  Lịch khám", headerSubtitle);
             panelContent.Controls.Clear();
 
             var wrapper = new Panel { Dock = DockStyle.Fill };
@@ -136,10 +168,60 @@ namespace QlyPhongKham.Forms
             var datePicker = new DateTimePicker
             {
                 Location = new Point(12, 10),
-                Size = new Size(150, 30),
+                Size = new Size(130, 30),
                 Format = DateTimePickerFormat.Short,
                 Value = selectedDate ?? DateTime.Today
             };
+            bool isAllDatesInit = (selectedDate == null && status == "Chờ xác nhận");
+            var chkAllDates = new CheckBox
+            {
+                Text = "Tất cả ngày",
+                Location = new Point(148, 14),
+                AutoSize = true,
+                Font = F_Base,
+                Cursor = Cursors.Hand,
+                Checked = isAllDatesInit
+            };
+            datePicker.Enabled = !isAllDatesInit;
+
+            var cboDoctorFilter = new ComboBox
+            {
+                Location = new Point(244, 10),
+                Size = new Size(210, 30),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = F_Base
+            };
+            cboDoctorFilter.Items.Add("-- Tất cả Bác sĩ phòng này --");
+            var dtDocs = ClinicDAL.LayDanhSachBacSiTheoNhanVien(maNVCurrent);
+            var docIds = new List<string> { "" };
+            foreach (DataRow r in dtDocs.Rows)
+            {
+                cboDoctorFilter.Items.Add($"BS. {r["HoTen"]}");
+                docIds.Add(r["MaNV"].ToString() ?? "");
+            }
+            var pendingCount = MakeLbl("Chờ duyệt: 0", 540, 57, bold: true);
+            pendingCount.ForeColor = C_Orange;
+            GridPageController? appointmentPageController = null;
+            void LoadAppointments()
+            {
+                ClinicDAL.DanhDauLichHenKhongDenQuaHan(
+                    SessionState.CurrentUser?.MaNV ?? "", 60);
+                appointmentPageController?.Reload();
+                DateTime? filterDate = chkAllDates.Checked ? null : datePicker.Value.Date;
+                string? filterBS = (cboDoctorFilter.SelectedIndex > 0 && cboDoctorFilter.SelectedIndex < docIds.Count)
+                    ? docIds[cboDoctorFilter.SelectedIndex]
+                    : null;
+                int waitingCount = ClinicDAL.LaySoLichHenChoDuyetLeTan(
+                    SessionState.CurrentUser?.MaNV ?? "", filterDate, filterBS);
+                int totalWaiting = ClinicDAL.LaySoLichHenChoDuyetLeTan(
+                    SessionState.CurrentUser?.MaNV ?? "", null, filterBS);
+                pendingCount.Text = chkAllDates.Checked
+                    ? $"Chờ duyệt: {totalWaiting}"
+                    : $"Chờ duyệt: {waitingCount} (Tổng chờ: {totalWaiting})";
+            }
+
+            cboDoctorFilter.SelectedIndexChanged += (s, e) => LoadAppointments();
+
             var search = MakeInput(12, 53, 220);
             search.PlaceholderText = "Mã lịch, bệnh nhân, bác sĩ...";
             var statusFilter = new ComboBox
@@ -168,9 +250,7 @@ namespace QlyPhongKham.Forms
             edit.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             var cancel = SecondaryBtn("Hủy lịch", 0, 10, 105, 34, C_Red);
             cancel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            var pendingCount = MakeLbl("Chờ duyệt: 0", 540, 57, bold: true);
-            pendingCount.ForeColor = C_Orange;
-            toolbar.Controls.AddRange(new Control[] { datePicker, search, statusFilter, refresh, approve, checkIn, refuse, noShow, pendingCount, add, edit, cancel });
+            toolbar.Controls.AddRange(new Control[] { datePicker, chkAllDates, cboDoctorFilter, search, statusFilter, refresh, approve, checkIn, refuse, noShow, pendingCount, add, edit, cancel });
 
             var gridPanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(10) };
             gridPanel.Paint += PaintCardBorder;
@@ -186,31 +266,33 @@ namespace QlyPhongKham.Forms
             };
             gridPanel.Controls.Add(grid);
 
-            GridPageController? appointmentPageController = null;
-            void LoadAppointments()
-            {
-                ClinicDAL.DanhDauLichHenKhongDenQuaHan(
-                    SessionState.CurrentUser?.MaNV ?? "", 60);
-                appointmentPageController?.Reload();
-                int waitingCount = ClinicDAL.LaySoLichHenChoDuyetLeTan(
-                    SessionState.CurrentUser?.MaNV ?? "",
-                    datePicker.Value.Date);
-                pendingCount.Text = $"Chờ duyệt: {waitingCount}";
-            }
-
             DataRow? SelectedAppointment()
                 => grid.SelectedRows.Count > 0 && grid.SelectedRows[0].DataBoundItem is DataRowView view
                     ? view.Row
                     : null;
 
             refresh.Click += (s, e) => LoadAppointments();
+            chkAllDates.CheckedChanged += (s, e) =>
+            {
+                datePicker.Enabled = !chkAllDates.Checked;
+                LoadAppointments();
+            };
             search.KeyDown += (s, e) =>
             {
                 if (e.KeyCode == Keys.Enter)
                     LoadAppointments();
             };
             datePicker.ValueChanged += (s, e) => LoadAppointments();
-            statusFilter.SelectedIndexChanged += (s, e) => LoadAppointments();
+            statusFilter.SelectedIndexChanged += (s, e) =>
+            {
+                // Nếu chọn "Chờ xác nhận" thì tự động bật "Tất cả ngày" để dễ tìm lịch mới đặt
+                if (statusFilter.SelectedItem?.ToString() == "Chờ xác nhận" && !chkAllDates.Checked)
+                {
+                    chkAllDates.Checked = true;
+                    return;
+                }
+                LoadAppointments();
+            };
             add.Click += (s, e) => OpenReceptionAppointment();
             approve.Click += (s, e) =>
             {
@@ -239,6 +321,35 @@ namespace QlyPhongKham.Forms
                         "Duyệt lịch thất bại", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
+
+                // ── Gửi email xác nhận + thông báo nội bộ ──────────
+                try
+                {
+                    int maLH = Convert.ToInt32(selected["MaLichHen"]);
+                    var info = ClinicDAL.LayThongTinLichHenDeDuyet(maLH);
+
+                    // Email cho bệnh nhân (bất đồng bộ, không block UI)
+                    if (!string.IsNullOrWhiteSpace(info.email))
+                    {
+                        string emailSubject = "[An Tâm] Lịch hẹn của bạn đã được xác nhận";
+                        string emailBody    = Helpers.EmailHelper.BuildXacNhanLichHenBody(
+                                                 info.tenBN, info.tenBacSi, info.ngayHen, info.lyDoKham);
+                        Helpers.EmailHelper.SendAsync(info.email, emailSubject, emailBody);
+                    }
+
+                    // Thông báo bell cho nhân viên hiện tại & admin
+                    Helpers.NotificationHelper.Push(
+                        SessionState.CurrentUser?.MaNV ?? "",
+                        $"Đã duyệt lịch hẹn #{maLH}",
+                        $"BN: {info.tenBN} | Ngày: {info.ngayHen:dd/MM/yyyy HH:mm} | BS: {info.tenBacSi}",
+                        "Lịch hẹn");
+                    Helpers.NotificationHelper.PushToAdmins(
+                        $"Lịch hẹn #{maLH} đã xác nhận",
+                        $"Lễ tân {SessionState.CurrentUser?.HoTenNhanVien} duyệt lịch của {info.tenBN}",
+                        "Lịch hẹn");
+                }
+                catch { /* email/notification không được phá workflow chính */ }
+
                 MessageBox.Show($"Đã duyệt lịch của {selected["TenBN"]}. Lịch đã xác nhận sẽ hiển thị trong danh sách của bác sĩ.",
                     "Đã duyệt lịch", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 LoadAppointments();
@@ -361,17 +472,31 @@ namespace QlyPhongKham.Forms
             panelContent.Controls.Add(gridPanel);
             panelContent.Controls.Add(toolbar);
             appointmentPageController = GridPageController.Attach(grid, (offset, pageSize) =>
-                ClinicDAL.LayDanhSachLichHenLeTan(
+            {
+                string? filterBS = (cboDoctorFilter.SelectedIndex > 0 && cboDoctorFilter.SelectedIndex < docIds.Count)
+                    ? docIds[cboDoctorFilter.SelectedIndex]
+                    : null;
+                return ClinicDAL.LayDanhSachLichHenLeTan(
                     SessionState.CurrentUser?.MaNV ?? "",
-                    datePicker.Value.Date,
+                    chkAllDates.Checked ? null : datePicker.Value.Date,
                     search.Text.Trim(),
                     statusFilter.SelectedItem?.ToString(),
                     offset,
-                    pageSize));
+                    pageSize,
+                    filterBS);
+            });
+            string? initBS = (cboDoctorFilter.SelectedIndex > 0 && cboDoctorFilter.SelectedIndex < docIds.Count)
+                ? docIds[cboDoctorFilter.SelectedIndex]
+                : null;
             int waitingAppointments = ClinicDAL.LaySoLichHenChoDuyetLeTan(
                 SessionState.CurrentUser?.MaNV ?? "",
-                datePicker.Value.Date);
-            pendingCount.Text = $"Chờ duyệt: {waitingAppointments}";
+                chkAllDates.Checked ? null : datePicker.Value.Date,
+                initBS);
+            int totalWaitingInit = ClinicDAL.LaySoLichHenChoDuyetLeTan(
+                SessionState.CurrentUser?.MaNV ?? "", null, initBS);
+            pendingCount.Text = chkAllDates.Checked
+                ? $"Chờ duyệt: {totalWaitingInit}"
+                : $"Chờ duyệt: {waitingAppointments} (Tổng chờ: {totalWaitingInit})";
             StartNoShowTimer(LoadAppointments);
         }
 
@@ -394,7 +519,7 @@ namespace QlyPhongKham.Forms
         {
             SetRefreshPageAction(ShowTiepDonView);
             SetActiveNav(btnNavLichHen);
-            SetPageHeader("Lễ tân & Thu ngân  ›  Tiếp đón", "Đăng ký khám bệnh, cấp số thứ tự & theo dõi hàng chờ");
+            SetPageHeader("Y tá  ›  Tiếp đón", "Đăng ký khám bệnh, cấp số thứ tự & theo dõi hàng chờ");
             panelContent.Controls.Clear();
 
             var wrapper = new Panel { Dock = DockStyle.Fill };
@@ -781,7 +906,7 @@ namespace QlyPhongKham.Forms
         {
             SetRefreshPageAction(ShowBenhNhanView);
             SetActiveNav(btnNavBenhNhan);
-            string roleLabel = SessionState.IsAdmin ? "Quản trị viên" : "Lễ tân & Thu ngân";
+            string roleLabel = SessionState.IsAdmin ? "Quản trị viên" : "Y tá";
             SetPageHeader($"{roleLabel}  ›  Bệnh nhân", "Tra cứu, chỉnh sửa hồ sơ & xem lịch sử khám");
             panelContent.Controls.Clear();
 
@@ -941,13 +1066,146 @@ namespace QlyPhongKham.Forms
         }
 
         // ═══════════════════════════════════════════════════════════
+        //  REUSABLE COMPONENT: DONUT CHART (GDI+)
+        // ═══════════════════════════════════════════════════════════
+        private static Panel CreateDonutChart(
+            string title,
+            Func<IEnumerable<(string Label, int Value, Color Color)>> getItems,
+            Func<(string centerTop, string centerSub)> getCenterText)
+        {
+            var pnl = new Panel { Dock = DockStyle.None, BackColor = C_Card, Padding = new Padding(10) };
+            pnl.Paint += PaintCardBorder;
+            pnl.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+                int w = pnl.ClientSize.Width;
+                int h = pnl.ClientSize.Height;
+                if (w < 80 || h < 60) return;
+
+                // Title
+                using var fontTitle = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+                using var brushTitle = new SolidBrush(Color.FromArgb(75, 85, 99));
+                g.DrawString(title, fontTitle, brushTitle, 10, 8);
+
+                int topOffset = 28;
+                int availH = h - topOffset - 10;
+                int availW = w - 20;
+                if (availH <= 10 || availW <= 10) return;
+
+                var itemsList = (getItems?.Invoke() ?? Enumerable.Empty<(string, int, Color)>()).ToList();
+                int total = itemsList.Sum(x => Math.Max(0, x.Item2));
+                var (centerTop, centerSub) = getCenterText?.Invoke() ?? ("", "");
+
+                // Donut bounds: placed on left
+                int diameter = Math.Min(availH - 4, Math.Min((int)(availW * 0.44), 110));
+                if (diameter < 40) diameter = Math.Max(20, Math.Min(availH, availW));
+
+                int donutX = 14;
+                int donutY = topOffset + (availH - diameter) / 2;
+                var donutRect = new Rectangle(donutX, donutY, diameter, diameter);
+
+                if (total <= 0)
+                {
+                    using var penEmpty = new Pen(Color.FromArgb(229, 231, 235), Math.Max(8, diameter * 0.18f));
+                    float offset = penEmpty.Width / 2f;
+                    g.DrawEllipse(penEmpty, donutX + offset, donutY + offset, diameter - offset * 2, diameter - offset * 2);
+
+                    using var fontNone = new Font("Segoe UI", 8f, FontStyle.Italic);
+                    using var brushNone = new SolidBrush(Color.FromArgb(156, 163, 175));
+                    using var sfCenter = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                    g.DrawString("Chưa có DL", fontNone, brushNone, donutRect, sfCenter);
+                }
+                else
+                {
+                    float startAngle = -90f;
+                    foreach (var item in itemsList)
+                    {
+                        if (item.Value <= 0) continue;
+                        float sweepAngle = (float)item.Value / total * 360f;
+                        using var brush = new SolidBrush(item.Color);
+                        g.FillPie(brush, donutRect, startAngle, sweepAngle);
+                        startAngle += sweepAngle;
+                    }
+
+                    // Hole cutout
+                    int holeInset = (int)(diameter * 0.28f);
+                    int holeDiameter = diameter - holeInset * 2;
+                    var holeRect = new Rectangle(donutX + holeInset, donutY + holeInset, holeDiameter, holeDiameter);
+                    using var brushBg = new SolidBrush(pnl.BackColor);
+                    g.FillEllipse(brushBg, holeRect);
+
+                    // Center text
+                    if (!string.IsNullOrEmpty(centerTop))
+                    {
+                        using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                        if (!string.IsNullOrEmpty(centerSub))
+                        {
+                            using var fontCenterTop = new Font("Segoe UI", diameter >= 95 ? 11f : 9.5f, FontStyle.Bold);
+                            using var brushCenterTop = new SolidBrush(Color.FromArgb(17, 24, 39));
+                            using var fontCenterSub = new Font("Segoe UI", 7.5f, FontStyle.Regular);
+                            using var brushCenterSub = new SolidBrush(Color.FromArgb(107, 114, 128));
+
+                            var rectTop = new RectangleF(holeRect.X, holeRect.Y + holeRect.Height * 0.14f, holeRect.Width, holeRect.Height * 0.46f);
+                            var rectSub = new RectangleF(holeRect.X, holeRect.Y + holeRect.Height * 0.54f, holeRect.Width, holeRect.Height * 0.38f);
+                            g.DrawString(centerTop, fontCenterTop, brushCenterTop, rectTop, sf);
+                            g.DrawString(centerSub, fontCenterSub, brushCenterSub, rectSub, sf);
+                        }
+                        else
+                        {
+                            using var fontCenterTop = new Font("Segoe UI", diameter >= 95 ? 12f : 10f, FontStyle.Bold);
+                            using var brushCenterTop = new SolidBrush(Color.FromArgb(17, 24, 39));
+                            g.DrawString(centerTop, fontCenterTop, brushCenterTop, holeRect, sf);
+                        }
+                    }
+                }
+
+                // Legend on the right
+                int legendX = donutX + diameter + 14;
+                int legendW = w - legendX - 10;
+                if (legendW > 40 && itemsList.Count > 0)
+                {
+                    int lineCount = itemsList.Count;
+                    int lineH = Math.Min(22, Math.Max(16, availH / lineCount));
+                    int curY = topOffset + (availH - lineH * lineCount) / 2;
+
+                    using var fontLeg = new Font("Segoe UI", 8f, FontStyle.Regular);
+                    using var fontVal = new Font("Segoe UI", 8f, FontStyle.Bold);
+                    using var brushLeg = new SolidBrush(Color.FromArgb(75, 85, 99));
+
+                    foreach (var item in itemsList)
+                    {
+                        // Dot
+                        using var brushDot = new SolidBrush(item.Color);
+                        g.FillEllipse(brushDot, legendX, curY + (lineH - 8) / 2, 8, 8);
+
+                        // Label
+                        g.DrawString(item.Label, fontLeg, brushLeg, legendX + 12, curY + (lineH - 14) / 2);
+
+                        // Value & %
+                        double pct = total > 0 ? (double)item.Value / total * 100 : 0;
+                        string valStr = $"{item.Value} ({pct:0}%)";
+                        using var brushVal = new SolidBrush(Color.FromArgb(17, 24, 39));
+                        using var sfRight = new StringFormat { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center };
+                        g.DrawString(valStr, fontVal, brushVal, new RectangleF(legendX, curY, legendW, lineH), sfRight);
+
+                        curY += lineH;
+                    }
+                }
+            };
+            return pnl;
+        }
+
+        // ═══════════════════════════════════════════════════════════
         //  LỄ TÂN & THU NGÂN: KHO DƯỢC PHẨM
         // ═══════════════════════════════════════════════════════════
         private void ShowKhoThuocView()
         {
             SetRefreshPageAction(ShowKhoThuocView);
             SetActiveNav(btnNavKhoThuoc);
-            string roleLabel = SessionState.IsAdmin ? "Quản trị viên" : "Lễ tân & Thu ngân";
+            string roleLabel = SessionState.IsAdmin ? "Quản trị viên" : "Y tá";
             SetPageHeader($"{roleLabel}  ›  Kho thuốc", "Tra cứu danh mục, kiểm tra tồn kho & nhập kho");
             panelContent.Controls.Clear();
 
@@ -999,24 +1257,112 @@ namespace QlyPhongKham.Forms
             };
             pnlT.Controls.Add(dgvT);
 
+            // Right sidebar: Donut chart + mini stats footer + clean alert list
+            var pnlRight = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
+
+            var chartKho = CreateDonutChart(
+                "📊 CƠ CẤU TỒN KHO THUỐC",
+                () =>
+                {
+                    var k = ClinicDAL.LayThongKeKhoThuoc();
+                    return new (string Label, int Value, Color Color)[]
+                    {
+                        ("An toàn", k.anToanCount, Color.FromArgb(16, 185, 129)),
+                        ("Sắp hết", k.thuocSapHet, Color.FromArgb(245, 158, 11)),
+                        ("Hết hàng", k.hetHangCount, Color.FromArgb(239, 68, 68)),
+                        ("Cận hạn", k.loCanHan, Color.FromArgb(139, 92, 246))
+                    };
+                },
+                () =>
+                {
+                    var k = ClinicDAL.LayThongKeKhoThuoc();
+                    return ($"{k.tongLoaiThuoc}", "loại");
+                });
+            chartKho.Dock = DockStyle.Top;
+            chartKho.Height = 150;
+
+            var pnlKhoFooter = new Panel { Dock = DockStyle.Top, Height = 34, BackColor = C_Card, Padding = new Padding(10, 6, 10, 6) };
+            pnlKhoFooter.Paint += PaintCardBorder;
+            pnlKhoFooter.Paint += (s, e) =>
+            {
+                var k = ClinicDAL.LayThongKeKhoThuoc();
+                using var font = new Font("Segoe UI", 8f, FontStyle.Regular);
+                using var brush = new SolidBrush(Color.FromArgb(75, 85, 99));
+                e.Graphics.DrawString($"📦 Tổng tồn: {k.tongSoLuongTon:N0} đv  •  Trị giá: {k.tongGiaTriKho:N0} đ", font, brush, 10, 9);
+            };
+
+            var grpCB = new Panel { Dock = DockStyle.Fill, BackColor = C_Card, Padding = new Padding(10) };
+            grpCB.Paint += PaintCardBorder;
+            grpCB.Controls.Add(MakeLbl("⚠ CẦN BỔ SUNG / CẬN HẠN (≤ 30)", 10, 10, bold: true));
+            var pnlCBGrid = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 30, 0, 0) };
+            var dgvCB = MakeGrid();
+            dgvCB.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+            dgvCB.DataSource = ClinicDAL.LayThuocSapHet(30);
+            dgvCB.DataBindingComplete += (s, e) =>
+            {
+                string[] hideCols = { "DonGiaNhap", "DonGiaBan", "SoLo", "NgayHetHan", "SoNgayConLai" };
+                foreach (var col in hideCols)
+                    if (dgvCB.Columns.Contains(col)) dgvCB.Columns[col]!.Visible = false;
+
+                if (dgvCB.Columns.Contains("MaThuoc"))
+                {
+                    dgvCB.Columns["MaThuoc"]!.HeaderText = "Mã";
+                    dgvCB.Columns["MaThuoc"]!.FillWeight = 0.8f;
+                    dgvCB.Columns["MaThuoc"]!.MinimumWidth = 60;
+                }
+                if (dgvCB.Columns.Contains("TenThuoc"))
+                {
+                    dgvCB.Columns["TenThuoc"]!.HeaderText = "Tên thuốc";
+                    dgvCB.Columns["TenThuoc"]!.FillWeight = 2.0f;
+                    dgvCB.Columns["TenThuoc"]!.MinimumWidth = 100;
+                }
+                if (dgvCB.Columns.Contains("DonViTinh"))
+                {
+                    dgvCB.Columns["DonViTinh"]!.HeaderText = "ĐVT";
+                    dgvCB.Columns["DonViTinh"]!.FillWeight = 0.7f;
+                    dgvCB.Columns["DonViTinh"]!.MinimumWidth = 45;
+                }
+                if (dgvCB.Columns.Contains("SoLuongTon"))
+                {
+                    dgvCB.Columns["SoLuongTon"]!.HeaderText = "Tồn";
+                    dgvCB.Columns["SoLuongTon"]!.FillWeight = 0.7f;
+                    dgvCB.Columns["SoLuongTon"]!.MinimumWidth = 45;
+                }
+                if (dgvCB.Columns.Contains("CanhBao"))
+                {
+                    dgvCB.Columns["CanhBao"]!.HeaderText = "Cảnh báo";
+                    dgvCB.Columns["CanhBao"]!.FillWeight = 1.1f;
+                    dgvCB.Columns["CanhBao"]!.MinimumWidth = 70;
+                }
+            };
+            pnlCBGrid.Controls.Add(dgvCB);
+            grpCB.Controls.Add(pnlCBGrid);
+
+            pnlRight.Controls.Add(grpCB);
+            pnlRight.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 6, BackColor = Color.Transparent });
+            pnlRight.Controls.Add(pnlKhoFooter);
+            pnlRight.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 6, BackColor = Color.Transparent });
+            pnlRight.Controls.Add(chartKho);
+            split.Panel2.Controls.Add(pnlRight);
+
+            void RefreshKhoKPI()
+            {
+                chartKho.Invalidate();
+                pnlKhoFooter.Invalidate();
+                dgvCB.DataSource = ClinicDAL.LayThuocSapHet(30);
+            }
+
             GridPageController? medicinePageController = null;
-            void LoadThuoc() => medicinePageController?.Reload();
+            void LoadThuoc()
+            {
+                medicinePageController?.Reload();
+                RefreshKhoKPI();
+            }
             medicinePageController = GridPageController.Attach(dgvT, (offset, pageSize) =>
                 ClinicDAL.LayDanhSachThuoc(txtSearch.Text.Trim(), offset, pageSize));
             txtSearch.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) LoadThuoc(); };
             btnSearch.Click   += (s, e) => LoadThuoc();
             split.Panel1.Controls.Add(pnlT);
-
-            var grpCB = new Panel { Dock = DockStyle.Fill, BackColor = C_Card, Padding = new Padding(10) };
-            grpCB.Paint += PaintCardBorder;
-            grpCB.Controls.Add(MakeLbl("⚠ TỒN THẤP / LÔ SẮP HẾT HẠN (90 NGÀY)", 10, 10, bold: true));
-            var pnlCBGrid = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 30, 0, 0) };
-            var dgvCB = MakeGrid();
-            dgvCB.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-            dgvCB.DataSource = ClinicDAL.LayThuocSapHet(30);
-            pnlCBGrid.Controls.Add(dgvCB);
-            grpCB.Controls.Add(pnlCBGrid);
-            split.Panel2.Controls.Add(grpCB);
 
             btnAddT.Click += (s, e) =>
             {
@@ -1165,7 +1511,7 @@ namespace QlyPhongKham.Forms
             };
 
             wrapper.Controls.Add(split);
-            wrapper.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 10 });
+            wrapper.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 8, BackColor = Color.Transparent });
             wrapper.Controls.Add(toolPanel);
             panelContent.Controls.Add(wrapper);
         }
@@ -1187,6 +1533,125 @@ namespace QlyPhongKham.Forms
             panelContent.Controls.Clear();
 
             var wrapper = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8) };
+
+            // ── Khối Biểu đồ Thu ngân (Doanh thu & Donut Charts) ──
+            var pnlChartThuNgan = new Panel { Dock = DockStyle.Top, Height = 142, BackColor = Color.Transparent, Padding = new Padding(0, 0, 0, 6) };
+
+            var cardRevenue = new Panel { BackColor = C_Card, Padding = new Padding(12) };
+            cardRevenue.Paint += PaintCardBorder;
+            cardRevenue.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+                int w = cardRevenue.ClientSize.Width;
+                int h = cardRevenue.ClientSize.Height;
+                if (w < 80 || h < 60) return;
+
+                var k = ClinicDAL.LayThongKeThuNganHomNay();
+
+                using var fontTitle = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+                using var brushTitle = new SolidBrush(Color.FromArgb(75, 85, 99));
+                g.DrawString("💰 DOANH THU HÔM NAY", fontTitle, brushTitle, 12, 10);
+
+                using var fontVal = new Font("Segoe UI", 16f, FontStyle.Bold);
+                using var brushVal = new SolidBrush(Color.FromArgb(16, 185, 129));
+                g.DrawString($"{k.doanhThuHomNay:N0} đ", fontVal, brushVal, 12, 30);
+
+                using var fontSub = new Font("Segoe UI", 8f, FontStyle.Regular);
+                using var brushSub = new SolidBrush(Color.FromArgb(107, 114, 128));
+                g.DrawString($"Đã thu: {k.daThuCount} HĐ  •  Chờ thu: {k.tienChuaThu:N0} đ ({k.chuaThuCount} HĐ)", fontSub, brushSub, 12, 64);
+
+                int totalHĐ = k.daThuCount + k.chuaThuCount;
+                float rate = totalHĐ > 0 ? (float)k.daThuCount / totalHĐ : 0;
+                int barX = 12;
+                int barY = 88;
+                int barW = Math.Max(20, w - 24);
+                int barH = 7;
+
+                using var brushBarBg = new SolidBrush(Color.FromArgb(243, 244, 246));
+                g.FillRectangle(brushBarBg, barX, barY, barW, barH);
+
+                int fillW = (int)(barW * Math.Clamp(rate, 0f, 1f));
+                if (fillW > 0)
+                {
+                    using var brushFill = new SolidBrush(Color.FromArgb(16, 185, 129));
+                    g.FillRectangle(brushFill, barX, barY, fillW, barH);
+                }
+
+                using var fontRate = new Font("Segoe UI", 7.5f, FontStyle.Regular);
+                using var brushRate = new SolidBrush(Color.FromArgb(107, 114, 128));
+                g.DrawString($"Tỷ lệ hoàn tất thu: {rate:P0}", fontRate, brushRate, 12, 100);
+            };
+
+            var chartStatus = CreateDonutChart(
+                "📊 TRẠNG THÁI HÓA ĐƠN",
+                () =>
+                {
+                    var k = ClinicDAL.LayThongKeThuNganHomNay();
+                    return new (string Label, int Value, Color Color)[]
+                    {
+                        ("Đã thu", k.daThuCount, Color.FromArgb(16, 185, 129)),
+                        ("Chờ thu", k.chuaThuCount, Color.FromArgb(245, 158, 11)),
+                        ("Đã hủy", k.daHuyCount, Color.FromArgb(239, 68, 68))
+                    };
+                },
+                () =>
+                {
+                    var k = ClinicDAL.LayThongKeThuNganHomNay();
+                    int total = k.daThuCount + k.chuaThuCount + k.daHuyCount;
+                    return ($"{total}", "HĐ");
+                });
+
+            var chartPayment = CreateDonutChart(
+                "💳 HÌNH THỨC THANH TOÁN",
+                () =>
+                {
+                    var k = ClinicDAL.LayThongKeThuNganHomNay();
+                    return new (string Label, int Value, Color Color)[]
+                    {
+                        ("Tiền mặt", k.tienMatCount, Color.FromArgb(14, 165, 233)),
+                        ("Chuyển khoản", k.chuyenKhoanCount, Color.FromArgb(99, 102, 241))
+                    };
+                },
+                () =>
+                {
+                    var k = ClinicDAL.LayThongKeThuNganHomNay();
+                    int total = k.tienMatCount + k.chuyenKhoanCount;
+                    return ($"{total}", "Lượt");
+                });
+
+            pnlChartThuNgan.Controls.AddRange(new Control[] { cardRevenue, chartStatus, chartPayment });
+
+            void LayoutThuNganCharts()
+            {
+                int totalW = pnlChartThuNgan.ClientSize.Width;
+                int gap = 10;
+                int revW = Math.Min(320, Math.Max(230, totalW / 4));
+                int remW = Math.Max(0, totalW - revW - gap * 2);
+                int chartW = Math.Max(180, remW / 2);
+
+                cardRevenue.Location  = new Point(0, 0);
+                cardRevenue.Size      = new Size(revW, pnlChartThuNgan.ClientSize.Height - 6);
+
+                chartStatus.Location  = new Point(revW + gap, 0);
+                chartStatus.Size      = new Size(chartW, pnlChartThuNgan.ClientSize.Height - 6);
+
+                int paymentX = revW + gap + chartW + gap;
+                chartPayment.Location = new Point(paymentX, 0);
+                chartPayment.Size     = new Size(Math.Max(180, totalW - paymentX), pnlChartThuNgan.ClientSize.Height - 6);
+            }
+            pnlChartThuNgan.SizeChanged += (s, e) => LayoutThuNganCharts();
+            LayoutThuNganCharts();
+
+            void RefreshThuNganKPI()
+            {
+                cardRevenue.Invalidate();
+                chartStatus.Invalidate();
+                chartPayment.Invalidate();
+            }
+
             var header = new Panel { Dock = DockStyle.Top, Height = 112 };
             header.Controls.Add(MakeLbl("THANH TOÁN & HÓA ĐƠN", 0, 0, bold: true));
             var summary = new Label
@@ -1222,14 +1687,24 @@ namespace QlyPhongKham.Forms
             refundButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             var clsCollectionButton = SecondaryBtn("Thu phí CLS", 0, 8, 115, 30, C_Blue);
             clsCollectionButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+
+            var btnToggleChart = SecondaryBtn("📊 Ẩn biểu đồ", 0, 8, 115, 30, Color.FromArgb(75, 85, 99));
+            btnToggleChart.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnToggleChart.Click += (s, e) =>
+            {
+                pnlChartThuNgan.Visible = !pnlChartThuNgan.Visible;
+                btnToggleChart.Text = pnlChartThuNgan.Visible ? "📊 Ẩn biểu đồ" : "📊 Mở biểu đồ";
+            };
+
             header.SizeChanged += (sender, args) =>
             {
                 shiftButton.Location = new Point(header.ClientSize.Width - shiftButton.Width - 8, 8);
                 refundButton.Location = new Point(shiftButton.Left - refundButton.Width - 8, 8);
                 clsCollectionButton.Location = new Point(refundButton.Left - clsCollectionButton.Width - 8, 8);
+                btnToggleChart.Location = new Point(clsCollectionButton.Left - btnToggleChart.Width - 8, 8);
             };
             header.Controls.AddRange(new Control[] { search, status, refresh, pay, details, printInvoice,
-                exportInvoices, cancelInvoice, shiftButton, refundButton, clsCollectionButton });
+                exportInvoices, cancelInvoice, shiftButton, refundButton, clsCollectionButton, btnToggleChart });
 
             var grid = MakeGrid();
             grid.DataBindingComplete += (sender, args) =>
@@ -1297,6 +1772,7 @@ namespace QlyPhongKham.Forms
                     ? count
                     : grid.Rows.Count;
                 UpdateShiftState(totalInvoices, waiting.Rows.Count);
+                RefreshThuNganKPI();
             }
 
             DataRow? SelectedInvoice()
@@ -1526,6 +2002,8 @@ namespace QlyPhongKham.Forms
 
             wrapper.Controls.Add(invoicesPanel);
             wrapper.Controls.Add(bottom);
+            wrapper.Controls.Add(pnlChartThuNgan);
+            wrapper.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 6, BackColor = Color.Transparent });
             wrapper.Controls.Add(header);
             panelContent.Controls.Add(wrapper);
             invoicePageController = GridPageController.Attach(grid, (offset, pageSize) =>
@@ -1682,6 +2160,31 @@ namespace QlyPhongKham.Forms
                             "Không thể thanh toán", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         return;
                     }
+
+                    // ── Gửi email xác nhận thanh toán + thông báo bell ──
+                    try
+                    {
+                        var hdInfo = ClinicDAL.LayThongTinHoaDonDaThanhToan(maHD);
+                        if (!string.IsNullOrWhiteSpace(hdInfo.email))
+                            Helpers.EmailHelper.SendAsync(
+                                hdInfo.email,
+                                $"[An Tâm] Hóa đơn #{maHD} đã thanh toán thành công",
+                                Helpers.EmailHelper.BuildThanhToanBody(
+                                    hdInfo.tenBN, maHD, paymentAmount.Value,
+                                    method.SelectedItem?.ToString() ?? "Tiền mặt", DateTime.Now));
+
+                        Helpers.NotificationHelper.Push(
+                            SessionState.CurrentUser?.MaNV ?? "",
+                            $"Thanh toán HĐ {maHD} thành công",
+                            $"BN: {hdInfo.tenBN} | Số tiền: {paymentAmount.Value:N0} đ | {method.SelectedItem}",
+                            "Thanh toán");
+                        Helpers.NotificationHelper.PushToAdmins(
+                            $"Hóa đơn {maHD} đã được thanh toán",
+                            $"BN: {hdInfo.tenBN} | Số tiền: {paymentAmount.Value:N0} đ | Thu ngân: {SessionState.CurrentUser?.HoTenNhanVien}",
+                            "Thanh toán");
+                    }
+                    catch { /* email/notification không được phá workflow chính */ }
+
                     dialog.DialogResult = DialogResult.OK;
                     dialog.Close();
                 }
@@ -2087,7 +2590,7 @@ namespace QlyPhongKham.Forms
         {
             SetRefreshPageAction(ShowThuNganView);
             SetActiveNav(btnNavThuNgan);
-            SetPageHeader("Lễ tân & Thu ngân  ›  Thu ngân", "Tính viện phí, lập hóa đơn & xuất biên lai");
+            SetPageHeader("Y tá  ›  Thu ngân", "Tính viện phí, lập hóa đơn & xuất biên lai");
             panelContent.Controls.Clear();
 
             var wrapper = new Panel { Dock = DockStyle.Fill };

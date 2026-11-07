@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Linq;
 using System.Windows.Forms;
 using QlyPhongKham.DAL;
 using QlyPhongKham.Models;
@@ -21,7 +24,15 @@ namespace QlyPhongKham.Forms
             Panel pnlTH,
             DataGridView dgvTH,
             Panel pnlKhoaPhong,
-            DataGridView dgvKhoaPhong)
+            DataGridView dgvKhoaPhong,
+            Panel? pnlTruc = null,
+            DataGridView? dgvTruc = null,
+            Panel? pnlKhamStatus = null,
+            DataGridView? dgvKhamStatus = null,
+            Panel? pnlLichHenHN = null,
+            DataGridView? dgvLichHenHN = null,
+            Control? chartDT = null,
+            Control? chartCD = null)
         {
             void LayoutSummary()
             {
@@ -31,6 +42,13 @@ namespace QlyPhongKham.Forms
                 dgvTH.Width = Math.Max(0, pnlTH.ClientSize.Width - 28);
                 pnlKhoaPhong.Width = contentWidth;
                 dgvKhoaPhong.Width = Math.Max(0, pnlKhoaPhong.ClientSize.Width - 28);
+
+                if (pnlTruc != null)
+                {
+                    pnlTruc.Width = contentWidth;
+                    if (dgvTruc != null)
+                        dgvTruc.Width = Math.Max(0, pnlTruc.ClientSize.Width - 28);
+                }
 
                 int cardWidth = Math.Max(0, (pCards.ClientSize.Width - 45) / 4);
                 for (int i = 0; i < pCards.Controls.Count; i++)
@@ -52,14 +70,228 @@ namespace QlyPhongKham.Forms
                 pnlDT.Location = new Point(10, pnlDT.Top);
                 pnlDT.Width = columnWidth;
                 dgvDT.Width = Math.Max(0, pnlDT.ClientSize.Width - 28);
+                if (chartDT != null)
+                {
+                    chartDT.Width = Math.Max(0, pnlDT.ClientSize.Width - 28);
+                    chartDT.Invalidate();
+                }
 
                 pnlCD.Location = new Point(25 + columnWidth, pnlCD.Top);
                 pnlCD.Width = columnWidth;
                 dgvCD.Width = Math.Max(0, pnlCD.ClientSize.Width - 28);
+                if (chartCD != null)
+                {
+                    chartCD.Width = Math.Max(0, pnlCD.ClientSize.Width - 28);
+                    chartCD.Invalidate();
+                }
+
+                if (pnlKhamStatus != null && pnlLichHenHN != null)
+                {
+                    pnlKhamStatus.Location = new Point(10, pnlKhamStatus.Top);
+                    pnlKhamStatus.Width = columnWidth;
+                    if (dgvKhamStatus != null)
+                        dgvKhamStatus.Width = Math.Max(0, pnlKhamStatus.ClientSize.Width - 28);
+
+                    pnlLichHenHN.Location = new Point(25 + columnWidth, pnlLichHenHN.Top);
+                    pnlLichHenHN.Width = columnWidth;
+                    if (dgvLichHenHN != null)
+                        dgvLichHenHN.Width = Math.Max(0, pnlLichHenHN.ClientSize.Width - 28);
+                }
             }
 
             wrapper.SizeChanged += (s, e) => LayoutSummary();
             LayoutSummary();
+        }
+
+        private static Panel CreateRevenueBarChart(DataTable dtDT)
+        {
+            var pnlChart = new Panel { Dock = DockStyle.None, BackColor = Color.Transparent };
+
+            var days = new List<(DateTime Date, decimal Revenue, int Invoices)>();
+            for (int i = 6; i >= 0; i--)
+            {
+                DateTime d = DateTime.Today.AddDays(-i);
+                decimal rev = 0;
+                int inv = 0;
+                foreach (DataRow r in dtDT.Rows)
+                {
+                    if (Convert.ToDateTime(r["Ngay"]).Date == d.Date)
+                    {
+                        rev = Convert.ToDecimal(r["DoanhThu"]);
+                        inv = r["SoHoaDon"] != DBNull.Value ? Convert.ToInt32(r["SoHoaDon"]) : 0;
+                        break;
+                    }
+                }
+                days.Add((d, rev, inv));
+            }
+
+            pnlChart.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+                int w = pnlChart.ClientSize.Width;
+                int h = pnlChart.ClientSize.Height;
+                if (w < 100 || h < 80) return;
+
+                decimal maxRev = Math.Max(500_000, days.Max(d => d.Revenue));
+                decimal step = maxRev > 10_000_000 ? 5_000_000 : (maxRev > 2_000_000 ? 1_000_000 : 500_000);
+                maxRev = Math.Ceiling(maxRev / step) * step;
+
+                int leftMargin = 50;
+                int rightMargin = 16;
+                int bottomMargin = 26;
+                int topMargin = 24;
+                int chartW = w - leftMargin - rightMargin;
+                int chartH = h - topMargin - bottomMargin;
+
+                using var penGrid = new Pen(Color.FromArgb(235, 238, 242), 1) { DashStyle = DashStyle.Dash };
+                using var fontAxis = new Font("Segoe UI", 7.5f);
+                using var brushAxis = new SolidBrush(Color.FromArgb(156, 163, 175));
+                using var formatRight = new StringFormat { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center };
+
+                for (int stepIdx = 0; stepIdx <= 4; stepIdx++)
+                {
+                    decimal val = (maxRev / 4) * stepIdx;
+                    int y = topMargin + chartH - (int)Math.Round((double)(stepIdx * chartH) / 4);
+                    g.DrawLine(penGrid, leftMargin, y, leftMargin + chartW, y);
+
+                    string valStr = val >= 1_000_000 ? $"{(val / 1_000_000):0.#}M" : (val > 0 ? $"{(val / 1_000):0}k" : "0đ");
+                    g.DrawString(valStr, fontAxis, brushAxis, new RectangleF(0, y - 8, leftMargin - 6, 16), formatRight);
+                }
+
+                int barCount = days.Count;
+                int barSlot = chartW / barCount;
+                int barWidth = Math.Clamp(barSlot - 18, 12, 36);
+
+                using var fontLabel = new Font("Segoe UI", 8f, FontStyle.Regular);
+                using var fontVal = new Font("Segoe UI", 7.5f, FontStyle.Bold);
+                using var brushLabel = new SolidBrush(Color.FromArgb(75, 85, 99));
+                using var brushVal = new SolidBrush(Color.FromArgb(15, 32, 54));
+                using var formatCenter = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+
+                for (int i = 0; i < barCount; i++)
+                {
+                    var day = days[i];
+                    int cx = leftMargin + i * barSlot + barSlot / 2;
+                    int bx = cx - barWidth / 2;
+
+                    int barH = maxRev > 0 ? (int)Math.Round((double)(day.Revenue / maxRev) * chartH) : 0;
+                    barH = Math.Min(barH, chartH);
+                    int by = topMargin + chartH - barH;
+
+                    using (var brushSlot = new SolidBrush(Color.FromArgb(248, 250, 252)))
+                    {
+                        g.FillRectangle(brushSlot, bx, topMargin, barWidth, chartH);
+                    }
+
+                    if (day.Revenue > 0 && barH > 2)
+                    {
+                        var barRect = new Rectangle(bx, by, barWidth, barH);
+                        using var gradBrush = new LinearGradientBrush(
+                            barRect,
+                            Color.FromArgb(0, 180, 166),
+                            Color.FromArgb(59, 130, 246),
+                            LinearGradientMode.Vertical);
+
+                        using var path = new GraphicsPath();
+                        int rad = Math.Min(5, barWidth / 2);
+                        path.AddArc(bx, by, rad * 2, rad * 2, 180, 90);
+                        path.AddArc(bx + barWidth - rad * 2, by, rad * 2, rad * 2, 270, 90);
+                        path.AddLine(bx + barWidth, by + barH, bx, by + barH);
+                        path.CloseFigure();
+                        g.FillPath(gradBrush, path);
+
+                        string topValStr = day.Revenue >= 1_000_000 ? $"{(day.Revenue / 1_000_000):0.#}tr" : $"{(day.Revenue / 1_000):0}k";
+                        g.DrawString(topValStr, fontVal, brushVal, new RectangleF(cx - 30, by - 16, 60, 14), formatCenter);
+                    }
+                    else
+                    {
+                        using var pZero = new SolidBrush(Color.FromArgb(229, 231, 235));
+                        g.FillRectangle(pZero, bx, topMargin + chartH - 3, barWidth, 3);
+                    }
+
+                    string dayText = day.Date.ToString("dd/MM");
+                    if (day.Date == DateTime.Today) dayText = "Hôm nay";
+                    g.DrawString(dayText, fontLabel, brushLabel, new RectangleF(cx - 30, topMargin + chartH + 5, 60, 16), formatCenter);
+                }
+            };
+
+            return pnlChart;
+        }
+
+        private static Panel CreateTopDiagnosisChart(DataTable dtCD)
+        {
+            var pnlChart = new Panel { Dock = DockStyle.None, BackColor = Color.Transparent };
+            Color[] barColors = {
+                Color.FromArgb(0, 180, 166),
+                Color.FromArgb(59, 130, 246),
+                Color.FromArgb(139, 92, 246),
+                Color.FromArgb(245, 158, 11),
+                Color.FromArgb(239, 68, 68),
+                Color.FromArgb(34, 197, 94)
+            };
+
+            pnlChart.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+                int w = pnlChart.ClientSize.Width;
+                int h = pnlChart.ClientSize.Height;
+                if (w < 80 || dtCD.Rows.Count == 0) return;
+
+                int maxCount = 1;
+                foreach (DataRow r in dtCD.Rows)
+                {
+                    int cnt = r.Table.Columns.Contains("SoLuot") && r["SoLuot"] != DBNull.Value
+                        ? Convert.ToInt32(r["SoLuot"])
+                        : (r.Table.Columns.Contains("SoLuong") && r["SoLuong"] != DBNull.Value ? Convert.ToInt32(r["SoLuong"]) : 0);
+                    if (cnt > maxCount) maxCount = cnt;
+                }
+
+                using var fontTitle = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+                using var fontCount = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+                using var brushTitle = new SolidBrush(Color.FromArgb(15, 32, 54));
+                using var brushBgBar = new SolidBrush(Color.FromArgb(241, 245, 249));
+
+                int top = 6;
+                int rowH = 34;
+                int barMaxW = Math.Max(60, w - 160);
+
+                int showCount = Math.Min(6, dtCD.Rows.Count);
+                for (int i = 0; i < showCount; i++)
+                {
+                    var r = dtCD.Rows[i];
+                    string chanDoan = r["ChanDoan"]?.ToString() ?? "Khác";
+                    int count = r.Table.Columns.Contains("SoLuot") && r["SoLuot"] != DBNull.Value
+                        ? Convert.ToInt32(r["SoLuot"])
+                        : (r.Table.Columns.Contains("SoLuong") && r["SoLuong"] != DBNull.Value ? Convert.ToInt32(r["SoLuong"]) : 0);
+                    Color barColor = barColors[i % barColors.Length];
+
+                    if (chanDoan.Length > 28) chanDoan = chanDoan.Substring(0, 26) + "...";
+
+                    g.DrawString($"#{i + 1}  {chanDoan}", fontTitle, brushTitle, 10, top);
+
+                    string countStr = $"{count} ca";
+                    using var brushCount = new SolidBrush(barColor);
+                    g.DrawString(countStr, fontCount, brushCount, w - 60, top);
+
+                    int barY = top + 18;
+                    int barFillW = (int)Math.Round((double)count / maxCount * barMaxW);
+                    barFillW = Math.Max(8, barFillW);
+
+                    g.FillRectangle(brushBgBar, 10, barY, barMaxW, 7);
+                    using var brushFill = new SolidBrush(barColor);
+                    g.FillRectangle(brushFill, 10, barY, barFillW, 7);
+
+                    top += rowH;
+                }
+            };
+
+            return pnlChart;
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -84,25 +316,59 @@ namespace QlyPhongKham.Forms
             pCards.Controls.Add(MakeKpiCard("TỔNG SỐ BỆNH NHÂN", $"{tongBN} người", "Hồ sơ lưu trữ hệ thống", C_Blue, 530, 0, 250));
             pCards.Controls.Add(MakeKpiCard("THUỐC SẮP HẾT", $"{thuocSapHet} loại", "Tồn kho cảnh báo ≤ 30", C_Red, 795, 0, 250));
 
-            // ── Doanh thu 7 ngày ──
+            // ── Doanh thu 7 ngày (Biểu đồ cột & Bảng) ──
             var pnlDT = new Panel { Location = new Point(10, 135), Size = new Size(525, 270), BackColor = C_Card };
             pnlDT.Paint += PaintCardBorder;
             pnlDT.Controls.Add(MakeLbl("DOANH THU 7 NGÀY GẦN NHẤT", 14, 12, bold: true));
+            var dtDT = ClinicDAL.LayDoanhThu7Ngay();
+            var chartDT = CreateRevenueBarChart(dtDT);
+            chartDT.Location = new Point(14, 38);
+            chartDT.Size = new Size(497, 218);
+
             var dgvDT = MakeGrid(DockStyle.None);
             dgvDT.Location = new Point(14, 38);
             dgvDT.Size = new Size(497, 218);
-            dgvDT.DataSource = ClinicDAL.LayDoanhThu7Ngay();
-            pnlDT.Controls.Add(dgvDT);
+            dgvDT.DataSource = dtDT;
+            dgvDT.Visible = false;
 
-            // ── Top 10 chẩn đoán ──
+            var btnToggleDT = SecondaryBtn("📋 Xem bảng", 420, 8, 90, 26, C_Teal);
+            btnToggleDT.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnToggleDT.Font = F_Small;
+            btnToggleDT.Click += (s, e) =>
+            {
+                bool showGrid = !dgvDT.Visible;
+                dgvDT.Visible = showGrid;
+                chartDT.Visible = !showGrid;
+                btnToggleDT.Text = showGrid ? "📊 Biểu đồ" : "📋 Xem bảng";
+            };
+            pnlDT.Controls.AddRange(new Control[] { chartDT, dgvDT, btnToggleDT });
+
+            // ── Top 10 chẩn đoán (Biểu đồ thanh & Bảng) ──
             var pnlCD = new Panel { Location = new Point(550, 135), Size = new Size(540, 270), BackColor = C_Card };
             pnlCD.Paint += PaintCardBorder;
             pnlCD.Controls.Add(MakeLbl("TOP BỆNH LÝ PHỔ BIẾN", 14, 12, bold: true));
+            var dtCD = ClinicDAL.LayTopChanDoan(10);
+            var chartCD = CreateTopDiagnosisChart(dtCD);
+            chartCD.Location = new Point(14, 38);
+            chartCD.Size = new Size(512, 218);
+
             var dgvCD = MakeGrid(DockStyle.None);
             dgvCD.Location = new Point(14, 38);
             dgvCD.Size = new Size(512, 218);
-            dgvCD.DataSource = ClinicDAL.LayTopChanDoan(10);
-            pnlCD.Controls.Add(dgvCD);
+            dgvCD.DataSource = dtCD;
+            dgvCD.Visible = false;
+
+            var btnToggleCD = SecondaryBtn("📋 Xem bảng", 435, 8, 90, 26, C_Teal);
+            btnToggleCD.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnToggleCD.Font = F_Small;
+            btnToggleCD.Click += (s, e) =>
+            {
+                bool showGrid = !dgvCD.Visible;
+                dgvCD.Visible = showGrid;
+                chartCD.Visible = !showGrid;
+                btnToggleCD.Text = showGrid ? "📊 Biểu đồ" : "📋 Xem bảng";
+            };
+            pnlCD.Controls.AddRange(new Control[] { chartCD, dgvCD, btnToggleCD });
 
             // ── Thuốc sắp hết ──
             var pnlTH = new Panel { Location = new Point(10, 415), Size = new Size(1080, 240), BackColor = C_Card };
@@ -136,9 +402,43 @@ namespace QlyPhongKham.Forms
                 pnlKhoaPhong.Controls.Add(lblSchemaWarning);
             }
 
-            wrapper.Controls.AddRange(new Control[] { pCards, pnlDT, pnlCD, pnlTH, pnlKhoaPhong });
+            // ── Nhân viên đang trực hôm nay ──
+            var pnlTruc = new Panel { Location = new Point(10, 895), Size = new Size(1080, 230), BackColor = C_Card };
+            pnlTruc.Paint += PaintCardBorder;
+            pnlTruc.Controls.Add(MakeLbl("👨‍⚕️ NHÂN VIÊN ĐANG TRỰC HÔM NAY", 14, 12, bold: true));
+            var dgvTruc = MakeGrid(DockStyle.None);
+            dgvTruc.Location = new Point(14, 38);
+            dgvTruc.Size = new Size(1052, 178);
+            try { dgvTruc.DataSource = ClinicDAL.LayNhanVienDangTruc(); } catch { }
+            pnlTruc.Controls.Add(dgvTruc);
+
+            // ── Trạng thái khám hôm nay ──
+            var pnlKhamStatus = new Panel { Location = new Point(10, 1135), Size = new Size(525, 230), BackColor = C_Card };
+            pnlKhamStatus.Paint += PaintCardBorder;
+            pnlKhamStatus.Controls.Add(MakeLbl("🩺 TRẠNG THÁI KHÁM HÔM NAY (THEO PHÒNG)", 14, 12, bold: true));
+            var dgvKhamStatus = MakeGrid(DockStyle.None);
+            dgvKhamStatus.Location = new Point(14, 38);
+            dgvKhamStatus.Size = new Size(497, 178);
+            try { dgvKhamStatus.DataSource = ClinicDAL.LayTrangThaiKhamHienTai(); } catch { }
+            pnlKhamStatus.Controls.Add(dgvKhamStatus);
+
+            // ── Lịch hẹn hôm nay ──
+            var pnlLichHenHN = new Panel { Location = new Point(550, 1135), Size = new Size(540, 230), BackColor = C_Card };
+            pnlLichHenHN.Paint += PaintCardBorder;
+            pnlLichHenHN.Controls.Add(MakeLbl("📅 LỊCH HẸN HÔM NAY", 14, 12, bold: true));
+            var dgvLichHenHN = MakeGrid(DockStyle.None);
+            dgvLichHenHN.Location = new Point(14, 38);
+            dgvLichHenHN.Size = new Size(512, 178);
+            try { dgvLichHenHN.DataSource = ClinicDAL.LayLichHenHomNayAdmin(); } catch { }
+            pnlLichHenHN.Controls.Add(dgvLichHenHN);
+
+            // Padding panel at bottom for comfortable scrolling
+            var pnlBottomPad = new Panel { Location = new Point(10, 1375), Size = new Size(1080, 20) };
+
+            wrapper.Controls.AddRange(new Control[] { pCards, pnlDT, pnlCD, pnlTH, pnlKhoaPhong, pnlTruc, pnlKhamStatus, pnlLichHenHN, pnlBottomPad });
             panelContent.Controls.Add(wrapper);
-            ConfigureAdminSummaryLayout(wrapper, pCards, pnlDT, dgvDT, pnlCD, dgvCD, pnlTH, dgvTH, pnlKhoaPhong, dgvKhoaPhong);
+            ConfigureAdminSummaryLayout(wrapper, pCards, pnlDT, dgvDT, pnlCD, dgvCD, pnlTH, dgvTH, pnlKhoaPhong, dgvKhoaPhong,
+                pnlTruc, dgvTruc, pnlKhamStatus, dgvKhamStatus, pnlLichHenHN, dgvLichHenHN, chartDT, chartCD);
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -797,6 +1097,16 @@ namespace QlyPhongKham.Forms
             wrapper.Controls.AddRange(new Control[] { pnlTopBar, pCards, pnlDT, pnlCD, pnlTH, pnlKhoaPhong });
             panelContent.Controls.Add(wrapper);
             ConfigureAdminSummaryLayout(wrapper, pCards, pnlDT, dgvDT, pnlCD, dgvCD, pnlTH, dgvTH, pnlKhoaPhong, dgvKhoaPhong);
+        }
+        private void ShowNhatKyView()
+        {
+            SetRefreshPageAction(ShowNhatKyView);
+            SetActiveNav(btnNavNhatKy);
+            SetPageHeader("Nhật ký hệ thống", "Nhật ký thao tác");
+            panelContent.Controls.Clear();
+            var dgv = MakeGrid(DockStyle.Fill);
+            dgv.DataSource = ClinicDAL.LayNhatKyHeThong(DateTime.Today.AddDays(-30), DateTime.Today);
+            panelContent.Controls.Add(dgv);
         }
     }
 }

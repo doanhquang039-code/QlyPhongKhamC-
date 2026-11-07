@@ -204,20 +204,20 @@ BEGIN TRY
       AND EXISTS (SELECT 1 FROM dbo.NhanVien n WHERE n.MaNV = v.MaNV AND n.ChucVu = v.VaiTro);
 
     INSERT INTO dbo.PhanCongPhong (MaNV, MaPhong, VaiTro)
-    SELECT n.MaNV, p.MaPhong, n.ChucVu
+    SELECT n.MaNV,
+        CASE (CONVERT(INT, RIGHT(n.MaNV, 2)) - 1) % 4
+            WHEN 0 THEN 'P101'
+            WHEN 1 THEN 'P201'
+            WHEN 2 THEN 'P301'
+            ELSE 'P102'
+        END,
+        n.ChucVu
     FROM dbo.NhanVien n
-    CROSS JOIN dbo.PhongKham p
     WHERE (n.MaNV LIKE 'NVB__' OR n.MaNV LIKE 'NVL__')
       AND n.ChucVu IN (N'BacSi', N'LeTan')
-      AND (n.ChucVu = N'LeTan' OR p.MaPhong =
-          CASE (CONVERT(INT, RIGHT(n.MaNV, 2)) - 1) % 3
-              WHEN 0 THEN 'P101'
-              WHEN 1 THEN 'P201'
-              ELSE 'P301'
-          END)
       AND NOT EXISTS (
           SELECT 1 FROM dbo.PhanCongPhong pc
-          WHERE pc.MaNV = n.MaNV AND pc.MaPhong = p.MaPhong
+          WHERE pc.MaNV = n.MaNV
       );
 
     INSERT INTO dbo.BenhNhan (MaBN, HoTen, NgaySinh, GioiTinh, SoDienThoai, DiaChi, TienSuBenh)

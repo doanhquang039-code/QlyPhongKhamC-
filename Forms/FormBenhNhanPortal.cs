@@ -668,8 +668,8 @@ namespace QlyPhongKham.Forms
                 using var dialog = new Form
                 {
                     Text = appointment == null ? "Đặt lịch khám" : "Sửa lịch hẹn",
-                    Size = new Size(590, 540),
-                    MinimumSize = new Size(590, 540),
+                    Size = new Size(590, 600),
+                    MinimumSize = new Size(590, 600),
                     StartPosition = FormStartPosition.CenterParent,
                     FormBorderStyle = FormBorderStyle.FixedDialog,
                     MaximizeBox = false,
@@ -692,15 +692,16 @@ namespace QlyPhongKham.Forms
                     Dock = DockStyle.Fill,
                     Padding = new Padding(18, 8, 18, 8),
                     ColumnCount = 2,
-                    RowCount = 5,
+                    RowCount = 6,
                     BackColor = Color.White
                 };
                 fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
                 fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-                fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
-                fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
-                fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
-                fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 120));
+                fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+                fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+                fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+                fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+                fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 90));
                 fields.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
                 var specialty = new ComboBox
@@ -804,21 +805,28 @@ namespace QlyPhongKham.Forms
                     }, 0, row);
                     fields.Controls.Add(control, 1, row);
                 }
+                var dateTimePanel = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, Margin = new Padding(0) };
+                dateTimePanel.Controls.AddRange(new Control[]
+                {
+                    date,
+                    new Label { Text = "  Giờ:", AutoSize = true, Padding = new Padding(6, 6, 2, 0), Font = new Font("Segoe UI", 9F, FontStyle.Bold), ForeColor = TextColor },
+                    time
+                });
+
+                var txtEmail = new TextBox
+                {
+                    Dock = DockStyle.Fill,
+                    Font = Font,
+                    PlaceholderText = "Nhập email nhận xác nhận lịch & biên lai..."
+                };
+                txtEmail.Text = ClinicDAL.LayEmailBenhNhanTheoMa(_patient.MaBN) ?? _patient.Email ?? "";
+
                 AddField("Chuyên khoa", specialty, 0);
                 AddField("Bác sĩ", doctor, 1);
-                AddField("Ngày khám", date, 2);
-                AddField("Lý do khám", reason, 3);
-                var timeAndSave = new Panel { Dock = DockStyle.Fill };
-                timeAndSave.Controls.Add(time);
-                fields.Controls.Add(new Label
-                {
-                    Text = "Giờ khám",
-                    Dock = DockStyle.Fill,
-                    TextAlign = ContentAlignment.MiddleLeft,
-                    Font = new Font("Segoe UI", 9F, FontStyle.Bold),
-                    ForeColor = TextColor
-                }, 0, 4);
-                fields.Controls.Add(timeAndSave, 1, 4);
+                AddField("Ngày & Giờ *", dateTimePanel, 2);
+                AddField("Email thông báo", txtEmail, 3);
+                AddField("Lý do khám", reason, 4);
+                fields.Controls.Add(buttons, 1, 5);
 
                 void LoadDoctors()
                 {
@@ -893,6 +901,12 @@ namespace QlyPhongKham.Forms
                         TimeSpan.Parse(time.SelectedItem.ToString() ?? "08:00"));
                     try
                     {
+                        if (!string.IsNullOrWhiteSpace(txtEmail.Text))
+                        {
+                            ClinicDAL.CapNhatEmailBenhNhan(_patient.MaBN, txtEmail.Text.Trim());
+                            _patient.Email = txtEmail.Text.Trim();
+                        }
+
                         ClinicDAL.DatLichHenBenhNhan(
                             _patient.MaBN,
                             doctor.SelectedValue.ToString() ?? "",
@@ -908,8 +922,6 @@ namespace QlyPhongKham.Forms
                             MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     }
                 };
-                timeAndSave.Controls.Add(buttons);
-                buttons.Dock = DockStyle.Bottom;
                 dialog.Controls.Add(fields);
                 dialog.Controls.Add(noDoctor);
                 dialog.Controls.Add(heading);
@@ -942,7 +954,7 @@ namespace QlyPhongKham.Forms
                 var left = CreateColumn();
                 var right = CreateColumn();
 
-                var formCard = CreateCard(560);
+                var formCard = CreateCard(630);
                 formCard.Controls.Add(CreateLabel(appointment == null ? "Đặt lịch khám" : "Sửa yêu cầu đặt lịch",
                     18, 15, 420, 28, 18, true, TextColor));
                 formCard.Controls.Add(CreateLabel("Chọn chuyên khoa, bác sĩ và khung giờ phù hợp.",
@@ -1029,18 +1041,29 @@ namespace QlyPhongKham.Forms
                         time.SelectedIndex = 0;
                 }
                 formCard.Controls.Add(time);
-                formCard.Controls.Add(CreateLabel("Lý do khám", 18, 315, 160, 20, 9, true, TextColor));
-                var reason = new TextBox
+                formCard.Controls.Add(CreateLabel("Email nhận thông báo", 18, 315, 300, 20, 9, true, TextColor));
+                var txtPageEmail = new TextBox
                 {
                     Location = new Point(18, 339),
-                    Size = new Size(390, 82),
+                    Size = new Size(390, 30),
+                    Font = Font,
+                    PlaceholderText = "Nhập email nhận xác nhận lịch & biên lai..."
+                };
+                txtPageEmail.Text = ClinicDAL.LayEmailBenhNhanTheoMa(_patient.MaBN) ?? _patient.Email ?? "";
+                formCard.Controls.Add(txtPageEmail);
+
+                formCard.Controls.Add(CreateLabel("Lý do khám", 18, 380, 160, 20, 9, true, TextColor));
+                var reason = new TextBox
+                {
+                    Location = new Point(18, 404),
+                    Size = new Size(390, 78),
                     Multiline = true,
                     MaxLength = 255,
                     ScrollBars = ScrollBars.Vertical,
                     Font = Font
                 };
                 formCard.Controls.Add(reason);
-                formCard.Controls.Add(CreateLabel("Lịch hẹn sẽ ở trạng thái chờ xác nhận sau khi gửi yêu cầu.", 18, 434, 420, 36, 8.5F, false, Muted));
+                formCard.Controls.Add(CreateLabel("Lịch hẹn sẽ ở trạng thái chờ xác nhận sau khi gửi yêu cầu.", 18, 494, 420, 36, 8.5F, false, Muted));
 
                 var doctorInfo = CreateLabel("Chọn bác sĩ để xem phòng khám.", 18, 52, 310, 80, 10, false, Muted);
                 var bookingCard = CreateCard(250);
@@ -1132,6 +1155,12 @@ namespace QlyPhongKham.Forms
                     DateTime appointmentTime = date.Value.Date.Add(TimeSpan.Parse(time.SelectedItem?.ToString() ?? "08:00"));
                     try
                     {
+                        if (!string.IsNullOrWhiteSpace(txtPageEmail.Text))
+                        {
+                            ClinicDAL.CapNhatEmailBenhNhan(_patient.MaBN, txtPageEmail.Text.Trim());
+                            _patient.Email = txtPageEmail.Text.Trim();
+                        }
+
                         ClinicDAL.DatLichHenBenhNhan(_patient.MaBN, doctor.SelectedValue.ToString() ?? "",
                             appointmentTime, reason.Text,
                             appointment == null ? null : Convert.ToInt32(appointment["MaLichHen"]));
@@ -1236,8 +1265,9 @@ namespace QlyPhongKham.Forms
                 AddProfileField(profilePanel, "Ngày sinh", FormatValue(profile["NgaySinh"]), 95);
                 AddProfileField(profilePanel, "Giới tính", Value(profile, "GioiTinh"), 135);
                 AddProfileField(profilePanel, "Số điện thoại", FormatValue(profile["SoDienThoai"]), 175);
-                AddProfileField(profilePanel, "Địa chỉ", FormatValue(profile["DiaChi"]), 215);
-                AddProfileField(profilePanel, "Tiền sử bệnh / dị ứng", FormatValue(profile["TienSuBenh"]), 255);
+                AddProfileField(profilePanel, "Email nhận thông báo", FormatValue(profile["Email"]), 215);
+                AddProfileField(profilePanel, "Địa chỉ", FormatValue(profile["DiaChi"]), 255);
+                AddProfileField(profilePanel, "Tiền sử bệnh / dị ứng", FormatValue(profile["TienSuBenh"]), 295);
                 historyTab.Controls.Add(historyGrid);
                 servicesTab.Controls.Add(serviceGrid);
                 prescriptionTab.Controls.Add(prescriptionGrid);

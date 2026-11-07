@@ -29,6 +29,7 @@ namespace QlyPhongKham.Models
         public string TenDangNhap { get; set; } = string.Empty;
         public string MaBN { get; set; } = string.Empty;
         public string HoTen { get; set; } = string.Empty;
+        public string? Email { get; set; }
     }
 
     public class BenhNhan
@@ -38,6 +39,7 @@ namespace QlyPhongKham.Models
         public DateTime? NgaySinh { get; set; }
         public string GioiTinh { get; set; } = "Nam";
         public string? SoDienThoai { get; set; }
+        public string? Email { get; set; }
         public string? DiaChi { get; set; }
         public string? TienSuBenh { get; set; }
         public byte[]? AnhDaiDien { get; set; }

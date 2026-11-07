@@ -14,6 +14,7 @@ namespace QlyPhongKham.Forms
         private readonly DateTimePicker _dateOfBirth;
         private readonly ComboBox _gender;
         private readonly TextBox _phone;
+        private readonly TextBox _email;
         private readonly TextBox _address;
 
         public string RegisteredUsername => _username.Text.Trim();
@@ -21,7 +22,7 @@ namespace QlyPhongKham.Forms
         public FormDangKyBenhNhan()
         {
             Text = "Đăng ký tài khoản bệnh nhân";
-            Size = new Size(500, 530);
+            Size = new Size(500, 570);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -73,12 +74,13 @@ namespace QlyPhongKham.Forms
             AddLabel("Giới tính:", 295);
 
             _phone = AddTextBox("Số điện thoại:", 335);
-            _address = AddTextBox("Địa chỉ:", 375);
+            _email = AddTextBox("Email nhận thông báo:", 375);
+            _address = AddTextBox("Địa chỉ:", 415);
 
             var btnRegister = new Button
             {
                 Text = "ĐĂNG KÝ",
-                Location = new Point(175, 425),
+                Location = new Point(175, 465),
                 Size = new Size(125, 38),
                 BackColor = Color.FromArgb(0, 150, 136),
                 ForeColor = Color.White,
@@ -89,7 +91,7 @@ namespace QlyPhongKham.Forms
             var btnCancel = new Button
             {
                 Text = "Hủy",
-                Location = new Point(310, 425),
+                Location = new Point(310, 465),
                 Size = new Size(90, 38),
                 DialogResult = DialogResult.Cancel
             };
@@ -157,7 +159,8 @@ namespace QlyPhongKham.Forms
                     _dateOfBirth.Checked ? _dateOfBirth.Value.Date : null,
                     _gender.SelectedItem?.ToString() ?? "Nam",
                     _phone.Text,
-                    _address.Text);
+                    _address.Text,
+                    _email.Text);
 
                 MessageBox.Show("Đăng ký thành công. Hãy đăng nhập bằng tài khoản bệnh nhân vừa tạo.",
                     "Hoàn tất đăng ký", MessageBoxButtons.OK, MessageBoxIcon.Information);

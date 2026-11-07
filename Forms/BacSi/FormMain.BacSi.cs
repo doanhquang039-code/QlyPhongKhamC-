@@ -40,20 +40,22 @@ namespace QlyPhongKham.Forms
             string tenBS = SessionState.CurrentUser?.HoTenNhanVien ?? "Bác sĩ";
             string maBS  = SessionState.CurrentUser?.MaNV ?? "";
 
-            SetPageHeader("Bác sĩ  ›  Lịch khám", "Lịch khám của tôi");
+            SetPageHeader("Bác sĩ  ›  Bàn làm việc", $"Bàn làm việc Bác sĩ – {tenBS}");
             panelContent.Controls.Clear();
 
             var wrapper = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
 
             // ── TOP STATS / KPI ──
             var stats = ClinicDAL.LayThongKeBacSi(string.IsNullOrEmpty(maBS) ? null : maBS);
+            var (tenPhong, tenKhoa, caTruc) = ClinicDAL.LayThongTinCaTrucBacSi(maBS);
+            var roomInfoBS = ClinicDAL.LayThongTinPhongNhanVien(maBS);
 
             var pnlTop = new Panel { Dock = DockStyle.Top, Height = 148, BackColor = Color.Transparent };
 
-            // Welcome label + Date button
+            // Welcome label (gọn hơn — chỉ hiển thị tên + ca trực)
             var lblWelcome = new Label
             {
-                Text = $"Chào {tenBS}. Hôm nay có {stats.tongPhanCong} lượt khám được phân công tại phòng khám.",
+                Text = $"Chào Bác sĩ {tenBS}  •  Ca làm việc: {caTruc}",
                 Location = new Point(2, 6),
                 AutoSize = true,
                 Font = F_Base,
@@ -78,10 +80,10 @@ namespace QlyPhongKham.Forms
             // 4 KPI Cards
             var kpiCards = new[]
             {
-                MakeKpiCard("Lịch được phân công", stats.tongPhanCong.ToString(), "Tổng số ca khám ca hôm nay", C_Teal, 0, 42),
+                MakeKpiCard("Tổng ca hôm nay", stats.tongPhanCong.ToString(), "Tổng số ca khám được phân công", C_Teal, 0, 42),
                 MakeKpiCard("Đã hoàn tất", stats.daHoanTat.ToString(), "Bệnh nhân đã kết thúc khám", C_Green, 0, 42),
-                MakeKpiCard("Đang khám / Chờ", $"{stats.dangKham} / {stats.dangCho}", $"{stats.dangCho} bệnh nhân chờ vào phòng", C_Orange, 0, 42),
-                MakeKpiCard("Lượt tiếp theo", stats.luotTiepTheo, "STT kế tiếp trong hàng đợi", C_Blue, 0, 42)
+                MakeKpiCard("Đang chờ khám", $"{stats.dangCho}", $"{stats.dangCho} bệnh nhân chờ vào phòng", C_Orange, 0, 42),
+                MakeKpiCard("Cận lâm sàng (CLS)", $"{stats.choKQCLS} ca", "Chờ / Đã có kết quả CLS", C_Purple, 0, 42)
             };
             pnlTop.Controls.AddRange(kpiCards);
 
@@ -116,12 +118,12 @@ namespace QlyPhongKham.Forms
             var pnlBody = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
 
             // ══════════════════════════════════════════════
-            // CỘT PHẢI: BỆNH NHÂN ĐANG KHÁM & LƯU Ý CA KHÁM
+            // CỘT PHẢI: BỆNH NHÂN HIỆN TẠI, CLS & CHUYÊN MÔN
             // ══════════════════════════════════════════════
-            var grpRight = new Panel { Dock = DockStyle.Right, Width = 360, BackColor = Color.Transparent, Padding = new Padding(8, 0, 0, 0) };
+            var grpRight = new Panel { Dock = DockStyle.Right, Width = 360, BackColor = Color.Transparent, Padding = new Padding(8, 0, 0, 0), AutoScroll = true };
 
             // Card 1: Bệnh nhân đang khám
-            var pnlCur = new Panel { Dock = DockStyle.Top, Height = 250, BackColor = C_Card, Padding = new Padding(16) };
+            var pnlCur = new Panel { Location = new Point(0, 0), Size = new Size(350, 245), BackColor = C_Card, Padding = new Padding(16) };
             pnlCur.Paint += PaintCardBorder;
 
             var lblCurTitle = new Label { Text = "BỆNH NHÂN ĐANG KHÁM", Location = new Point(14, 14), AutoSize = true, Font = new Font("Segoe UI", 9.5f, FontStyle.Bold), ForeColor = C_TextGray };
@@ -153,16 +155,15 @@ namespace QlyPhongKham.Forms
             string curLyDo   = curRow?["LyDoKham"]?.ToString() ?? "Không có";
             string curMaPK   = curRow?["MaPK"]?.ToString() ?? "";
 
-            var lblCurName = new Label { Text = curName, Location = new Point(14, 44), AutoSize = true, Font = new Font("Segoe UI", 14f, FontStyle.Bold), ForeColor = C_TextDark };
-            var lblCurMeta = new Label { Text = $"{curMaBN}  •  {curGT}  •  {curTuoi} tuổi", Location = new Point(14, 76), AutoSize = true, Font = F_Small, ForeColor = C_TextGray };
+            var lblCurName = new Label { Text = curName, Location = new Point(14, 42), AutoSize = true, Font = new Font("Segoe UI", 13.5f, FontStyle.Bold), ForeColor = C_TextDark };
+            var lblCurMeta = new Label { Text = $"{curMaBN}  •  {curGT}  •  {curTuoi} tuổi", Location = new Point(14, 72), AutoSize = true, Font = F_Small, ForeColor = C_TextGray };
 
-            var lblCurReasonHead = new Label { Text = "Lý do khám:", Location = new Point(14, 104), AutoSize = true, Font = F_Bold, ForeColor = C_TextDark };
-            var lblCurReason = new Label { Text = curLyDo, Location = new Point(14, 124), Size = new Size(320, 36), Font = F_Base, ForeColor = C_TextDark };
+            var lblCurReasonHead = new Label { Text = "Lý do khám:", Location = new Point(14, 98), AutoSize = true, Font = F_Bold, ForeColor = C_TextDark };
+            var lblCurReason = new Label { Text = curLyDo, Location = new Point(14, 118), Size = new Size(320, 32), Font = F_Base, ForeColor = C_TextDark };
 
-            var lblCurRoom = new Label { Text = "📍 Phòng khám: P.101 – Chuyên khoa Nội", Location = new Point(14, 164), AutoSize = true, Font = F_Small, ForeColor = C_Teal };
+            var lblCurRoom = new Label { Text = $"📍 {tenPhong} ({tenKhoa})  •  Ca: {caTruc}", Location = new Point(14, 154), AutoSize = true, Font = F_Small, ForeColor = C_TealDark };
 
-            var btnTiepTuc = PrimaryBtn("Tiếp tục phiên khám  ➔", 14, 194, 330, 38);
-            btnTiepTuc.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            var btnTiepTuc = PrimaryBtn("Tiếp tục phiên khám  ➔", 14, 186, 320, 38);
             btnTiepTuc.Click += (s, e) =>
             {
                 if (!string.IsNullOrEmpty(curMaPK)) ShowBacSiKhamKeDonView(curMaPK, 0);
@@ -171,38 +172,142 @@ namespace QlyPhongKham.Forms
 
             pnlCur.Controls.AddRange(new Control[] { lblCurTitle, badgeCur, lblCurName, lblCurMeta, lblCurReasonHead, lblCurReason, lblCurRoom, btnTiepTuc });
 
-            // Card 2: Lưu ý trong ca
-            var pnlNotice = new Panel { Dock = DockStyle.Fill, BackColor = C_Card, Padding = new Padding(16), Margin = new Padding(0, 14, 0, 0) };
-            pnlNotice.Paint += PaintCardBorder;
+            // Card 2: Theo dõi Cận lâm sàng (CLS)
+            var pnlCLS = new Panel { Location = new Point(0, 257), Size = new Size(350, 235), BackColor = C_Card, Padding = new Padding(14) };
+            pnlCLS.Paint += PaintCardBorder;
 
-            var lblNoticeTitle = new Label { Text = "LƯU Ý TRONG CA", Location = new Point(14, 14), AutoSize = true, Font = new Font("Segoe UI", 9.5f, FontStyle.Bold), ForeColor = C_TextGray };
+            var lblCLSTitle = new Label { Text = "🔬 THEO DÕI CẬN LÂM SÀNG (CLS)", Location = new Point(14, 12), AutoSize = true, Font = new Font("Segoe UI", 9.5f, FontStyle.Bold), ForeColor = C_TextGray };
+            var dtCLS = ClinicDAL.LayDanhSachTheoDoiCLSBacSi(maBS);
 
-            var boxNotice1 = new Panel { Location = new Point(14, 42), Size = new Size(330, 70), BackColor = Color.FromArgb(240, 253, 250), Padding = new Padding(10) };
-            boxNotice1.Controls.Add(new Label { Text = "🔒 Chỉ hiển thị bệnh nhân phụ trách. Bệnh nhân ngoài phạm vi cần được cấp quyền truy cập.", Dock = DockStyle.Fill, Font = F_Small, ForeColor = Color.FromArgb(13, 148, 136) });
+            var pnlCLSList = new Panel { Location = new Point(12, 38), Size = new Size(326, 142), AutoScroll = true, BackColor = Color.Transparent };
+            if (dtCLS.Rows.Count == 0)
+            {
+                var lblEmptyCLS = new Label
+                {
+                    Text = "Chưa có chỉ định CLS nào đang chờ trong ca hôm nay.",
+                    Location = new Point(4, 30),
+                    Size = new Size(310, 40),
+                    Font = F_Small,
+                    ForeColor = C_TextGray
+                };
+                pnlCLSList.Controls.Add(lblEmptyCLS);
+            }
+            else
+            {
+                int itemTop = 0;
+                foreach (DataRow row in dtCLS.Rows)
+                {
+                    string pkId = row["MaPK"]?.ToString() ?? "";
+                    string tenBNItem = row["TenBN"]?.ToString() ?? "";
+                    string stt = row["STT"]?.ToString() ?? "0";
+                    int tongCLS = Convert.ToInt32(row["TongCLS"]);
+                    int daCoKQ = Convert.ToInt32(row["DaCoKQ"]);
+                    bool duKQ = (row["TrangThaiKQ"]?.ToString() == "Sẵn sàng kết luận");
 
-            var lblNoticeWaiting = new Label { Text = $"⏳ {stats.dangCho} người đang chờ khám", Location = new Point(14, 124), AutoSize = true, Font = F_Bold, ForeColor = C_TextDark };
-            var lblNoticePrio    = new Label { Text = "Ưu tiên người đã nộp kết quả chụp X-quang hoặc xét nghiệm máu trước khi gọi lượt tiếp theo.", Location = new Point(14, 146), Size = new Size(330, 48), Font = F_Small, ForeColor = C_TextGray };
+                    var itemPanel = new Panel
+                    {
+                        Location = new Point(0, itemTop),
+                        Size = new Size(305, 44),
+                        BackColor = duKQ ? Color.FromArgb(240, 253, 244) : Color.FromArgb(254, 249, 195),
+                        Padding = new Padding(6),
+                        Cursor = Cursors.Hand
+                    };
+                    itemPanel.Paint += (s, e) =>
+                    {
+                        using var p = new Pen(duKQ ? C_Green : C_Orange, 1);
+                        e.Graphics.DrawRectangle(p, 0, 0, itemPanel.Width - 1, itemPanel.Height - 1);
+                    };
 
-            var btnViewWaiting = SecondaryBtn("📋 Xem danh sách chờ", 14, 204, 330, 34, C_Teal);
+                    var lblItemName = new Label
+                    {
+                        Text = $"#{stt} {tenBNItem}",
+                        Location = new Point(8, 4),
+                        AutoSize = true,
+                        Font = F_Bold,
+                        ForeColor = C_TextDark
+                    };
+                    var lblItemStatus = new Label
+                    {
+                        Text = duKQ ? $"✓ Đã có {daCoKQ}/{tongCLS} kết quả  •  Bấm để kê đơn" : $"⏳ Đang chờ kết quả ({daCoKQ}/{tongCLS} đã có)",
+                        Location = new Point(8, 22),
+                        AutoSize = true,
+                        Font = F_Small,
+                        ForeColor = duKQ ? Color.FromArgb(22, 101, 52) : Color.FromArgb(133, 77, 14)
+                    };
 
-            pnlNotice.Controls.AddRange(new Control[] { lblNoticeTitle, boxNotice1, lblNoticeWaiting, lblNoticePrio, btnViewWaiting });
+                    itemPanel.Controls.AddRange(new Control[] { lblItemName, lblItemStatus });
+                    itemPanel.Click += (s, e) => ShowBacSiKhamKeDonView(pkId, 1);
+                    lblItemName.Click += (s, e) => ShowBacSiKhamKeDonView(pkId, 1);
+                    lblItemStatus.Click += (s, e) => ShowBacSiKhamKeDonView(pkId, 1);
 
-            var pnlRightWrapper = new Panel { Dock = DockStyle.Fill };
-            pnlRightWrapper.Controls.Add(pnlNotice);
-            pnlRightWrapper.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 14, BackColor = Color.Transparent });
-            pnlRightWrapper.Controls.Add(pnlCur);
-            grpRight.Controls.Add(pnlRightWrapper);
+                    pnlCLSList.Controls.Add(itemPanel);
+                    itemTop += 48;
+                }
+            }
+
+            var btnFilterCLS = SecondaryBtn("🔍 Lọc ca chờ CLS trên bảng", 12, 190, 326, 32, C_Teal);
+            pnlCLS.Controls.AddRange(new Control[] { lblCLSTitle, pnlCLSList, btnFilterCLS });
+
+            // Card 3: Ca trực & Chuyên môn
+            var pnlChuyenMon = new Panel { Location = new Point(0, 504), Size = new Size(350, 185), BackColor = C_Card, Padding = new Padding(14) };
+            pnlChuyenMon.Paint += PaintCardBorder;
+
+            var lblCMTitle = new Label { Text = "📊 CA TRỰC & CHUYÊN MÔN", Location = new Point(14, 12), AutoSize = true, Font = new Font("Segoe UI", 9.5f, FontStyle.Bold), ForeColor = C_TextGray };
+            var lblShiftInfo = new Label { Text = $"🏢 {tenPhong} ({tenKhoa})\n⏰ Ca trực: {caTruc}", Location = new Point(14, 36), Size = new Size(320, 36), Font = F_Small, ForeColor = C_TealDark };
+
+            var lblTopHead = new Label { Text = "Bệnh lý thường gặp nhất (30 ngày qua):", Location = new Point(14, 76), AutoSize = true, Font = F_Bold, ForeColor = C_TextDark };
+            var dtTopCD = ClinicDAL.LayTopChanDoanBacSi(maBS, 3);
+            string topText = "";
+            if (dtTopCD.Rows.Count == 0)
+            {
+                topText = "• Chưa có dữ liệu bệnh án trong 30 ngày.";
+            }
+            else
+            {
+                for (int i = 0; i < dtTopCD.Rows.Count; i++)
+                {
+                    var r = dtTopCD.Rows[i];
+                    int sl = r.Table.Columns.Contains("SoLuot") && r["SoLuot"] != DBNull.Value
+                        ? Convert.ToInt32(r["SoLuot"])
+                        : (r.Table.Columns.Contains("SoLuong") && r["SoLuong"] != DBNull.Value ? Convert.ToInt32(r["SoLuong"]) : 0);
+                    topText += $"• {r["ChanDoan"]}: {sl} ca\n";
+                }
+            }
+            var lblTopList = new Label { Text = topText.TrimEnd(), Location = new Point(14, 98), Size = new Size(320, 44), Font = F_Small, ForeColor = C_TextDark };
+
+            var btnViewAllRecord = SecondaryBtn("📂 Tra cứu phác đồ & Dược thư", 14, 144, 320, 28, C_Blue);
+            btnViewAllRecord.Click += (s, e) => ShowBacSiTraCuuView();
+
+            pnlChuyenMon.Controls.AddRange(new Control[] { lblCMTitle, lblShiftInfo, lblTopHead, lblTopList, btnViewAllRecord });
+
+            // Spacer at bottom of right column
+            var pnlRightBottomPad = new Panel { Location = new Point(0, 700), Size = new Size(350, 20) };
+
+            grpRight.Controls.AddRange(new Control[] { pnlCur, pnlCLS, pnlChuyenMon, pnlRightBottomPad });
 
             void LayoutRightCards()
             {
-                int cardWidth = Math.Max(180, grpRight.ClientSize.Width - 8);
-                int innerWidth = Math.Max(150, cardWidth - 28);
+                int cardWidth = Math.Max(260, grpRight.ClientSize.Width - 20);
+                int innerWidth = Math.Max(220, cardWidth - 28);
+
+                pnlCur.Width = cardWidth;
                 lblCurReason.Width = innerWidth;
                 lblCurRoom.Size = new Size(innerWidth, 24);
                 btnTiepTuc.Width = innerWidth;
-                boxNotice1.Width = innerWidth;
-                lblNoticePrio.Size = new Size(innerWidth, 54);
-                btnViewWaiting.Width = innerWidth;
+
+                pnlCLS.Location = new Point(0, pnlCur.Bottom + 12);
+                pnlCLS.Width = cardWidth;
+                pnlCLSList.Width = innerWidth;
+                foreach (Control c in pnlCLSList.Controls) c.Width = Math.Max(180, innerWidth - 8);
+                btnFilterCLS.Width = innerWidth;
+
+                pnlChuyenMon.Location = new Point(0, pnlCLS.Bottom + 12);
+                pnlChuyenMon.Width = cardWidth;
+                lblShiftInfo.Width = innerWidth;
+                lblTopList.Width = innerWidth;
+                btnViewAllRecord.Width = innerWidth;
+
+                pnlRightBottomPad.Location = new Point(0, pnlChuyenMon.Bottom + 10);
             }
             grpRight.SizeChanged += (s, e) => LayoutRightCards();
             LayoutRightCards();
@@ -213,23 +318,66 @@ namespace QlyPhongKham.Forms
             var grpLeft = new Panel { Dock = DockStyle.Fill, BackColor = C_Card, Padding = new Padding(16) };
             grpLeft.Paint += PaintCardBorder;
 
-            var lblListTitle = new Label { Text = "Danh sách khám hôm nay", Location = new Point(16, 14), AutoSize = true, Font = new Font("Segoe UI", 11.5f, FontStyle.Bold), ForeColor = C_TextDark };
+            // ── HEADER ROW 1: Tiêu đề + scope filter ──
+            // lblListTitle cố định bên trái, cboScope anchor phải — tránh đè chữ
+            var lblListTitle = new Label
+            {
+                Text = "Danh sách khám hôm nay",
+                Location = new Point(16, 13),
+                Size = new Size(280, 30),
+                AutoSize = false,
+                Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
+                ForeColor = C_TextDark
+            };
 
-            // Filter bar
-            var txtSearch = MakeInput(16, 48, 260, false, "");
-            var lblPlaceholder = new Label { Text = "🔍 Tìm bệnh nhân trong danh sách...", Location = new Point(24, 54), AutoSize = true, ForeColor = Color.FromArgb(156, 163, 175), BackColor = Color.White };
+            GridPageController? listPageController = null;
+            void LoadList() => listPageController?.Reload();
+
+            // Scope filter — anchor phải để không đè tiêu đề
+            var cboScope = new ComboBox
+            {
+                Size = new Size(230, 28),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = F_Base,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
+            };
+            cboScope.Items.Add("👤 Bệnh nhân của tôi");
+            if (!string.IsNullOrEmpty(roomInfoBS.maPhong))
+                cboScope.Items.Add($"🏢 Cả phòng {roomInfoBS.tenPhong}");
+            else
+                cboScope.Items.Add("🏢 Tất cả bệnh nhân");
+            cboScope.SelectedIndex = 0;
+            cboScope.SelectedIndexChanged += (s, e) => LoadList();
+
+            // ── HEADER ROW 2 (y=52): thanh lọc ──
+            var txtSearch = MakeInput(16, 52, 260, false, "");
+            var lblPlaceholder = new Label
+            {
+                Text = "🔍 Tìm bệnh nhân...",
+                Location = new Point(24, 58),
+                AutoSize = true,
+                ForeColor = Color.FromArgb(156, 163, 175),
+                BackColor = Color.White
+            };
             lblPlaceholder.Click += (s, e) => txtSearch.Focus();
             txtSearch.Enter += (s, e) => lblPlaceholder.Visible = false;
             txtSearch.Leave += (s, e) => lblPlaceholder.Visible = string.IsNullOrEmpty(txtSearch.Text);
 
-            var cboStatus = new ComboBox { Location = new Point(290, 48), Size = new Size(160, 30), DropDownStyle = ComboBoxStyle.DropDownList, Font = F_Base };
+            var cboStatus = new ComboBox
+            {
+                Location = new Point(290, 52),
+                Size = new Size(155, 30),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = F_Base
+            };
             cboStatus.Items.AddRange(new object[] { "Tất cả trạng thái", "Chờ khám", "Đang khám", "Đã khám xong", "Chờ kết quả CLS" });
             cboStatus.SelectedIndex = 0;
 
-            var btnRefresh = SecondaryBtn("🔄 Làm mới", 465, 47, 100, 31, C_Blue);
+            var btnRefresh = SecondaryBtn("🔄 Làm mới", 460, 51, 100, 31, C_Blue);
+
             var approvedAppointments = ClinicDAL.LayLichHenDaDuyetBacSi(maBS, DateTime.Today);
             var btnApprovedAppointments = SecondaryBtn(
-                $"📅 Lịch đã duyệt ({approvedAppointments.Rows.Count})", 575, 47, 190, 31, C_Teal);
+                $"📅 Lịch đã duyệt ({approvedAppointments.Rows.Count})", 570, 51, 200, 31, C_Teal);
             btnApprovedAppointments.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnApprovedAppointments.Click += (s, e) =>
             {
@@ -238,10 +386,17 @@ namespace QlyPhongKham.Forms
                 ShowBacSiLichHenDaDuyetView(maBS);
             };
 
-            // DataGridView
+            // Căn vị trí cboScope về phía phải của grpLeft header
+            void PositionScopeCombo()
+            {
+                cboScope.Location = new Point(Math.Max(310, grpLeft.ClientSize.Width - cboScope.Width - 16), 11);
+                btnApprovedAppointments.Left = Math.Max(btnRefresh.Right + 10, grpLeft.ClientSize.Width - btnApprovedAppointments.Width - 16);
+            }
+            grpLeft.SizeChanged += (s, e) => PositionScopeCombo();
+            PositionScopeCombo(); // set vị trí ngay lúc khởi tạo
             var dgv = MakeGrid(DockStyle.None);
-            dgv.Location = new Point(16, 92);
-            dgv.Size = new Size(grpLeft.Width - 32, grpLeft.Height - 146);
+            dgv.Location = new Point(16, 96);
+            dgv.Size = new Size(grpLeft.Width - 32, grpLeft.Height - 150);
             dgv.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             dgv.ScrollBars = ScrollBars.Vertical;
             dgv.DataBindingComplete += (sender, args) =>
@@ -259,17 +414,15 @@ namespace QlyPhongKham.Forms
                 SafeFormatCol(dgv, "SoDienThoai", "SĐT", null, false);
             };
 
-            // Load data method
-            GridPageController? listPageController = null;
-            void LoadList() => listPageController?.Reload();
+            // Filter events
 
             txtSearch.TextChanged += (s, e) => LoadList();
             cboStatus.SelectedIndexChanged += (s, e) => LoadList();
             btnRefresh.Click += (s, e) => LoadList();
 
-            btnViewWaiting.Click += (s, e) =>
+            btnFilterCLS.Click += (s, e) =>
             {
-                cboStatus.SelectedItem = "Chờ khám";
+                cboStatus.SelectedItem = "Chờ kết quả CLS";
                 LoadList();
             };
 
@@ -313,9 +466,8 @@ namespace QlyPhongKham.Forms
             };
 
             pnlFooter.Controls.AddRange(new Control[] { lblCount, btnOpenSelected, btnViewRecord });
-            grpLeft.Controls.AddRange(new Control[] { lblListTitle, txtSearch, lblPlaceholder, cboStatus, btnRefresh, btnApprovedAppointments, dgv, pnlFooter });
-            grpLeft.SizeChanged += (s, e) =>
-                btnApprovedAppointments.Left = Math.Max(btnRefresh.Right + 10, grpLeft.ClientSize.Width - btnApprovedAppointments.Width - 16);
+            grpLeft.Controls.AddRange(new Control[] { lblListTitle, cboScope, txtSearch, lblPlaceholder, cboStatus, btnRefresh, btnApprovedAppointments, dgv, pnlFooter });
+            // grpLeft.SizeChanged handled by PositionScopeCombo above
 
             // Thêm cột phải trước, sau đó là cột trái fill
             pnlBody.Controls.Add(grpLeft);
@@ -323,16 +475,43 @@ namespace QlyPhongKham.Forms
             pnlBody.Controls.Add(grpRight);
             ConfigureDoctorRightColumn(pnlBody, grpRight);
 
-            wrapper.Controls.AddRange(new Control[] { pnlBody, pnlTop });
+            // ── INFO BAR: Phòng khám & Khoa (giữa KPI và body) ──
+            var pnlRoomInfo = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 38,
+                BackColor = Color.FromArgb(13, 148, 136),   // teal-600
+                Padding = new Padding(14, 0, 14, 0)
+            };
+            string roomSummary = !string.IsNullOrEmpty(roomInfoBS.maPhong)
+                ? $"🏢  {roomInfoBS.tenPhong}  ({roomInfoBS.tenKhoa})     •     Tổ phụ trách: {roomInfoBS.soBacSi} Bác sĩ  &  {roomInfoBS.soYTa} Điều dưỡng / Y tá"
+                : "🏢  Chưa được phân công phòng khám";
+            var lblRoomInfo = new Label
+            {
+                Text = roomSummary,
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                ForeColor = Color.White,
+                BackColor = Color.Transparent
+            };
+            pnlRoomInfo.Controls.Add(lblRoomInfo);
+
+            wrapper.Controls.AddRange(new Control[] { pnlBody, pnlRoomInfo, pnlTop });
             panelContent.Controls.Add(wrapper);
 
             listPageController = GridPageController.Attach(dgv, (offset, pageSize) =>
-                ClinicDAL.LayDanhSachKhamBacSi(
-                    string.IsNullOrEmpty(maBS) ? null : maBS,
+            {
+                string? targetBS = cboScope.SelectedIndex == 0 ? maBS : null;
+                string? targetPhong = cboScope.SelectedIndex == 1 ? roomInfoBS.maPhong : null;
+                return ClinicDAL.LayDanhSachKhamBacSi(
+                    string.IsNullOrEmpty(targetBS) ? null : targetBS,
                     txtSearch.Text.Trim(),
                     cboStatus.SelectedItem?.ToString(),
                     offset,
-                    pageSize));
+                    pageSize,
+                    targetPhong);
+            });
         }
 
         private void ShowBacSiLichHenDaDuyetView(string maBS)
@@ -2064,5 +2243,403 @@ namespace QlyPhongKham.Forms
 
         // Tương thích ngược: nếu có nút cũ gọi ShowKhamBenhView()
         private void ShowKhamBenhView() => ShowBacSiKhamKeDonView();
+
+        // ═══════════════════════════════════════════════════════════
+        //  VIEW 5: BÁC SĨ - DANH MỤC THUỐC & DƯỢC THƯ (READ-ONLY)
+        // ═══════════════════════════════════════════════════════════
+        public void ShowBacSiThuocView()
+        {
+            SetRefreshPageAction(ShowBacSiThuocView);
+            SetActiveNav(btnNavKhoThuoc);
+            SetPageHeader("Bác sĩ  ›  Danh mục thuốc", "Tra cứu dược thư, hoạt chất, quy cách & tồn kho thực tế phục vụ kê đơn");
+            panelContent.Controls.Clear();
+
+            var wrapper = new Panel { Dock = DockStyle.Fill };
+
+            // ── TOP TOOLBAR ──
+            var toolPanel = new Panel { Dock = DockStyle.Top, Height = 58, BackColor = C_Card, Padding = new Padding(14, 10, 14, 10) };
+            toolPanel.Paint += PaintCardBorder;
+
+            var lblSearch = MakeLbl("Tìm thuốc:", 14, 17);
+            var txtSearch = MakeInput(88, 12, 230);
+            txtSearch.PlaceholderText = "Tên biệt dược, mã thuốc...";
+
+            var lblStatus = MakeLbl("Tồn kho:", 330, 17);
+            var cboStatus = new ComboBox
+            {
+                Location = new Point(395, 12),
+                Size = new Size(155, 32),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = F_Base
+            };
+            cboStatus.Items.AddRange(new object[] { "Tất cả trạng thái", "Còn hàng (> 30)", "Sắp hết (1 - 30)", "Hết hàng (= 0)" });
+            cboStatus.SelectedIndex = 0;
+
+            var btnSearch = PrimaryBtn("🔍 Tìm kiếm", 562, 11, 100, 33);
+            var btnRefresh = SecondaryBtn("↻ Làm mới", 670, 11, 95, 33, C_Blue);
+
+            // KPI badges
+            var pnlKpiBadges = new Panel { Location = new Point(780, 10), Size = new Size(Math.Max(200, toolPanel.ClientSize.Width - 790), 36), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            pnlKpiBadges.Paint += (s, e) =>
+            {
+                var k = ClinicDAL.LayThongKeKhoThuoc();
+                using var f = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+                using var brushText = new SolidBrush(Color.FromArgb(55, 65, 81));
+                using var brushGreen = new SolidBrush(Color.FromArgb(16, 185, 129));
+                using var brushOrange = new SolidBrush(Color.FromArgb(245, 158, 11));
+                using var brushRed = new SolidBrush(Color.FromArgb(239, 68, 68));
+
+                int x = 8;
+                e.Graphics.DrawString($"Tổng: {k.tongLoaiThuoc} loại", f, brushText, x, 8);
+                x += 105;
+                e.Graphics.DrawString($"🟢 Còn: {k.anToanCount}", f, brushGreen, x, 8);
+                x += 95;
+                e.Graphics.DrawString($"🟡 Sắp hết: {k.thuocSapHet}", f, brushOrange, x, 8);
+                x += 105;
+                e.Graphics.DrawString($"🔴 Hết: {k.hetHangCount}", f, brushRed, x, 8);
+            };
+
+            toolPanel.Controls.AddRange(new Control[] { lblSearch, txtSearch, lblStatus, cboStatus, btnSearch, btnRefresh, pnlKpiBadges });
+
+            // ── BODY ──
+            var pnlBody = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 10, 0, 0), BackColor = Color.Transparent };
+
+            // Right detail card
+            var pnlRight = new Panel { Dock = DockStyle.Right, Width = 360, BackColor = C_Card, Padding = new Padding(14) };
+            pnlRight.Paint += PaintCardBorder;
+
+            var lblDetailHeader = MakeLbl("💊 THÔNG TIN BIỆT DƯỢC", 14, 12, bold: true);
+            lblDetailHeader.Font = new Font("Segoe UI", 10.5f, FontStyle.Bold);
+
+            var lblDrugName = new Label { Location = new Point(14, 42), Size = new Size(pnlRight.Width - 28, 48), Font = new Font("Segoe UI", 12f, FontStyle.Bold), ForeColor = C_Teal, Text = "Chọn thuốc để xem chi tiết", Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            var lblStockBadge = new Label { Location = new Point(14, 94), Size = new Size(160, 26), Font = new Font("Segoe UI", 8.5f, FontStyle.Bold), Text = "Tồn kho: --", BackColor = Color.FromArgb(243, 244, 246), TextAlign = ContentAlignment.MiddleCenter };
+            var lblPriceBadge = new Label { Location = new Point(184, 94), Size = new Size(160, 26), Font = new Font("Segoe UI", 8.5f, FontStyle.Bold), Text = "Đơn giá: --", BackColor = Color.FromArgb(243, 244, 246), TextAlign = ContentAlignment.MiddleCenter };
+
+            var lblInstructTitle = MakeLbl("Hướng dẫn & Liều dùng khuyến nghị:", 14, 134, bold: true);
+            var txtInstruct = new TextBox { Location = new Point(14, 160), Size = new Size(pnlRight.Width - 28, pnlRight.Height - 175), Multiline = true, ReadOnly = true, Font = F_Base, BackColor = Color.FromArgb(248, 250, 252), Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
+
+            pnlRight.Controls.AddRange(new Control[] { lblDetailHeader, lblDrugName, lblStockBadge, lblPriceBadge, lblInstructTitle, txtInstruct });
+
+            // Left grid
+            var pnlLeft = new Panel { Dock = DockStyle.Fill, BackColor = C_Card, Padding = new Padding(10) };
+            pnlLeft.Paint += PaintCardBorder;
+            var dgvThuoc = MakeGrid();
+            dgvThuoc.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+
+            dgvThuoc.DataBindingComplete += (s, e) =>
+            {
+                if (dgvThuoc.Columns.Contains("MaThuoc"))
+                {
+                    dgvThuoc.Columns["MaThuoc"]!.HeaderText = "Mã";
+                    dgvThuoc.Columns["MaThuoc"]!.FillWeight = 0.8f;
+                    dgvThuoc.Columns["MaThuoc"]!.MinimumWidth = 65;
+                }
+                if (dgvThuoc.Columns.Contains("TenThuoc"))
+                {
+                    dgvThuoc.Columns["TenThuoc"]!.HeaderText = "Tên thuốc / Biệt dược";
+                    dgvThuoc.Columns["TenThuoc"]!.FillWeight = 2.2f;
+                    dgvThuoc.Columns["TenThuoc"]!.MinimumWidth = 140;
+                }
+                if (dgvThuoc.Columns.Contains("DonViTinh"))
+                {
+                    dgvThuoc.Columns["DonViTinh"]!.HeaderText = "ĐVT";
+                    dgvThuoc.Columns["DonViTinh"]!.FillWeight = 0.8f;
+                    dgvThuoc.Columns["DonViTinh"]!.MinimumWidth = 60;
+                }
+                if (dgvThuoc.Columns.Contains("DonGiaBan"))
+                {
+                    dgvThuoc.Columns["DonGiaBan"]!.HeaderText = "Đơn giá kê đơn";
+                    dgvThuoc.Columns["DonGiaBan"]!.FillWeight = 1.2f;
+                    dgvThuoc.Columns["DonGiaBan"]!.MinimumWidth = 95;
+                    dgvThuoc.Columns["DonGiaBan"]!.DefaultCellStyle.Format = "N0 đ";
+                    dgvThuoc.Columns["DonGiaBan"]!.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+                }
+                if (dgvThuoc.Columns.Contains("SoLuongTon"))
+                {
+                    dgvThuoc.Columns["SoLuongTon"]!.HeaderText = "Tồn kho";
+                    dgvThuoc.Columns["SoLuongTon"]!.FillWeight = 1.0f;
+                    dgvThuoc.Columns["SoLuongTon"]!.MinimumWidth = 70;
+                    dgvThuoc.Columns["SoLuongTon"]!.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+                }
+                if (dgvThuoc.Columns.Contains("CachDungMacDinh"))
+                {
+                    dgvThuoc.Columns["CachDungMacDinh"]!.HeaderText = "Cách dùng mặc định";
+                    dgvThuoc.Columns["CachDungMacDinh"]!.FillWeight = 2.4f;
+                    dgvThuoc.Columns["CachDungMacDinh"]!.MinimumWidth = 160;
+                }
+            };
+
+            dgvThuoc.CellFormatting += (s, e) =>
+            {
+                if (e.RowIndex >= 0 && dgvThuoc.Columns[e.ColumnIndex].Name == "SoLuongTon" && e.Value != null)
+                {
+                    if (int.TryParse(e.Value.ToString(), out int sl))
+                    {
+                        if (sl == 0)
+                        {
+                            e.CellStyle.ForeColor = Color.FromArgb(220, 38, 38);
+                            e.CellStyle.Font = new Font(F_Base, FontStyle.Bold);
+                        }
+                        else if (sl <= 30)
+                        {
+                            e.CellStyle.ForeColor = Color.FromArgb(217, 119, 6);
+                            e.CellStyle.Font = new Font(F_Base, FontStyle.Bold);
+                        }
+                        else
+                        {
+                            e.CellStyle.ForeColor = Color.FromArgb(22, 101, 52);
+                        }
+                    }
+                }
+            };
+
+            pnlLeft.Controls.Add(dgvThuoc);
+
+            pnlBody.Controls.Add(pnlLeft);
+            pnlBody.Controls.Add(new Panel { Dock = DockStyle.Right, Width = 14, BackColor = Color.Transparent });
+            pnlBody.Controls.Add(pnlRight);
+            ConfigureDoctorRightColumn(pnlBody, pnlRight);
+
+            void UpdateDetail(DataRowView? drv)
+            {
+                if (drv == null)
+                {
+                    lblDrugName.Text = "Chọn thuốc để xem chi tiết";
+                    lblStockBadge.Text = "Tồn kho: --";
+                    lblPriceBadge.Text = "Đơn giá: --";
+                    txtInstruct.Text = "";
+                    return;
+                }
+                var r = drv.Row;
+                string ma = r["MaThuoc"]?.ToString() ?? "";
+                string ten = r["TenThuoc"]?.ToString() ?? "";
+                string dvt = r["DonViTinh"]?.ToString() ?? "";
+                decimal gia = r.Table.Columns.Contains("DonGiaBan") && r["DonGiaBan"] != DBNull.Value ? Convert.ToDecimal(r["DonGiaBan"]) : 0;
+                int ton = r.Table.Columns.Contains("SoLuongTon") && r["SoLuongTon"] != DBNull.Value ? Convert.ToInt32(r["SoLuongTon"]) : 0;
+                string cachDung = r.Table.Columns.Contains("CachDungMacDinh") ? r["CachDungMacDinh"]?.ToString() ?? "" : "";
+
+                lblDrugName.Text = $"{ten} [{ma}]";
+                lblPriceBadge.Text = $"Đơn giá: {gia:N0} đ / {dvt}";
+
+                if (ton == 0)
+                {
+                    lblStockBadge.Text = $"🔴 HẾT HÀNG (0 {dvt})";
+                    lblStockBadge.BackColor = Color.FromArgb(254, 226, 226);
+                    lblStockBadge.ForeColor = Color.FromArgb(185, 28, 28);
+                }
+                else if (ton <= 30)
+                {
+                    lblStockBadge.Text = $"🟡 SẮP HẾT ({ton} {dvt})";
+                    lblStockBadge.BackColor = Color.FromArgb(254, 243, 199);
+                    lblStockBadge.ForeColor = Color.FromArgb(180, 83, 9);
+                }
+                else
+                {
+                    lblStockBadge.Text = $"🟢 KHẢ DỤNG ({ton:N0} {dvt})";
+                    lblStockBadge.BackColor = Color.FromArgb(220, 252, 231);
+                    lblStockBadge.ForeColor = Color.FromArgb(21, 128, 61);
+                }
+
+                txtInstruct.Text = string.IsNullOrWhiteSpace(cachDung)
+                    ? "Chưa có ghi chú liều dùng mặc định cho biệt dược này.\nBác sĩ kê đơn theo chỉ định lâm sàng phù hợp với người bệnh."
+                    : $"Liều lượng & Đường dùng khuyến nghị:\n{cachDung}\n\nLưu ý kê đơn:\n- Kiểm tra tiền sử dị ứng thuốc của người bệnh trước khi kê toa.\n- Tư vấn bệnh nhân tuân thủ đúng liều lượng và thời điểm uống thuốc.";
+            }
+
+            dgvThuoc.SelectionChanged += (s, e) =>
+            {
+                if (dgvThuoc.SelectedRows.Count > 0 && dgvThuoc.SelectedRows[0].DataBoundItem is DataRowView drv)
+                    UpdateDetail(drv);
+            };
+
+            string GetSelectedTon()
+            {
+                int idx = cboStatus.SelectedIndex;
+                return idx switch
+                {
+                    1 => "ConHang",
+                    2 => "SapHet",
+                    3 => "HetHang",
+                    _ => ""
+                };
+            }
+
+            GridPageController? pageController = null;
+            void LoadData()
+            {
+                pageController?.Reload();
+                pnlKpiBadges.Invalidate();
+            }
+
+            pageController = GridPageController.Attach(dgvThuoc, (offset, pageSize) =>
+                ClinicDAL.LayDanhSachThuoc(txtSearch.Text.Trim(), offset, pageSize, GetSelectedTon()));
+
+            btnSearch.Click += (s, e) => LoadData();
+            txtSearch.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) LoadData(); };
+            cboStatus.SelectedIndexChanged += (s, e) => LoadData();
+            btnRefresh.Click += (s, e) =>
+            {
+                txtSearch.Text = "";
+                cboStatus.SelectedIndex = 0;
+                LoadData();
+            };
+
+            wrapper.Controls.AddRange(new Control[] { pnlBody, toolPanel });
+            panelContent.Controls.Add(wrapper);
+            LoadData();
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        //  VIEW 6: BÁC SĨ - BẢNG GIÁ DỊCH VỤ KỸ THUẬT & CLS (READ-ONLY)
+        // ═══════════════════════════════════════════════════════════
+        public void ShowBacSiDichVuView()
+        {
+            SetRefreshPageAction(ShowBacSiDichVuView);
+            SetActiveNav(btnNavDichVu);
+            SetPageHeader("Bác sĩ  ›  Bảng giá dịch vụ", "Danh mục dịch vụ kỹ thuật, khám chuyên khoa, xét nghiệm & chẩn đoán hình ảnh (CLS)");
+            panelContent.Controls.Clear();
+
+            var wrapper = new Panel { Dock = DockStyle.Fill };
+
+            // ── TOP TOOLBAR ──
+            var toolPanel = new Panel { Dock = DockStyle.Top, Height = 58, BackColor = C_Card, Padding = new Padding(14, 10, 14, 10) };
+            toolPanel.Paint += PaintCardBorder;
+
+            var lblSearch = MakeLbl("Tìm dịch vụ:", 14, 17);
+            var txtSearch = MakeInput(100, 12, 280);
+            txtSearch.PlaceholderText = "Tên kỹ thuật, mã DV, từ khóa...";
+
+            var btnSearch = PrimaryBtn("🔍 Tìm kiếm", 390, 11, 100, 33);
+            var btnRefresh = SecondaryBtn("↻ Làm mới", 500, 11, 95, 33, C_Blue);
+
+            var lblCountBadge = new Label
+            {
+                Location = new Point(toolPanel.ClientSize.Width - 260, 14),
+                Size = new Size(245, 30),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                ForeColor = C_Teal,
+                TextAlign = ContentAlignment.MiddleRight,
+                Text = "Dịch vụ kỹ thuật phòng khám"
+            };
+
+            toolPanel.Controls.AddRange(new Control[] { lblSearch, txtSearch, btnSearch, btnRefresh, lblCountBadge });
+
+            // ── BODY ──
+            var pnlBody = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 10, 0, 0), BackColor = Color.Transparent };
+
+            // Right detail card
+            var pnlRight = new Panel { Dock = DockStyle.Right, Width = 360, BackColor = C_Card, Padding = new Padding(14) };
+            pnlRight.Paint += PaintCardBorder;
+
+            var lblDetailHeader = MakeLbl("🔬 CHI TIẾT DỊCH VỤ KỸ THUẬT", 14, 12, bold: true);
+            lblDetailHeader.Font = new Font("Segoe UI", 10.5f, FontStyle.Bold);
+
+            var lblServiceName = new Label { Location = new Point(14, 42), Size = new Size(pnlRight.Width - 28, 48), Font = new Font("Segoe UI", 12f, FontStyle.Bold), ForeColor = C_Teal, Text = "Chọn dịch vụ để xem chi tiết", Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            var lblPriceBadge = new Label { Location = new Point(14, 94), Size = new Size(200, 28), Font = new Font("Segoe UI", 10f, FontStyle.Bold), Text = "Đơn giá: --", BackColor = Color.FromArgb(220, 252, 231), ForeColor = Color.FromArgb(22, 101, 52), TextAlign = ContentAlignment.MiddleCenter };
+
+            var lblNotesTitle = MakeLbl("Hướng dẫn & Lưu ý chuẩn bị cho bệnh nhân:", 14, 136, bold: true);
+            var txtNotes = new TextBox { Location = new Point(14, 162), Size = new Size(pnlRight.Width - 28, pnlRight.Height - 177), Multiline = true, ReadOnly = true, Font = F_Base, BackColor = Color.FromArgb(248, 250, 252), Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
+
+            pnlRight.Controls.AddRange(new Control[] { lblDetailHeader, lblServiceName, lblPriceBadge, lblNotesTitle, txtNotes });
+
+            // Left grid
+            var pnlLeft = new Panel { Dock = DockStyle.Fill, BackColor = C_Card, Padding = new Padding(10) };
+            pnlLeft.Paint += PaintCardBorder;
+            var dgvDichVu = MakeGrid();
+            dgvDichVu.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+
+            dgvDichVu.DataBindingComplete += (s, e) =>
+            {
+                if (dgvDichVu.Columns.Contains("MaDV"))
+                {
+                    dgvDichVu.Columns["MaDV"]!.HeaderText = "Mã DV";
+                    dgvDichVu.Columns["MaDV"]!.FillWeight = 0.8f;
+                    dgvDichVu.Columns["MaDV"]!.MinimumWidth = 70;
+                }
+                if (dgvDichVu.Columns.Contains("TenDV"))
+                {
+                    dgvDichVu.Columns["TenDV"]!.HeaderText = "Tên dịch vụ kỹ thuật / Cận lâm sàng";
+                    dgvDichVu.Columns["TenDV"]!.FillWeight = 2.5f;
+                    dgvDichVu.Columns["TenDV"]!.MinimumWidth = 160;
+                }
+                if (dgvDichVu.Columns.Contains("DonGia"))
+                {
+                    dgvDichVu.Columns["DonGia"]!.HeaderText = "Đơn giá viện phí";
+                    dgvDichVu.Columns["DonGia"]!.FillWeight = 1.2f;
+                    dgvDichVu.Columns["DonGia"]!.MinimumWidth = 105;
+                    dgvDichVu.Columns["DonGia"]!.DefaultCellStyle.Format = "N0 đ";
+                    dgvDichVu.Columns["DonGia"]!.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+                }
+                if (dgvDichVu.Columns.Contains("MoTa"))
+                {
+                    dgvDichVu.Columns["MoTa"]!.HeaderText = "Mô tả / Lưu ý chuẩn bị";
+                    dgvDichVu.Columns["MoTa"]!.FillWeight = 2.5f;
+                    dgvDichVu.Columns["MoTa"]!.MinimumWidth = 160;
+                }
+            };
+
+            pnlLeft.Controls.Add(dgvDichVu);
+
+            pnlBody.Controls.Add(pnlLeft);
+            pnlBody.Controls.Add(new Panel { Dock = DockStyle.Right, Width = 14, BackColor = Color.Transparent });
+            pnlBody.Controls.Add(pnlRight);
+            ConfigureDoctorRightColumn(pnlBody, pnlRight);
+
+            void UpdateDetail(DataRowView? drv)
+            {
+                if (drv == null)
+                {
+                    lblServiceName.Text = "Chọn dịch vụ để xem chi tiết";
+                    lblPriceBadge.Text = "Đơn giá: --";
+                    txtNotes.Text = "";
+                    return;
+                }
+                var r = drv.Row;
+                string ma = r["MaDV"]?.ToString() ?? "";
+                string ten = r["TenDV"]?.ToString() ?? "";
+                decimal gia = r.Table.Columns.Contains("DonGia") && r["DonGia"] != DBNull.Value ? Convert.ToDecimal(r["DonGia"]) : 0;
+                string moTa = r.Table.Columns.Contains("MoTa") ? r["MoTa"]?.ToString() ?? "" : "";
+
+                lblServiceName.Text = $"{ten} [{ma}]";
+                lblPriceBadge.Text = $"Đơn giá: {gia:N0} đ";
+
+                txtNotes.Text = string.IsNullOrWhiteSpace(moTa)
+                    ? "Dịch vụ kỹ thuật chuẩn của phòng khám.\nKhông yêu cầu chuẩn bị đặc biệt trước khi thực hiện."
+                    : $"Quy trình & Hướng dẫn chuẩn bị:\n{moTa}\n\nLưu ý bác sĩ khi chỉ định:\n- Tư vấn mức phí và giải thích lý do cần thực hiện cho người bệnh.\n- Đảm bảo bệnh nhân đáp ứng các điều kiện an toàn cận lâm sàng.";
+            }
+
+            dgvDichVu.SelectionChanged += (s, e) =>
+            {
+                if (dgvDichVu.SelectedRows.Count > 0 && dgvDichVu.SelectedRows[0].DataBoundItem is DataRowView drv)
+                    UpdateDetail(drv);
+            };
+
+            GridPageController? pageController = null;
+            void LoadData()
+            {
+                pageController?.Reload();
+            }
+
+            pageController = GridPageController.Attach(dgvDichVu, (offset, pageSize) =>
+            {
+                var dt = ClinicDAL.LayDanhSachDichVu(txtSearch.Text.Trim(), offset, pageSize);
+                int total = dt.Rows.Count > 0 && dt.Columns.Contains("_TotalRows") && dt.Rows[0]["_TotalRows"] != DBNull.Value
+                    ? Convert.ToInt32(dt.Rows[0]["_TotalRows"]) : dt.Rows.Count;
+                lblCountBadge.Text = $"Tổng số: {total} dịch vụ";
+                return dt;
+            });
+
+            btnSearch.Click += (s, e) => LoadData();
+            txtSearch.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) LoadData(); };
+            btnRefresh.Click += (s, e) =>
+            {
+                txtSearch.Text = "";
+                LoadData();
+            };
+
+            wrapper.Controls.AddRange(new Control[] { pnlBody, toolPanel });
+            panelContent.Controls.Add(wrapper);
+            LoadData();
+        }
     }
 }

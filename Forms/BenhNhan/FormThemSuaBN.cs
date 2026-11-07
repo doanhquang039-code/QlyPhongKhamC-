@@ -136,8 +136,10 @@ namespace QlyPhongKham.Forms
             };
             AddField(detailsCard, "Ngày sinh", dateOfBirth, 271, 106);
 
-            var txtPhone = CreateInput(new Point(20, 190), new Size(481, 30));
+            var txtPhone = CreateInput(new Point(20, 190), new Size(225, 30));
             AddField(detailsCard, "Số điện thoại", txtPhone, 20, 170);
+            var txtEmail = CreateInput(new Point(265, 190), new Size(236, 30));
+            AddField(detailsCard, "Email nhận thông báo", txtEmail, 265, 170);
             var txtAddress = CreateInput(new Point(20, 254), new Size(481, 30));
             AddField(detailsCard, "Địa chỉ", txtAddress, 20, 234);
             var txtHistory = new TextBox
@@ -151,6 +153,7 @@ namespace QlyPhongKham.Forms
             AddField(detailsCard, "Tiền sử bệnh", txtHistory, 20, 298);
             txtName.Text = bn?.HoTen ?? "";
             txtPhone.Text = bn?.SoDienThoai ?? "";
+            txtEmail.Text = bn?.Email ?? "";
             txtAddress.Text = bn?.DiaChi ?? "";
             txtHistory.Text = bn?.TienSuBenh ?? "";
 
@@ -214,6 +217,7 @@ namespace QlyPhongKham.Forms
                     GioiTinh = cboGender.SelectedItem?.ToString() ?? "Nam",
                     NgaySinh = dateOfBirth.Value.Date,
                     SoDienThoai = txtPhone.Text.Trim(),
+                    Email = string.IsNullOrWhiteSpace(txtEmail.Text) ? null : txtEmail.Text.Trim(),
                     DiaChi = txtAddress.Text.Trim(),
                     TienSuBenh = txtHistory.Text.Trim(),
                     AnhDaiDien = _profileImage

@@ -122,6 +122,7 @@ CREATE TABLE BenhNhan (
     NgaySinh DATE NULL,
     GioiTinh NVARCHAR(5) NOT NULL CONSTRAINT CK_BenhNhan_GioiTinh CHECK (GioiTinh IN (N'Nam', N'Nữ')),
     SoDienThoai VARCHAR(15) NULL,
+    Email VARCHAR(100) NULL,
     DiaChi NVARCHAR(200) NULL,
     TienSuBenh NVARCHAR(MAX) NULL,
     AnhDaiDien VARBINARY(MAX) NULL,
@@ -421,10 +422,8 @@ INSERT INTO PhongKham (MaPhong, MaKhoa, TenPhong) VALUES
 
 INSERT INTO PhanCongPhong (MaNV, MaPhong, VaiTro) VALUES
 ('NV002', 'P101', N'BacSi'),
-('NV002', 'P102', N'BacSi'),
 ('NV003', 'P201', N'BacSi'),
-('NV005', 'P101', N'LeTan'),
-('NV005', 'P201', N'LeTan');
+('NV005', 'P101', N'LeTan');
 
 -- Bệnh nhân
 INSERT INTO BenhNhan (MaBN, HoTen, NgaySinh, GioiTinh, SoDienThoai, DiaChi, TienSuBenh) VALUES

@@ -269,8 +269,18 @@ namespace QlyPhongKham.DAL
             return Convert.ToInt32(command.ExecuteScalar()) > 0;
         }
 
+        private static void EnsureBenhNhanEmailColumn()
+        {
+            try
+            {
+                DatabaseHelper.ExecuteNonQuery(@"IF COL_LENGTH('dbo.BenhNhan','Email') IS NULL
+                    ALTER TABLE dbo.BenhNhan ADD Email VARCHAR(100) NULL;");
+            }
+            catch { }
+        }
         private static void EnsureAuditSchema()
         {
+EnsureBenhNhanEmailColumn();
             if (_auditSchemaReady) return;
             lock (AuditSchemaLock)
             {
@@ -509,7 +519,7 @@ namespace QlyPhongKham.DAL
 
             string pagedSql = sql.Insert(selectIndex + "SELECT".Length, " COUNT_BIG(*) OVER() AS __TotalCount,");
             pagedSql += " OFFSET @PageOffset ROWS FETCH NEXT @PageSize ROWS ONLY";
-            var queryParameters = parameters?.ToList() ?? new List<SqlParameter>();
+            var queryParameters = parameters?.Select(p => (SqlParameter)((ICloneable)p).Clone()).ToList() ?? new List<SqlParameter>();
             queryParameters.Add(new SqlParameter("@PageOffset", offset.Value));
             queryParameters.Add(new SqlParameter("@PageSize", pageSize.Value));
 
@@ -721,7 +731,7 @@ namespace QlyPhongKham.DAL
         public static TaiKhoanBenhNhan? DangNhapBenhNhan(string username, string password)
         {
             const string sql = @"
-                SELECT tk.TenDangNhap, tk.MaBN, bn.HoTen, tk.MatKhau
+                SELECT tk.TenDangNhap, tk.MaBN, bn.HoTen, bn.Email, tk.MatKhau
                 FROM TaiKhoanBenhNhan tk
                 INNER JOIN BenhNhan bn ON bn.MaBN = tk.MaBN
                 WHERE tk.TenDangNhap = @User AND tk.TrangThai = 1";
@@ -734,7 +744,8 @@ namespace QlyPhongKham.DAL
             {
                 TenDangNhap = dt.Rows[0]["TenDangNhap"].ToString() ?? "",
                 MaBN = dt.Rows[0]["MaBN"].ToString() ?? "",
-                HoTen = dt.Rows[0]["HoTen"].ToString() ?? ""
+                HoTen = dt.Rows[0]["HoTen"].ToString() ?? "",
+                Email = dt.Rows[0]["Email"] != DBNull.Value ? dt.Rows[0]["Email"].ToString() : null
             };
         }
 
@@ -745,12 +756,14 @@ namespace QlyPhongKham.DAL
             DateTime? dateOfBirth,
             string gender,
             string? phone,
-            string? address)
+            string? address,
+            string? email)
         {
             username = username.Trim();
             fullName = fullName.Trim();
             phone = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim();
             address = string.IsNullOrWhiteSpace(address) ? null : address.Trim();
+            email = string.IsNullOrWhiteSpace(email) ? null : email.Trim();
 
             if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password) ||
                 string.IsNullOrWhiteSpace(fullName))
@@ -793,8 +806,8 @@ namespace QlyPhongKham.DAL
                 }
 
                 using (var patientCommand = new SqlCommand(@"
-                    INSERT INTO BenhNhan (MaBN, HoTen, NgaySinh, GioiTinh, SoDienThoai, DiaChi, TienSuBenh)
-                    VALUES (@MaBN, @HoTen, @NgaySinh, @GioiTinh, @SoDienThoai, @DiaChi, NULL)",
+                    INSERT INTO BenhNhan (MaBN, HoTen, NgaySinh, GioiTinh, SoDienThoai, DiaChi, TienSuBenh, Email)
+                    VALUES (@MaBN, @HoTen, @NgaySinh, @GioiTinh, @SoDienThoai, @DiaChi, NULL, @Email)",
                     conn, trans))
                 {
                     patientCommand.Parameters.AddWithValue("@MaBN", maBN);
@@ -803,6 +816,7 @@ namespace QlyPhongKham.DAL
                     patientCommand.Parameters.AddWithValue("@GioiTinh", gender);
                     patientCommand.Parameters.AddWithValue("@SoDienThoai", (object?)phone ?? DBNull.Value);
                     patientCommand.Parameters.AddWithValue("@DiaChi", (object?)address ?? DBNull.Value);
+                    patientCommand.Parameters.AddWithValue("@Email", (object?)email ?? DBNull.Value);
                     patientCommand.ExecuteNonQuery();
                 }
 
@@ -829,7 +843,7 @@ namespace QlyPhongKham.DAL
         public static DataTable LayDanhSachBenhNhan(string keyword = "", int? offset = null, int? pageSize = null)
         {
             string sql = @"
-                SELECT MaBN, HoTen, NgaySinh, GioiTinh, SoDienThoai, DiaChi, TienSuBenh
+                SELECT MaBN, HoTen, NgaySinh, GioiTinh, SoDienThoai, Email, DiaChi, TienSuBenh
                 FROM BenhNhan
                 WHERE @Kw = '' OR HoTen LIKE '%' + @Kw + '%' OR SoDienThoai LIKE '%' + @Kw + '%' OR MaBN LIKE '%' + @Kw + '%'
                 ORDER BY NgayTao DESC, MaBN";
@@ -839,7 +853,7 @@ namespace QlyPhongKham.DAL
         public static DataRow? LayBenhNhanTheoMa(string maBN)
         {
             const string sql = @"
-                SELECT MaBN, HoTen, NgaySinh, GioiTinh, SoDienThoai, DiaChi, TienSuBenh
+                SELECT MaBN, HoTen, NgaySinh, GioiTinh, SoDienThoai, Email, DiaChi, TienSuBenh
                 FROM BenhNhan
                 WHERE MaBN = @MaBN";
             var dt = DatabaseHelper.ExecuteQuery(sql, new[] { new SqlParameter("@MaBN", maBN) });
@@ -865,8 +879,8 @@ namespace QlyPhongKham.DAL
             if (isNew)
             {
                 string sql = @"
-                    INSERT INTO BenhNhan (MaBN, HoTen, NgaySinh, GioiTinh, SoDienThoai, DiaChi, TienSuBenh, AnhDaiDien)
-                    VALUES (@MaBN, @HoTen, @NgaySinh, @GioiTinh, @SoDienThoai, @DiaChi, @TienSuBenh, @AnhDaiDien)";
+                    INSERT INTO BenhNhan (MaBN, HoTen, NgaySinh, GioiTinh, SoDienThoai, Email, DiaChi, TienSuBenh, AnhDaiDien)
+                    VALUES (@MaBN, @HoTen, @NgaySinh, @GioiTinh, @SoDienThoai, @Email, @DiaChi, @TienSuBenh, @AnhDaiDien)";
                 return DatabaseHelper.ExecuteNonQuery(sql, new[]
                 {
                     new SqlParameter("@MaBN", bn.MaBN),
@@ -874,6 +888,7 @@ namespace QlyPhongKham.DAL
                     new SqlParameter("@NgaySinh", (object?)bn.NgaySinh ?? DBNull.Value),
                     new SqlParameter("@GioiTinh", bn.GioiTinh),
                     new SqlParameter("@SoDienThoai", (object?)bn.SoDienThoai ?? DBNull.Value),
+                    new SqlParameter("@Email", (object?)bn.Email ?? DBNull.Value),
                     new SqlParameter("@DiaChi", (object?)bn.DiaChi ?? DBNull.Value),
                     new SqlParameter("@TienSuBenh", (object?)bn.TienSuBenh ?? DBNull.Value),
                     CreateProfileImageParameter(bn.AnhDaiDien)
@@ -885,6 +900,7 @@ namespace QlyPhongKham.DAL
                     UPDATE BenhNhan
                     SET HoTen = @HoTen, NgaySinh = COALESCE(@NgaySinh, NgaySinh), GioiTinh = @GioiTinh,
                         SoDienThoai = COALESCE(NULLIF(@SoDienThoai, ''), SoDienThoai),
+                        Email = COALESCE(NULLIF(@Email, ''), Email),
                         DiaChi = COALESCE(NULLIF(@DiaChi, ''), DiaChi),
                         TienSuBenh = COALESCE(NULLIF(@TienSuBenh, ''), TienSuBenh),
                         AnhDaiDien = COALESCE(@AnhDaiDien, AnhDaiDien)
@@ -896,6 +912,7 @@ namespace QlyPhongKham.DAL
                     new SqlParameter("@NgaySinh", (object?)bn.NgaySinh ?? DBNull.Value),
                     new SqlParameter("@GioiTinh", bn.GioiTinh),
                     new SqlParameter("@SoDienThoai", (object?)bn.SoDienThoai ?? DBNull.Value),
+                    new SqlParameter("@Email", (object?)bn.Email ?? DBNull.Value),
                     new SqlParameter("@DiaChi", (object?)bn.DiaChi ?? DBNull.Value),
                     new SqlParameter("@TienSuBenh", (object?)bn.TienSuBenh ?? DBNull.Value),
                     CreateProfileImageParameter(bn.AnhDaiDien)
@@ -1079,11 +1096,12 @@ namespace QlyPhongKham.DAL
 
         public static DataTable LayDanhSachLichHenLeTan(
             string maLeTan,
-            DateTime ngay,
+            DateTime? ngay,
             string keyword,
             string? trangThai,
             int offset,
-            int pageSize)
+            int pageSize,
+            string? maBacSi = null)
         {
             const string sql = @"
                 SELECT lh.MaLichHen, lh.MaBN, bn.HoTen AS TenBN, lh.MaNV_BacSi,
@@ -1097,31 +1115,35 @@ namespace QlyPhongKham.DAL
                 FROM LichHen lh
                 INNER JOIN BenhNhan bn ON bn.MaBN = lh.MaBN
                 LEFT JOIN NhanVien nv ON nv.MaNV = lh.MaNV_BacSi
-                WHERE lh.NgayHen >= @Ngay
-                  AND lh.NgayHen < DATEADD(DAY, 1, @Ngay)
+                WHERE (@Ngay IS NULL OR (lh.NgayHen >= @Ngay AND lh.NgayHen < DATEADD(DAY, 1, @Ngay)))
                   AND (@Kw = '' OR CONVERT(VARCHAR(12), lh.MaLichHen) LIKE '%' + @Kw + '%'
                       OR lh.MaBN LIKE '%' + @Kw + '%' OR bn.HoTen LIKE '%' + @Kw + '%'
                       OR nv.HoTen LIKE '%' + @Kw + '%')
                   AND (@TrangThai IS NULL OR @TrangThai = N'Tất cả trạng thái' OR lh.TrangThai = @TrangThai)
-                  AND EXISTS (
-                      SELECT 1
-                      FROM PhanCongPhong pc
-                      INNER JOIN PhanCongPhong doctorPc ON doctorPc.MaPhong = pc.MaPhong
-                          AND doctorPc.VaiTro = N'BacSi'
-                      INNER JOIN NhanVien receptionist ON receptionist.MaNV = pc.MaNV
-                          AND receptionist.ChucVu = N'LeTan' AND receptionist.TrangThai = 1
-                      INNER JOIN NhanVien doctor ON doctor.MaNV = doctorPc.MaNV
-                          AND doctor.ChucVu = N'BacSi' AND doctor.TrangThai = 1
-                      WHERE pc.MaNV = @MaLeTan AND pc.VaiTro = N'LeTan'
-                        AND doctorPc.MaNV = lh.MaNV_BacSi
+                  AND (@MaBS IS NULL OR @MaBS = '' OR lh.MaNV_BacSi = @MaBS)
+                  AND (
+                      EXISTS (
+                          SELECT 1
+                          FROM PhanCongPhong pc
+                          INNER JOIN PhanCongPhong doctorPc ON doctorPc.MaPhong = pc.MaPhong
+                              AND doctorPc.VaiTro = N'BacSi'
+                          INNER JOIN NhanVien receptionist ON receptionist.MaNV = pc.MaNV
+                              AND receptionist.ChucVu = N'LeTan' AND receptionist.TrangThai = 1
+                          INNER JOIN NhanVien doctor ON doctor.MaNV = doctorPc.MaNV
+                              AND doctor.ChucVu = N'BacSi' AND doctor.TrangThai = 1
+                          WHERE pc.MaNV = @MaLeTan AND pc.VaiTro = N'LeTan'
+                            AND doctorPc.MaNV = lh.MaNV_BacSi
+                      )
+                      OR NOT EXISTS (SELECT 1 FROM PhanCongPhong WHERE MaNV = @MaLeTan AND VaiTro = N'LeTan')
                   )
                 ORDER BY lh.NgayHen, lh.MaLichHen";
             return ExecutePagedQuery(sql, new[]
             {
                 new SqlParameter("@MaLeTan", maLeTan),
-                new SqlParameter("@Ngay", ngay.Date),
+                new SqlParameter("@Ngay", (object?)ngay?.Date ?? DBNull.Value),
                 new SqlParameter("@Kw", keyword.Trim()),
-                new SqlParameter("@TrangThai", (object?)trangThai ?? DBNull.Value)
+                new SqlParameter("@TrangThai", (object?)trangThai ?? DBNull.Value),
+                new SqlParameter("@MaBS", (object?)maBacSi ?? DBNull.Value)
             }, offset, pageSize);
         }
 
@@ -1151,30 +1173,34 @@ namespace QlyPhongKham.DAL
             });
         }
 
-        public static int LaySoLichHenChoDuyetLeTan(string maLeTan, DateTime ngay)
+        public static int LaySoLichHenChoDuyetLeTan(string maLeTan, DateTime? ngay = null, string? maBacSi = null)
         {
             const string sql = @"
                 SELECT COUNT(*)
                 FROM LichHen lh
-                WHERE lh.NgayHen >= @Ngay
-                  AND lh.NgayHen < DATEADD(DAY, 1, @Ngay)
+                WHERE (@Ngay IS NULL OR (lh.NgayHen >= @Ngay AND lh.NgayHen < DATEADD(DAY, 1, @Ngay)))
                   AND lh.TrangThai = N'Chờ xác nhận'
-                  AND EXISTS (
-                      SELECT 1
-                      FROM PhanCongPhong pc
-                      INNER JOIN PhanCongPhong doctorPc ON doctorPc.MaPhong = pc.MaPhong
-                          AND doctorPc.VaiTro = N'BacSi'
-                      INNER JOIN NhanVien receptionist ON receptionist.MaNV = pc.MaNV
-                          AND receptionist.ChucVu = N'LeTan' AND receptionist.TrangThai = 1
-                      INNER JOIN NhanVien doctor ON doctor.MaNV = doctorPc.MaNV
-                          AND doctor.ChucVu = N'BacSi' AND doctor.TrangThai = 1
-                      WHERE pc.MaNV = @MaLeTan AND pc.VaiTro = N'LeTan'
-                        AND doctorPc.MaNV = lh.MaNV_BacSi
+                  AND (@MaBS IS NULL OR @MaBS = '' OR lh.MaNV_BacSi = @MaBS)
+                  AND (
+                      EXISTS (
+                          SELECT 1
+                          FROM PhanCongPhong pc
+                          INNER JOIN PhanCongPhong doctorPc ON doctorPc.MaPhong = pc.MaPhong
+                              AND doctorPc.VaiTro = N'BacSi'
+                          INNER JOIN NhanVien receptionist ON receptionist.MaNV = pc.MaNV
+                              AND receptionist.ChucVu = N'LeTan' AND receptionist.TrangThai = 1
+                          INNER JOIN NhanVien doctor ON doctor.MaNV = doctorPc.MaNV
+                              AND doctor.ChucVu = N'BacSi' AND doctor.TrangThai = 1
+                          WHERE pc.MaNV = @MaLeTan AND pc.VaiTro = N'LeTan'
+                            AND doctorPc.MaNV = lh.MaNV_BacSi
+                      )
+                      OR NOT EXISTS (SELECT 1 FROM PhanCongPhong WHERE MaNV = @MaLeTan AND VaiTro = N'LeTan')
                   )";
             return Convert.ToInt32(DatabaseHelper.ExecuteScalar(sql, new[]
             {
                 new SqlParameter("@MaLeTan", maLeTan),
-                new SqlParameter("@Ngay", ngay.Date)
+                new SqlParameter("@Ngay", (object?)ngay?.Date ?? DBNull.Value),
+                new SqlParameter("@MaBS", (object?)maBacSi ?? DBNull.Value)
             }));
         }
 
@@ -1188,16 +1214,19 @@ namespace QlyPhongKham.DAL
                 FROM LichHen lh
                 WHERE lh.MaLichHen = @MaLichHen
                   AND lh.TrangThai = N'Chờ xác nhận'
-                  AND EXISTS (
-                      SELECT 1
-                      FROM NhanVien nv
-                      INNER JOIN PhanCongPhong pc ON pc.MaNV = nv.MaNV AND pc.VaiTro = N'LeTan'
-                      INNER JOIN PhanCongPhong doctorPc ON doctorPc.MaPhong = pc.MaPhong
-                          AND doctorPc.VaiTro = N'BacSi'
-                      WHERE nv.MaNV = @MaLeTan
-                        AND nv.ChucVu = N'LeTan'
-                        AND nv.TrangThai = 1
-                        AND doctorPc.MaNV = lh.MaNV_BacSi
+                  AND (
+                      EXISTS (
+                          SELECT 1
+                          FROM NhanVien nv
+                          INNER JOIN PhanCongPhong pc ON pc.MaNV = nv.MaNV AND pc.VaiTro = N'LeTan'
+                          INNER JOIN PhanCongPhong doctorPc ON doctorPc.MaPhong = pc.MaPhong
+                              AND doctorPc.VaiTro = N'BacSi'
+                          WHERE nv.MaNV = @MaLeTan
+                            AND nv.ChucVu = N'LeTan'
+                            AND nv.TrangThai = 1
+                            AND doctorPc.MaNV = lh.MaNV_BacSi
+                      )
+                      OR NOT EXISTS (SELECT 1 FROM PhanCongPhong WHERE MaNV = @MaLeTan AND VaiTro = N'LeTan')
                   )";
             return DatabaseHelper.ExecuteNonQuery(sql, new[]
             {
@@ -1868,6 +1897,49 @@ namespace QlyPhongKham.DAL
             });
         }
 
+        public static (string maPhong, string tenPhong, string tenKhoa, int soBacSi, int soYTa) LayThongTinPhongNhanVien(string maNV)
+        {
+            const string sql = @"
+                SELECT TOP 1
+                    ISNULL(p.MaPhong, '') AS MaPhong,
+                    ISNULL(p.TenPhong, N'Khu vực tiếp đón chung') AS TenPhong,
+                    ISNULL(k.TenKhoa, N'Phòng khám đa khoa') AS TenKhoa,
+                    (SELECT COUNT(DISTINCT pcBS.MaNV) FROM PhanCongPhong pcBS WHERE pcBS.MaPhong = pc.MaPhong AND pcBS.VaiTro = N'BacSi') AS SoBacSi,
+                    (SELECT COUNT(DISTINCT pcYT.MaNV) FROM PhanCongPhong pcYT WHERE pcYT.MaPhong = pc.MaPhong AND pcYT.VaiTro = N'LeTan') AS SoYTa
+                FROM dbo.PhanCongPhong pc
+                INNER JOIN dbo.PhongKham p ON p.MaPhong = pc.MaPhong
+                LEFT JOIN dbo.Khoa k ON k.MaKhoa = p.MaKhoa
+                WHERE pc.MaNV = @MaNV
+                ORDER BY pc.MaPhong";
+            var dt = DatabaseHelper.ExecuteQuery(sql, new[] { new SqlParameter("@MaNV", maNV) });
+            if (dt.Rows.Count > 0)
+            {
+                var r = dt.Rows[0];
+                return (
+                    r["MaPhong"].ToString() ?? "",
+                    r["TenPhong"].ToString() ?? "",
+                    r["TenKhoa"].ToString() ?? "",
+                    Convert.ToInt32(r["SoBacSi"]),
+                    Convert.ToInt32(r["SoYTa"])
+                );
+            }
+            return ("", "Khu vực tiếp đón chung", "Phòng khám đa khoa", 0, 0);
+        }
+
+        public static DataTable LayDanhSachNhanVienCungPhong(string maNV)
+        {
+            const string sql = @"
+                SELECT DISTINCT nv.MaNV, nv.HoTen, nv.ChucVu, nv.ChuyenKhoa, pc.VaiTro, p.TenPhong, k.TenKhoa
+                FROM dbo.PhanCongPhong pcMy
+                INNER JOIN dbo.PhanCongPhong pc ON pc.MaPhong = pcMy.MaPhong
+                INNER JOIN dbo.NhanVien nv ON nv.MaNV = pc.MaNV
+                INNER JOIN dbo.PhongKham p ON p.MaPhong = pc.MaPhong
+                LEFT JOIN dbo.Khoa k ON k.MaKhoa = p.MaKhoa
+                WHERE pcMy.MaNV = @MaNV AND nv.TrangThai = 1
+                ORDER BY pc.VaiTro, nv.HoTen";
+            return DatabaseHelper.ExecuteQuery(sql, new[] { new SqlParameter("@MaNV", maNV) });
+        }
+
         public static DataTable LayDanhSachPhongKham()
         {
             const string sql = @"
@@ -2305,9 +2377,17 @@ namespace QlyPhongKham.DAL
             }) > 0;
         }
 
-        public static DataTable LayDanhSachDichVu()
+        public static DataTable LayDanhSachDichVu(string keyword = "", int? offset = null, int? pageSize = null)
         {
-            return DatabaseHelper.ExecuteQuery("SELECT MaDV, TenDV, DonGia, MoTa FROM DichVu");
+            string sql = @"
+                SELECT MaDV, TenDV, DonGia, MoTa
+                FROM DichVu
+                WHERE @Kw = '' OR TenDV LIKE '%' + @Kw + '%' OR MaDV LIKE '%' + @Kw + '%' OR MoTa LIKE '%' + @Kw + '%'
+                ORDER BY MaDV";
+            var parameters = new[] { new SqlParameter("@Kw", keyword.Trim()) };
+            if (offset.HasValue && pageSize.HasValue)
+                return ExecutePagedQuery(sql, parameters, offset.Value, pageSize.Value);
+            return DatabaseHelper.ExecuteQuery(sql, parameters);
         }
 
         public static DataTable LayChiDinhDVTheoPhieuKham(string maPK)
@@ -2446,12 +2526,20 @@ namespace QlyPhongKham.DAL
         }
 
         // 5. THUỐC & KHO DƯỢC
-        public static DataTable LayDanhSachThuoc(string keyword = "", int? offset = null, int? pageSize = null)
+        public static DataTable LayDanhSachThuoc(string keyword = "", int? offset = null, int? pageSize = null, string trangThaiTon = "")
         {
-            string sql = @"
+            string conditionTon = trangThaiTon switch
+            {
+                "ConHang" => " AND SoLuongTon > 30",
+                "SapHet" => " AND SoLuongTon > 0 AND SoLuongTon <= 30",
+                "HetHang" => " AND SoLuongTon = 0",
+                _ => ""
+            };
+
+            string sql = $@"
                 SELECT MaThuoc, TenThuoc, DonViTinh, DonGiaBan, SoLuongTon, CachDungMacDinh
                 FROM Thuoc
-                WHERE @Kw = '' OR TenThuoc LIKE '%' + @Kw + '%' OR MaThuoc LIKE '%' + @Kw + '%'
+                WHERE (@Kw = '' OR TenThuoc LIKE '%' + @Kw + '%' OR MaThuoc LIKE '%' + @Kw + '%'){conditionTon}
                 ORDER BY TenThuoc, MaThuoc";
             return ExecutePagedQuery(sql, new[] { new SqlParameter("@Kw", keyword) }, offset, pageSize);
         }
@@ -3837,7 +3925,7 @@ namespace QlyPhongKham.DAL
         public static DataTable LayTopChanDoan(int top = 10)
         {
             string sql = @"
-                SELECT TOP (@Top) ChanDoan, COUNT(*) AS SoLuot
+                SELECT TOP (@Top) ChanDoan, COUNT(*) AS SoLuot, COUNT(*) AS SoLuong
                 FROM PhieuKham WHERE ChanDoan IS NOT NULL AND ChanDoan <> ''
                 GROUP BY ChanDoan ORDER BY SoLuot DESC";
             return DatabaseHelper.ExecuteQuery(sql, new[] { new SqlParameter("@Top", top) });
@@ -3922,7 +4010,7 @@ namespace QlyPhongKham.DAL
         }
 
         // 13. DÀNH CHO ROLE BÁC SĨ (LỊCH KHÁM, HỒ SƠ BỆNH ÁN, TRA CỨU CHUYÊN MÔN)
-        public static (int tongPhanCong, int daHoanTat, int dangKham, int dangCho, string luotTiepTheo) LayThongKeBacSi(string? maBS)
+        public static (int tongPhanCong, int daHoanTat, int dangKham, int dangCho, int choKQCLS, string luotTiepTheo) LayThongKeBacSi(string? maBS)
         {
             try
             {
@@ -3931,12 +4019,14 @@ namespace QlyPhongKham.DAL
                         COUNT(*) AS Tong,
                         SUM(CASE WHEN TrangThai = N'Đã khám xong' THEN 1 ELSE 0 END) AS DaHoanTat,
                         SUM(CASE WHEN TrangThai = N'Đang khám' THEN 1 ELSE 0 END) AS DangKham,
-                        SUM(CASE WHEN TrangThai IN (N'Chờ khám', N'Chờ kết quả CLS') THEN 1 ELSE 0 END) AS DangCho
+                        SUM(CASE WHEN TrangThai = N'Chờ khám' THEN 1 ELSE 0 END) AS DangCho,
+                        SUM(CASE WHEN TrangThai = N'Chờ kết quả CLS' THEN 1 ELSE 0 END) AS ChoKQCLS
                     FROM PhieuKham
                     WHERE CAST(NgayKham AS DATE) = CAST(GETDATE() AS DATE)
-                      AND (@MaBS IS NULL OR MaNV_BacSi = @MaBS)";
+                      AND (@MaBS IS NULL OR MaNV_BacSi = @MaBS)
+                      AND TrangThai <> N'Đã hủy'";
                 var dt = DatabaseHelper.ExecuteQuery(sql, new[] { new SqlParameter("@MaBS", (object?)maBS ?? DBNull.Value) });
-                int tong = 0, daHoanTat = 0, dangKham = 0, dangCho = 0;
+                int tong = 0, daHoanTat = 0, dangKham = 0, dangCho = 0, choKQCLS = 0;
                 if (dt.Rows.Count > 0)
                 {
                     var r = dt.Rows[0];
@@ -3944,6 +4034,7 @@ namespace QlyPhongKham.DAL
                     daHoanTat = r["DaHoanTat"] != DBNull.Value ? Convert.ToInt32(r["DaHoanTat"]) : 0;
                     dangKham = r["DangKham"] != DBNull.Value ? Convert.ToInt32(r["DangKham"]) : 0;
                     dangCho = r["DangCho"] != DBNull.Value ? Convert.ToInt32(r["DangCho"]) : 0;
+                    choKQCLS = r["ChoKQCLS"] != DBNull.Value ? Convert.ToInt32(r["ChoKQCLS"]) : 0;
                 }
 
                 string sqlNext = @"
@@ -3960,11 +4051,103 @@ namespace QlyPhongKham.DAL
                 {
                     nextStr = $"{dtNext.Rows[0]["Gio"]} - {dtNext.Rows[0]["HoTen"]}";
                 }
-                return (tong, daHoanTat, dangKham, dangCho, nextStr);
+                return (tong, daHoanTat, dangKham, dangCho, choKQCLS, nextStr);
             }
             catch
             {
-                return (0, 0, 0, 0, "Chưa có");
+                return (0, 0, 0, 0, 0, "Chưa có");
+            }
+        }
+
+        public static (string tenPhong, string tenKhoa, string caTruc) LayThongTinCaTrucBacSi(string maBS)
+        {
+            EnsureAdvancedWorkflowSchema();
+            try
+            {
+                string sql = @"
+                    SELECT TOP 1
+                        ISNULL(p.TenPhong, N'Phòng khám chuyên khoa') AS TenPhong,
+                        ISNULL(k.TenKhoa, N'Khoa Khám bệnh') AS TenKhoa,
+                        ISNULL(CONVERT(VARCHAR(5), clv.GioBatDau, 108) + ' - ' + CONVERT(VARCHAR(5), clv.GioKetThuc, 108), N'Ca hành chính (07:30 - 17:00)') AS CaTruc
+                    FROM dbo.NhanVien nv
+                    LEFT JOIN dbo.PhanCongPhong pc ON pc.MaNV = nv.MaNV AND pc.VaiTro = N'BacSi'
+                    LEFT JOIN dbo.PhongKham p ON p.MaPhong = pc.MaPhong
+                    LEFT JOIN dbo.Khoa k ON k.MaKhoa = p.MaKhoa
+                    LEFT JOIN dbo.CaLamViecBacSi clv ON clv.MaNV = nv.MaNV AND clv.Thu = DATEPART(dw, GETDATE())
+                    WHERE nv.MaNV = @MaBS";
+                var dt = DatabaseHelper.ExecuteQuery(sql, new[] { new SqlParameter("@MaBS", maBS) });
+                if (dt.Rows.Count > 0)
+                {
+                    var r = dt.Rows[0];
+                    return (
+                        r["TenPhong"].ToString() ?? "Phòng khám chuyên khoa",
+                        r["TenKhoa"].ToString() ?? "Khoa Khám bệnh",
+                        r["CaTruc"].ToString() ?? "Ca hành chính (07:30 - 17:00)"
+                    );
+                }
+            }
+            catch { }
+            return ("Phòng khám chuyên khoa", "Khoa Khám bệnh", "Ca hành chính (07:30 - 17:00)");
+        }
+
+        public static DataTable LayDanhSachTheoDoiCLSBacSi(string maBS)
+        {
+            EnsureAdvancedWorkflowSchema();
+            try
+            {
+                string sql = @"
+                    SELECT 
+                        pk.MaPK,
+                        pk.STT,
+                        bn.MaBN,
+                        bn.HoTen AS TenBN,
+                        pk.TrangThai AS TrangThaiPK,
+                        COUNT(ct.MaChiDinh) AS TongCLS,
+                        SUM(CASE WHEN ct.TrangThai = N'Đã có kết quả' THEN 1 ELSE 0 END) AS DaCoKQ,
+                        CASE 
+                            WHEN COUNT(ct.MaChiDinh) > 0 AND COUNT(ct.MaChiDinh) = SUM(CASE WHEN ct.TrangThai = N'Đã có kết quả' THEN 1 ELSE 0 END)
+                            THEN N'Sẵn sàng kết luận'
+                            ELSE N'Đang chờ kết quả'
+                        END AS TrangThaiKQ
+                    FROM dbo.PhieuKham pk
+                    INNER JOIN dbo.BenhNhan bn ON bn.MaBN = pk.MaBN
+                    INNER JOIN dbo.ChiTietChiDinhDV ct ON ct.MaPK = pk.MaPK
+                    WHERE pk.MaNV_BacSi = @MaBS
+                      AND CAST(pk.NgayKham AS DATE) = CAST(GETDATE() AS DATE)
+                      AND pk.TrangThai IN (N'Chờ kết quả CLS', N'Đang khám')
+                    GROUP BY pk.MaPK, pk.STT, bn.MaBN, bn.HoTen, pk.TrangThai
+                    ORDER BY 
+                        CASE WHEN COUNT(ct.MaChiDinh) = SUM(CASE WHEN ct.TrangThai = N'Đã có kết quả' THEN 1 ELSE 0 END) THEN 0 ELSE 1 END,
+                        pk.STT ASC";
+                return DatabaseHelper.ExecuteQuery(sql, new[] { new SqlParameter("@MaBS", maBS) });
+            }
+            catch
+            {
+                return new DataTable();
+            }
+        }
+
+        public static DataTable LayTopChanDoanBacSi(string maBS, int top = 3)
+        {
+            try
+            {
+                string sql = @"
+                    SELECT TOP (@Top) ISNULL(ChanDoan, N'Khác') AS ChanDoan, COUNT(*) AS SoLuot, COUNT(*) AS SoLuong
+                    FROM dbo.PhieuKham
+                    WHERE MaNV_BacSi = @MaBS
+                      AND ChanDoan IS NOT NULL AND RTRIM(LTRIM(ChanDoan)) <> ''
+                      AND NgayKham >= DATEADD(day, -30, GETDATE())
+                    GROUP BY ChanDoan
+                    ORDER BY SoLuot DESC";
+                return DatabaseHelper.ExecuteQuery(sql, new[]
+                {
+                    new SqlParameter("@MaBS", maBS),
+                    new SqlParameter("@Top", top)
+                });
+            }
+            catch
+            {
+                return new DataTable();
             }
         }
 
@@ -3973,7 +4156,8 @@ namespace QlyPhongKham.DAL
             string keyword = "",
             string? trangThai = null,
             int? offset = null,
-            int? pageSize = null)
+            int? pageSize = null,
+            string? maPhong = null)
         {
             string sql = @"
                 SELECT pk.MaPK, pk.STT, FORMAT(pk.NgayKham, 'HH:mm') AS GioKham,
@@ -3989,12 +4173,14 @@ namespace QlyPhongKham.DAL
                 LEFT JOIN Khoa k ON k.MaKhoa = p.MaKhoa
                 WHERE CAST(pk.NgayKham AS DATE) = CAST(GETDATE() AS DATE)
                   AND (@MaBS IS NULL OR pk.MaNV_BacSi = @MaBS)
+                  AND (@MaPhong IS NULL OR pk.MaPhong = @MaPhong)
                   AND (@Kw = '' OR bn.HoTen LIKE '%' + @Kw + '%' OR bn.MaBN LIKE '%' + @Kw + '%' OR pk.MaPK LIKE '%' + @Kw + '%')
                   AND (@TrangThai IS NULL OR @TrangThai = '' OR @TrangThai = N'Tất cả trạng thái' OR pk.TrangThai = @TrangThai)
                 ORDER BY pk.STT ASC, pk.MaPK";
             return ExecutePagedQuery(sql, new[]
             {
                 new SqlParameter("@MaBS", (object?)maBS ?? DBNull.Value),
+                new SqlParameter("@MaPhong", (object?)maPhong ?? DBNull.Value),
                 new SqlParameter("@Kw", keyword),
                 new SqlParameter("@TrangThai", (object?)trangThai ?? DBNull.Value)
             }, offset, pageSize);
@@ -4241,5 +4427,251 @@ namespace QlyPhongKham.DAL
             return result;
         }
 
+        // ══════════════════════════════════════════════════════════════
+        //  EMAIL BN: Lookup email bệnh nhân theo MaBN hoặc MaLichHen
+        // ══════════════════════════════════════════════════════════════
+        public static string? LayEmailBenhNhanTheoMa(string maBN)
+        {
+            try
+            {
+                var val = DatabaseHelper.ExecuteScalar(
+                    "SELECT Email FROM dbo.BenhNhan WHERE MaBN = @MaBN",
+                    new[] { new SqlParameter("@MaBN", maBN) });
+                return val == null || val == DBNull.Value ? null : val.ToString();
+            }
+            catch { return null; }
+        }
+
+        public static bool CapNhatEmailBenhNhan(string maBN, string email)
+        {
+            EnsureBenhNhanEmailColumn();
+            try
+            {
+                string sql = "UPDATE BenhNhan SET Email = @Email WHERE MaBN = @MaBN";
+                return DatabaseHelper.ExecuteNonQuery(sql, new[]
+                {
+                    new SqlParameter("@Email", string.IsNullOrWhiteSpace(email) ? (object)DBNull.Value : email.Trim()),
+                    new SqlParameter("@MaBN", maBN)
+                }) > 0;
+            }
+            catch { return false; }
+        }
+
+        public static (string maBN, string tenBN, string? email, string tenBacSi, DateTime ngayHen, string lyDoKham)
+            LayThongTinLichHenDeDuyet(int maLichHen)
+        {
+            const string sql = @"
+                SELECT lh.MaBN, bn.HoTen, bn.Email, nv.HoTen AS TenBS, lh.NgayHen, lh.LyDoKham
+                FROM   dbo.LichHen lh
+                INNER JOIN dbo.BenhNhan bn ON bn.MaBN = lh.MaBN
+                LEFT  JOIN dbo.NhanVien nv ON nv.MaNV = lh.MaNV_BacSi
+                WHERE  lh.MaLichHen = @ID";
+            var dt = DatabaseHelper.ExecuteQuery(sql, new[] { new SqlParameter("@ID", maLichHen) });
+            if (dt.Rows.Count == 0) return ("", "", null, "", DateTime.Now, "");
+            var r = dt.Rows[0];
+            return (
+                r["MaBN"].ToString() ?? "",
+                r["HoTen"].ToString() ?? "",
+                r["Email"] == DBNull.Value ? null : r["Email"].ToString(),
+                r["TenBS"] == DBNull.Value ? "" : r["TenBS"].ToString() ?? "",
+                Convert.ToDateTime(r["NgayHen"]),
+                r["LyDoKham"] == DBNull.Value ? "" : r["LyDoKham"].ToString() ?? ""
+            );
+        }
+
+        public static (string maBN, string tenBN, string? email, string maHD, decimal tongTien, string hinhThuc)
+            LayThongTinHoaDonDaThanhToan(string maHD)
+        {
+            const string sql = @"
+                SELECT hd.MaHD, bn.MaBN, bn.HoTen, bn.Email, hd.TongTien, hd.HinhThucTT
+                FROM   dbo.HoaDon hd
+                INNER JOIN dbo.PhieuKham pk ON pk.MaPK = hd.MaPK
+                INNER JOIN dbo.BenhNhan  bn ON bn.MaBN = pk.MaBN
+                WHERE  hd.MaHD = @MaHD";
+            var dt = DatabaseHelper.ExecuteQuery(sql, new[] { new SqlParameter("@MaHD", maHD) });
+            if (dt.Rows.Count == 0) return ("", "", null, maHD, 0, "");
+            var r = dt.Rows[0];
+            return (
+                r["MaBN"].ToString() ?? "",
+                r["HoTen"].ToString() ?? "",
+                r["Email"] == DBNull.Value ? null : r["Email"].ToString(),
+                r["MaHD"].ToString() ?? maHD,
+                Convert.ToDecimal(r["TongTien"]),
+                r["HinhThucTT"].ToString() ?? "Tiền mặt"
+            );
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        //  ADMIN DASHBOARD: Nhân viên trực, giờ làm việc, trạng thái khám
+        // ══════════════════════════════════════════════════════════════
+        public static DataTable LayNhanVienDangTruc()
+        {
+            EnsureAdvancedWorkflowSchema();
+            try
+            {
+                // Trả về bác sĩ và lễ tân có ca làm việc hôm nay (theo CaLamViecBacSi)
+                return DatabaseHelper.ExecuteQuery(@"
+                    SELECT  nv.MaNV,
+                            nv.HoTen,
+                            nv.ChucVu,
+                            nv.ChuyenKhoa,
+                            CONVERT(VARCHAR(5), clv.GioBatDau, 108) AS GioBatDau,
+                            CONVERT(VARCHAR(5), clv.GioKetThuc, 108) AS GioKetThuc,
+                            ISNULL(p.TenPhong, N'Chưa xếp') AS TenPhong,
+                            ISNULL(k.TenKhoa, N'Chưa xếp') AS TenKhoa,
+                            CAST(CASE WHEN CONVERT(time, GETDATE()) BETWEEN clv.GioBatDau AND clv.GioKetThuc
+                                 THEN 1 ELSE 0 END AS BIT) AS DangTrongCa
+                    FROM   dbo.CaLamViecBacSi clv
+                    INNER JOIN dbo.NhanVien nv ON nv.MaNV = clv.MaNV AND nv.TrangThai = 1
+                    LEFT JOIN dbo.PhanCongPhong pc ON pc.MaNV = nv.MaNV AND pc.VaiTro = N'BacSi'
+                    LEFT JOIN dbo.PhongKham p ON p.MaPhong = pc.MaPhong
+                    LEFT JOIN dbo.Khoa k ON k.MaKhoa = p.MaKhoa
+                    WHERE  clv.Thu = DATEPART(dw, GETDATE())
+                    ORDER  BY DangTrongCa DESC, clv.GioBatDau, nv.HoTen");
+            }
+            catch
+            {
+                return new DataTable();
+            }
+        }
+
+        public static DataTable LayTrangThaiKhamHienTai()
+        {
+            try
+            {
+                // Phiếu khám đang xử lý hôm nay, nhóm theo phòng
+                return DatabaseHelper.ExecuteQuery(@"
+                    SELECT  ISNULL(p.TenPhong, N'Chưa phân phòng') AS TenPhong,
+                            ISNULL(k.TenKhoa, N'-') AS TenKhoa,
+                            ISNULL(nv.HoTen, N'-')   AS TenBacSi,
+                            COUNT(CASE WHEN pk.TrangThai = N'Chờ khám'          THEN 1 END) AS ChoKham,
+                            COUNT(CASE WHEN pk.TrangThai = N'Đang khám'         THEN 1 END) AS DangKham,
+                            COUNT(CASE WHEN pk.TrangThai = N'Chờ kết quả CLS'   THEN 1 END) AS ChoKetQua,
+                            COUNT(CASE WHEN pk.TrangThai = N'Đã khám xong'      THEN 1 END) AS DaKhamXong,
+                            COUNT(*) AS TongPhieu
+                    FROM   dbo.PhieuKham pk
+                    LEFT JOIN dbo.NhanVien  nv ON nv.MaNV  = pk.MaNV_BacSi
+                    LEFT JOIN dbo.PhongKham  p ON  p.MaPhong = pk.MaPhong
+                    LEFT JOIN dbo.Khoa       k ON  k.MaKhoa  = p.MaKhoa
+                    WHERE  CAST(pk.NgayKham AS DATE) = CAST(GETDATE() AS DATE)
+                      AND  pk.TrangThai <> N'Đã hủy'
+                    GROUP BY p.TenPhong, k.TenKhoa, nv.HoTen
+                    ORDER BY TongPhieu DESC");
+            }
+            catch
+            {
+                return new DataTable();
+            }
+        }
+
+        public static DataTable LayLichHenHomNayAdmin()
+        {
+            try
+            {
+                return DatabaseHelper.ExecuteQuery(@"
+                    SELECT  lh.MaLichHen,
+                            bn.HoTen   AS TenBN,
+                            ISNULL(nv.HoTen, N'Chưa chỉ định') AS TenBacSi,
+                            CONVERT(VARCHAR(5), lh.NgayHen, 108) AS GioHen,
+                            ISNULL(lh.LyDoKham, N'-') AS LyDoKham,
+                            lh.TrangThai
+                    FROM   dbo.LichHen lh
+                    INNER JOIN dbo.BenhNhan bn ON bn.MaBN = lh.MaBN
+                    LEFT  JOIN dbo.NhanVien nv ON nv.MaNV = lh.MaNV_BacSi
+                    WHERE  CAST(lh.NgayHen AS DATE) = CAST(GETDATE() AS DATE)
+                      AND  lh.TrangThai NOT IN (N'Đã hủy', N'Bị từ chối', N'Không đến')
+                    ORDER  BY lh.NgayHen");
+            }
+            catch
+            {
+                return new DataTable();
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        //  THỐNG KÊ KHO THUỐC & THU NGÂN
+        // ══════════════════════════════════════════════════════════════
+        public static (int tongLoaiThuoc, int tongSoLuongTon, int anToanCount, int thuocSapHet, int hetHangCount, int loCanHan, decimal tongGiaTriKho) LayThongKeKhoThuoc()
+        {
+            EnsurePharmacySchema();
+            try
+            {
+                string sql = @"
+                    SELECT 
+                        COUNT(*) AS TongLoai,
+                        ISNULL(SUM(SoLuongTon), 0) AS TongTon,
+                        ISNULL(SUM(CASE WHEN SoLuongTon > 30 THEN 1 ELSE 0 END), 0) AS AnToan,
+                        ISNULL(SUM(CASE WHEN SoLuongTon > 0 AND SoLuongTon <= 30 THEN 1 ELSE 0 END), 0) AS SapHet,
+                        ISNULL(SUM(CASE WHEN SoLuongTon = 0 THEN 1 ELSE 0 END), 0) AS HetHang,
+                        ISNULL(SUM(CAST(SoLuongTon AS DECIMAL(18,2)) * CAST(DonGiaBan AS DECIMAL(18,2))), 0) AS TongGiaTri
+                    FROM Thuoc";
+                var dt = DatabaseHelper.ExecuteQuery(sql);
+
+                int tongLoai = 0, tongTon = 0, anToan = 0, sapHet = 0, hetHang = 0;
+                decimal giaTri = 0;
+                if (dt.Rows.Count > 0)
+                {
+                    var r = dt.Rows[0];
+                    tongLoai = r["TongLoai"] != DBNull.Value ? Convert.ToInt32(r["TongLoai"]) : 0;
+                    tongTon  = r["TongTon"] != DBNull.Value ? Convert.ToInt32(r["TongTon"]) : 0;
+                    anToan   = r["AnToan"] != DBNull.Value ? Convert.ToInt32(r["AnToan"]) : 0;
+                    sapHet   = r["SapHet"] != DBNull.Value ? Convert.ToInt32(r["SapHet"]) : 0;
+                    hetHang  = r["HetHang"] != DBNull.Value ? Convert.ToInt32(r["HetHang"]) : 0;
+                    giaTri   = r["TongGiaTri"] != DBNull.Value ? Convert.ToDecimal(r["TongGiaTri"]) : 0;
+                }
+
+                string sqlLo = @"
+                    SELECT COUNT(*) 
+                    FROM LoThuoc 
+                    WHERE SoLuongCon > 0 AND NgayHetHan <= DATEADD(DAY, 90, CAST(GETDATE() AS DATE))";
+                int loCanHan = 0;
+                try
+                {
+                    var valLo = DatabaseHelper.ExecuteScalar(sqlLo);
+                    if (valLo != null && valLo != DBNull.Value) loCanHan = Convert.ToInt32(valLo);
+                }
+                catch { }
+
+                return (tongLoai, tongTon, anToan, sapHet, hetHang, loCanHan, giaTri);
+            }
+            catch
+            {
+                return (0, 0, 0, 0, 0, 0, 0);
+            }
+        }
+
+        public static (decimal doanhThuHomNay, int daThuCount, int chuaThuCount, decimal tienChuaThu, int daHuyCount, int tienMatCount, int chuyenKhoanCount) LayThongKeThuNganHomNay()
+        {
+            try
+            {
+                string sql = @"
+                    SELECT 
+                        ISNULL(SUM(CASE WHEN TrangThai = N'Đã thanh toán' THEN TongTien ELSE 0 END), 0) AS DoanhThu,
+                        ISNULL(SUM(CASE WHEN TrangThai = N'Đã thanh toán' THEN 1 ELSE 0 END), 0) AS DaThuCount,
+                        ISNULL(SUM(CASE WHEN TrangThai = N'Chưa thanh toán' THEN 1 ELSE 0 END), 0) AS ChuaThuCount,
+                        ISNULL(SUM(CASE WHEN TrangThai = N'Chưa thanh toán' THEN TongTien ELSE 0 END), 0) AS TienChuaThu,
+                        ISNULL(SUM(CASE WHEN TrangThai = N'Đã hủy' THEN 1 ELSE 0 END), 0) AS DaHuyCount,
+                        ISNULL(SUM(CASE WHEN TrangThai = N'Đã thanh toán' AND HinhThucTT = N'Tiền mặt' THEN 1 ELSE 0 END), 0) AS TienMat,
+                        ISNULL(SUM(CASE WHEN TrangThai = N'Đã thanh toán' AND HinhThucTT <> N'Tiền mặt' THEN 1 ELSE 0 END), 0) AS ChuyenKhoan
+                    FROM HoaDon
+                    WHERE CAST(COALESCE(NgayThanhToan, NgayLap) AS DATE) = CAST(GETDATE() AS DATE)";
+                var dt = DatabaseHelper.ExecuteQuery(sql);
+                if (dt.Rows.Count > 0)
+                {
+                    var r = dt.Rows[0];
+                    return (
+                        r["DoanhThu"] != DBNull.Value ? Convert.ToDecimal(r["DoanhThu"]) : 0,
+                        r["DaThuCount"] != DBNull.Value ? Convert.ToInt32(r["DaThuCount"]) : 0,
+                        r["ChuaThuCount"] != DBNull.Value ? Convert.ToInt32(r["ChuaThuCount"]) : 0,
+                        r["TienChuaThu"] != DBNull.Value ? Convert.ToDecimal(r["TienChuaThu"]) : 0,
+                        r["DaHuyCount"] != DBNull.Value ? Convert.ToInt32(r["DaHuyCount"]) : 0,
+                        r["TienMat"] != DBNull.Value ? Convert.ToInt32(r["TienMat"]) : 0,
+                        r["ChuyenKhoan"] != DBNull.Value ? Convert.ToInt32(r["ChuyenKhoan"]) : 0
+                    );
+                }
+            }
+            catch { }
+            return (0, 0, 0, 0, 0, 0, 0);
+        }
     }
 }

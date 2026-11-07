@@ -75,13 +75,15 @@ namespace QlyPhongKham.Forms
             cboQuickPick.Items.AddRange(new object[] {
                 "-- Tự nhập tài khoản --",
                 "Quản trị viên (admin / 123456)",
-                "Bác sĩ khám (bacsi_nam / 123456)",
-                "Lễ tân (letan / 123456)",
+                "Bác sĩ Nội P101 (bacsi_nam / 123456)",
+                "Y tá Nội P101 (letan / 123456)",
                 "Thu ngân (thungan / 123456)",
                 "TEST Admin (test_admin / 123456)",
-                "TEST Bác sĩ Nội (test_bs / 123456)",
-                "TEST Bác sĩ Tai Mũi Họng (test_bs2 / 123456)",
-                "TEST Lễ tân (test_letan / 123456)",
+                "TEST Bác sĩ Nội P101 (test_bs / 123456)",
+                "TEST Bác sĩ TMH P201 (test_bs2 / 123456)",
+                "TEST Y tá TMH P201 (test_letan / 123456)",
+                "Bác sĩ Nhi P301 (demo_bs03 / 123456)",
+                "Y tá Nhi P301 (demo_letan07 / 123456)",
                 "TEST Bệnh nhân (test_bn01 / 123456)"
             });
             cboQuickPick.SelectedIndex = 1;
@@ -206,6 +208,14 @@ namespace QlyPhongKham.Forms
                     txtPassword.Text = "123456";
                     break;
                 case 9:
+                    txtUsername.Text = "demo_bs03";
+                    txtPassword.Text = "123456";
+                    break;
+                case 10:
+                    txtUsername.Text = "demo_letan07";
+                    txtPassword.Text = "123456";
+                    break;
+                case 11:
                     txtUsername.Text = "test_bn01";
                     txtPassword.Text = "123456";
                     break;

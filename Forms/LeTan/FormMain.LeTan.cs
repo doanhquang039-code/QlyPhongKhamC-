@@ -357,9 +357,19 @@ namespace QlyPhongKham.Forms
             checkIn.Click += (s, e) =>
             {
                 DataRow? selected = SelectedAppointment();
-                if (selected == null || selected["TrangThai"].ToString() != "Đã xác nhận")
+                if (selected == null)
                 {
-                    MessageBox.Show("Chọn lịch đã xác nhận để check-in.", "Không thể check-in",
+                    MessageBox.Show("Chọn lịch hẹn cần check-in.", "Chưa chọn lịch",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                string appointmentStatus = selected["TrangThai"].ToString() ?? "";
+                if (appointmentStatus != "Đã xác nhận")
+                {
+                    string message = appointmentStatus == "Không đến"
+                        ? $"Lịch hẹn đã quá thời hạn check-in ({ClinicDAL.CheckInLateWindowMinutes} phút sau giờ hẹn). Vui lòng liên hệ quản lý để xử lý ngoại lệ."
+                        : $"Lịch hẹn đang ở trạng thái '{appointmentStatus}', chỉ lịch đã xác nhận mới được check-in.";
+                    MessageBox.Show(message, "Không thể check-in",
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
@@ -742,6 +752,37 @@ namespace QlyPhongKham.Forms
             fieldsGrid.Controls.Add(CreateField("TRIỆU CHỨNG", txtTC), 1, 2);
 
             var dgvHangCho = MakeGrid();
+            dgvHangCho.DataBindingComplete += (s, e) =>
+            {
+                SafeFormatCol(dgvHangCho, "STT", "STT", 55, fillWeight: 45f);
+                SafeFormatCol(dgvHangCho, "TenBN", "Họ tên bệnh nhân", 160, fillWeight: 150f);
+                SafeFormatCol(dgvHangCho, "MaBN", "Mã BN", 85, fillWeight: 75f);
+                SafeFormatCol(dgvHangCho, "NgayKham", "Giờ khám", 85, fillWeight: 75f);
+                SafeFormatCol(dgvHangCho, "TrieuChung", "Triệu chứng", 180, fillWeight: 170f);
+                SafeFormatCol(dgvHangCho, "TenBacSi", "Bác sĩ", 140, fillWeight: 125f);
+                SafeFormatCol(dgvHangCho, "TenPhong", "Phòng khám", 140, fillWeight: 120f);
+                SafeFormatCol(dgvHangCho, "TrangThai", "Trạng thái", 110, fillWeight: 100f);
+
+                foreach (string column in new[]
+                {
+                    "MaPK", "GioiTinh", "Tuoi", "MaNV_BacSi", "MaPhong", "TenKhoa"
+                })
+                {
+                    SafeFormatCol(dgvHangCho, column, column, null, visible: false);
+                }
+
+                string[] visibleColumnOrder =
+                {
+                    "STT", "TenBN", "MaBN", "NgayKham", "TrieuChung", "TenBacSi", "TenPhong", "TrangThai"
+                };
+                for (int index = 0; index < visibleColumnOrder.Length; index++)
+                {
+                    if (dgvHangCho.Columns.Contains(visibleColumnOrder[index]))
+                        dgvHangCho.Columns[visibleColumnOrder[index]]!.DisplayIndex = index;
+                }
+                if (dgvHangCho.Columns.Contains("NgayKham"))
+                    dgvHangCho.Columns["NgayKham"]!.DefaultCellStyle.Format = "HH:mm";
+            };
             GridPageController? queuePageController = null;
             void LoadHangCho() => queuePageController?.Reload();
 
@@ -1707,21 +1748,38 @@ namespace QlyPhongKham.Forms
                 exportInvoices, cancelInvoice, shiftButton, refundButton, clsCollectionButton, btnToggleChart });
 
             var grid = MakeGrid();
+            grid.ScrollBars = ScrollBars.Both;
             grid.DataBindingComplete += (sender, args) =>
             {
-                if (grid.Columns.Contains("TongTien"))
-                    grid.Columns["TongTien"]!.DefaultCellStyle.Format = "N0";
-                foreach (string column in new[] { "TienBaoHiem", "DaThu", "ConNo" })
-                    if (grid.Columns.Contains(column))
-                        grid.Columns[column]!.DefaultCellStyle.Format = "N0";
-                if (grid.Columns.Contains("TienBaoHiem"))
-                    grid.Columns["TienBaoHiem"]!.HeaderText = "Bảo hiểm";
-                if (grid.Columns.Contains("DaThu"))
-                    grid.Columns["DaThu"]!.HeaderText = "Đã thu";
-                if (grid.Columns.Contains("ConNo"))
-                    grid.Columns["ConNo"]!.HeaderText = "Còn nợ";
+                // Ẩn các cột bóc tách kỹ thuật nội bộ (đã có đầy đủ trong popup 'Chi tiết hóa đơn')
+                // để bảng tổng hợp thoáng đẹp, chữ hiển thị trọn vẹn không bị co cụt
+                string[] hideCols = { "MaPK", "TienDichVu", "TienThuoc", "GiamGia", "PhanTramBaoHiem" };
+                foreach (string col in hideCols)
+                    if (grid.Columns.Contains(col))
+                        grid.Columns[col]!.Visible = false;
+
+                SafeFormatCol(grid, "MaHD", "Mã HĐ", 90, fillWeight: 80f);
+                SafeFormatCol(grid, "TenBN", "Bệnh nhân", 150, fillWeight: 140f);
+                SafeFormatCol(grid, "NgayLap", "Ngày lập", 130, fillWeight: 110f);
+                SafeFormatCol(grid, "TongTien", "Tổng chi phí", 115, fillWeight: 105f);
+                SafeFormatCol(grid, "TienBaoHiem", "Bảo hiểm", 100, fillWeight: 90f);
+                SafeFormatCol(grid, "DaThu", "Đã thu", 105, fillWeight: 95f);
+                SafeFormatCol(grid, "ConNo", "Còn nợ", 100, fillWeight: 90f);
+                SafeFormatCol(grid, "HinhThucTT", "Hình thức TT", 115, fillWeight: 100f);
+                SafeFormatCol(grid, "ThuNgan", "Thu ngân", 130, fillWeight: 110f);
+                SafeFormatCol(grid, "TrangThai", "Trạng thái", 120, fillWeight: 105f);
+
                 if (grid.Columns.Contains("NgayLap"))
                     grid.Columns["NgayLap"]!.DefaultCellStyle.Format = "dd/MM/yyyy HH:mm";
+
+                foreach (string column in new[] { "TongTien", "TienBaoHiem", "DaThu", "ConNo" })
+                {
+                    if (grid.Columns.Contains(column))
+                    {
+                        grid.Columns[column]!.DefaultCellStyle.Format = "N0";
+                        grid.Columns[column]!.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+                    }
+                }
             };
             var bottom = new Panel { Dock = DockStyle.Bottom, Height = 250, Padding = new Padding(0, 8, 0, 0) };
             var pendingTitle = MakeLbl("PHIẾU KHÁM CHỜ LẬP HÓA ĐƠN", 0, 0, bold: true);
@@ -1730,6 +1788,21 @@ namespace QlyPhongKham.Forms
             var advancePayment = SecondaryBtn("Tạm ứng", 0, 0, 100, 30, C_Orange);
             advancePayment.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             var pendingGrid = MakeGrid();
+            pendingGrid.ScrollBars = ScrollBars.Both;
+            pendingGrid.DataBindingComplete += (sender, args) =>
+            {
+                SafeFormatCol(pendingGrid, "MaPK", "Mã PK", 75, fillWeight: 75f);
+                SafeFormatCol(pendingGrid, "STT", "STT", 45, fillWeight: 45f);
+                SafeFormatCol(pendingGrid, "NgayKham", "Ngày khám", 125, fillWeight: 110f);
+                SafeFormatCol(pendingGrid, "TenBN", "Bệnh nhân", 145, fillWeight: 140f);
+                SafeFormatCol(pendingGrid, "SoDienThoai", "Số điện thoại", 100, fillWeight: 95f);
+                SafeFormatCol(pendingGrid, "TenBacSi", "Bác sĩ phụ trách", 125, fillWeight: 115f);
+                SafeFormatCol(pendingGrid, "ChanDoan", "Chẩn đoán", 180, fillWeight: 200f);
+                SafeFormatCol(pendingGrid, "TrangThai", "Trạng thái", 100, fillWeight: 95f);
+
+                if (pendingGrid.Columns.Contains("NgayKham"))
+                    pendingGrid.Columns["NgayKham"]!.DefaultCellStyle.Format = "dd/MM/yyyy HH:mm";
+            };
             pendingGrid.Location = new Point(0, 32);
             pendingGrid.Size = new Size(bottom.ClientSize.Width, bottom.ClientSize.Height - 36);
             pendingGrid.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
@@ -2087,66 +2160,274 @@ namespace QlyPhongKham.Forms
         private bool ShowInvoicePayment(DataRow invoice)
         {
             string maHD = invoice["MaHD"].ToString() ?? "";
+            string tenBN = invoice["TenBN"]?.ToString() ?? "Bệnh nhân";
+
+            decimal balanceDue = invoice.Table.Columns.Contains("ConNo")
+                ? Convert.ToDecimal(invoice["ConNo"])
+                : Convert.ToDecimal(invoice["TongTien"]) - Convert.ToDecimal(invoice["TienBaoHiem"]);
+
+            var bank = VietQRHelper.GetConfig();
+            string transferContent = $"THANH TOAN {maHD}";
+
             using var dialog = new Form
             {
-                Text = "Xác nhận thanh toán",
-                Size = new Size(480, 360),
+                Text = $"Xác nhận thanh toán - Hóa đơn #{maHD}",
+                Size = new Size(880, 530),
                 StartPosition = FormStartPosition.CenterParent,
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 MaximizeBox = false,
                 MinimizeBox = false,
                 BackColor = Color.White
             };
-            decimal balanceDue = invoice.Table.Columns.Contains("ConNo")
-                ? Convert.ToDecimal(invoice["ConNo"])
-                : Convert.ToDecimal(invoice["TongTien"]) - Convert.ToDecimal(invoice["TienBaoHiem"]);
-            var amount = new Label
+
+            // ── CỘT TRÁI (THÔNG TIN & NHẬP LIỆU) ──
+            var pnlLeft = new Panel
             {
-                Text = $"Còn phải thu: {balanceDue:N0} đ",
-                Dock = DockStyle.Top,
-                Height = 64,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Font = new Font("Segoe UI", 18F, FontStyle.Bold),
-                ForeColor = C_Green
+                Dock = DockStyle.Left,
+                Width = 440,
+                Padding = new Padding(16, 12, 16, 12),
+                BackColor = Color.White
             };
-            var label = new Label { Text = $"Hóa đơn {maHD}  •  {invoice["TenBN"]}", Dock = DockStyle.Top, Height = 30, TextAlign = ContentAlignment.MiddleCenter };
+
+            var lblHeading = new Label
+            {
+                Text = $"HÓA ĐƠN: #{maHD}",
+                Font = new Font("Segoe UI", 12f, FontStyle.Bold),
+                ForeColor = C_TextDark,
+                Location = new Point(14, 10),
+                AutoSize = true
+            };
+            var lblPatient = new Label
+            {
+                Text = $"Bệnh nhân: {tenBN}",
+                Font = F_Base,
+                ForeColor = C_TextGray,
+                Location = new Point(14, 34),
+                AutoSize = true
+            };
+
+            var pnlDue = new Panel
+            {
+                Location = new Point(14, 60),
+                Size = new Size(405, 56),
+                BackColor = Color.FromArgb(240, 253, 244)
+            };
+            pnlDue.Paint += (s, e) =>
+            {
+                using var p = new Pen(C_Green, 1);
+                e.Graphics.DrawRectangle(p, 0, 0, pnlDue.Width - 1, pnlDue.Height - 1);
+            };
+            var lblDueTitle = new Label { Text = "SỐ TIỀN CÒN PHẢI THU", Location = new Point(10, 6), AutoSize = true, Font = new Font("Segoe UI", 7.5f, FontStyle.Bold), ForeColor = Color.FromArgb(22, 101, 52) };
+            var lblDueVal = new Label { Text = $"{balanceDue:N0} đ", Location = new Point(8, 22), AutoSize = true, Font = new Font("Segoe UI", 16f, FontStyle.Bold), ForeColor = C_Green };
+            pnlDue.Controls.AddRange(new Control[] { lblDueTitle, lblDueVal });
+
+            var lblPayAmount = new Label { Text = "Số tiền thu đợt này (VNĐ):", Location = new Point(14, 124), AutoSize = true, Font = F_Bold, ForeColor = C_TextDark };
             var paymentAmount = new NumericUpDown
             {
+                Location = new Point(14, 146),
+                Size = new Size(405, 30),
+                Font = new Font("Segoe UI", 11f, FontStyle.Bold),
                 Minimum = 1,
                 Maximum = Math.Max(1, balanceDue),
                 Value = Math.Max(1, balanceDue),
                 DecimalPlaces = 0,
-                ThousandsSeparator = true,
-                Width = 250,
-                Font = F_Base,
-                Anchor = AnchorStyles.None
+                ThousandsSeparator = true
             };
-            var paymentAmountPanel = new Panel { Dock = DockStyle.Top, Height = 42 };
-            paymentAmountPanel.Controls.Add(paymentAmount);
-            paymentAmountPanel.Resize += (s, e) =>
-                paymentAmount.Location = new Point((paymentAmountPanel.ClientSize.Width - paymentAmount.Width) / 2, 5);
+
+            var lblMethod = new Label { Text = "Phương thức thanh toán:", Location = new Point(14, 184), AutoSize = true, Font = F_Bold, ForeColor = C_TextDark };
             var method = new ComboBox
             {
+                Location = new Point(14, 206),
+                Size = new Size(405, 28),
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                Width = 250,
-                Font = F_Base,
-                Anchor = AnchorStyles.None
+                Font = F_Base
             };
-            method.Items.AddRange(new object[] { "Tiền mặt", "Chuyển khoản QR", "Thẻ" });
-            string currentMethod = invoice["HinhThucTT"].ToString() ?? "";
-            method.SelectedItem = method.Items.Contains(currentMethod) ? currentMethod : "Tiền mặt";
-            var methodPanel = new Panel { Dock = DockStyle.Top, Height = 48 };
-            methodPanel.Controls.Add(method);
-            methodPanel.Resize += (s, e) => method.Location = new Point((methodPanel.ClientSize.Width - method.Width) / 2, 8);
-            var actions = new FlowLayoutPanel
+            method.Items.AddRange(new object[] { "Chuyển khoản QR", "Tiền mặt", "Thẻ" });
+            string currentMethod = invoice["HinhThucTT"]?.ToString() ?? "";
+            method.SelectedItem = method.Items.Contains(currentMethod) ? currentMethod : "Chuyển khoản QR";
+
+            // Panel thông tin chuyển khoản ngân hàng
+            var pnlBankInfo = new Panel
+            {
+                Location = new Point(14, 244),
+                Size = new Size(405, 175),
+                BackColor = Color.FromArgb(248, 250, 252)
+            };
+            pnlBankInfo.Paint += (s, e) =>
+            {
+                using var p = new Pen(C_Border, 1);
+                e.Graphics.DrawRectangle(p, 0, 0, pnlBankInfo.Width - 1, pnlBankInfo.Height - 1);
+            };
+
+            var lblBTitle = new Label { Text = "🏦 TÀI KHOẢN NHẬN TIỀN (PHÒNG KHÁM)", Location = new Point(10, 8), AutoSize = true, Font = new Font("Segoe UI", 8f, FontStyle.Bold), ForeColor = C_TealDark };
+            var lblBName = new Label { Text = $"Ngân hàng: {bank.BankName}", Location = new Point(10, 28), Size = new Size(385, 18), AutoEllipsis = true, Font = F_Small };
+            var lblBAcc = new Label { Text = $"Số TK: {bank.AccountNo}", Location = new Point(10, 48), Size = new Size(290, 18), AutoEllipsis = true, Font = new Font("Segoe UI", 8.5f, FontStyle.Bold), ForeColor = C_TextDark };
+            var btnCopyAcc = new Button { Text = "📋 Chép STK", Location = new Point(305, 46), Size = new Size(90, 24), Font = new Font("Segoe UI", 7.5f), FlatStyle = FlatStyle.Flat };
+            btnCopyAcc.Click += (s, e) => { Clipboard.SetText(bank.AccountNo); MessageBox.Show("Đã sao chép số tài khoản!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information); };
+
+            var lblBHolder = new Label { Text = $"Chủ TK: {bank.AccountName}", Location = new Point(10, 72), Size = new Size(385, 18), AutoEllipsis = true, Font = F_Small };
+
+            var lblBContent = new Label { Text = $"Nội dung CK: {transferContent}", Location = new Point(10, 96), Size = new Size(290, 18), AutoEllipsis = true, Font = new Font("Segoe UI", 8.5f, FontStyle.Bold), ForeColor = C_Blue };
+            var btnCopyContent = new Button { Text = "📋 Chép ND", Location = new Point(305, 94), Size = new Size(90, 24), Font = new Font("Segoe UI", 7.5f), FlatStyle = FlatStyle.Flat };
+            btnCopyContent.Click += (s, e) => { Clipboard.SetText(transferContent); MessageBox.Show("Đã sao chép nội dung chuyển khoản!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information); };
+
+            var btnChangeBank = new LinkLabel { Text = "⚙ Cấu hình thông tin STK ngân hàng phòng khám", Location = new Point(10, 124), AutoSize = true, Font = F_Small, LinkColor = C_Teal };
+
+            pnlBankInfo.Controls.AddRange(new Control[] { lblBTitle, lblBName, lblBAcc, btnCopyAcc, lblBHolder, lblBContent, btnCopyContent, btnChangeBank });
+
+            // Actions panel
+            var pnlActions = new FlowLayoutPanel
             {
                 Dock = DockStyle.Bottom,
-                Height = 55,
+                Height = 52,
                 FlowDirection = FlowDirection.RightToLeft,
+                Padding = new Padding(0, 8, 14, 8)
+            };
+            var confirm = PrimaryBtn("✓ Xác nhận thanh toán", 0, 0, 180, 36);
+            var cancel = new Button { Text = "Đóng", Width = 90, Height = 36, DialogResult = DialogResult.Cancel, BackColor = Color.White, FlatStyle = FlatStyle.Flat, Font = F_Base };
+            pnlActions.Controls.AddRange(new Control[] { confirm, cancel });
+
+            pnlLeft.Controls.AddRange(new Control[] { lblHeading, lblPatient, pnlDue, lblPayAmount, paymentAmount, lblMethod, method, pnlBankInfo, pnlActions });
+
+            // ── CỘT PHẢI (MÃ VIETQR ĐỘNG) ──
+            var pnlRightQR = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(12),
+                BackColor = Color.FromArgb(249, 250, 251)
+            };
+
+            var pnlQrCard = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.White,
                 Padding = new Padding(12)
             };
-            var confirm = PrimaryBtn("Xác nhận thanh toán", 0, 0, 160, 34);
-            var cancel = new Button { Text = "Đóng", Width = 90, Height = 34, DialogResult = DialogResult.Cancel };
+            pnlQrCard.Paint += (s, e) =>
+            {
+                using var p = new Pen(Color.FromArgb(209, 213, 219), 1);
+                e.Graphics.DrawRectangle(p, 0, 0, pnlQrCard.Width - 1, pnlQrCard.Height - 1);
+            };
+
+            var lblQrTitle = new Label
+            {
+                Text = "QUÉT MÃ VIETQR ĐỂ THANH TOÁN 24/7",
+                Dock = DockStyle.Top,
+                Height = 28,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                ForeColor = C_TealDark
+            };
+
+            var picQR = new PictureBox
+            {
+                Dock = DockStyle.Fill,
+                SizeMode = PictureBoxSizeMode.Zoom,
+                BackColor = Color.White
+            };
+
+            var lblQrStatus = new Label
+            {
+                Text = "Đang tải mã VietQR...",
+                Dock = DockStyle.Bottom,
+                Height = 26,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = F_Small,
+                ForeColor = C_TextGray
+            };
+
+            var pnlQrButtons = new Panel { Dock = DockStyle.Bottom, Height = 34 };
+            var btnReloadQR = SecondaryBtn("🔄 Tải lại QR", 0, 2, 110, 28, C_Blue);
+            btnReloadQR.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnReloadQR.Font = F_Small;
+            pnlQrButtons.Controls.Add(btnReloadQR);
+
+            var lblQrGuide = new Label
+            {
+                Text = "Quét bằng bất kỳ App Ngân hàng hoặc MoMo / ZaloPay",
+                Dock = DockStyle.Bottom,
+                Height = 22,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = new Font("Segoe UI", 8f, FontStyle.Italic),
+                ForeColor = C_TextGray
+            };
+
+            pnlQrCard.Controls.Add(picQR);
+            pnlQrCard.Controls.Add(lblQrStatus);
+            pnlQrCard.Controls.Add(pnlQrButtons);
+            pnlQrCard.Controls.Add(lblQrGuide);
+            pnlQrCard.Controls.Add(lblQrTitle);
+            pnlRightQR.Controls.Add(pnlQrCard);
+
+            dialog.Controls.Add(pnlRightQR);
+            dialog.Controls.Add(pnlLeft);
+
+            // Handler tải mã VietQR bất đồng bộ
+            async void LoadQr()
+            {
+                lblQrStatus.Text = "⏳ Đang kết nối VietQR Napas...";
+                lblQrStatus.ForeColor = C_Blue;
+                btnReloadQR.Enabled = false;
+
+                decimal currentAmount = paymentAmount.Value;
+                var qrImg = await VietQRHelper.LoadQrImageAsync(bank.BankCode, bank.AccountNo, currentAmount, transferContent);
+                if (qrImg != null)
+                {
+                    picQR.Image?.Dispose();
+                    picQR.Image = qrImg;
+                    lblQrStatus.Text = $"✓ Sẵn sàng nhận {currentAmount:N0} đ qua VietQR 24/7";
+                    lblQrStatus.ForeColor = Color.FromArgb(22, 101, 52);
+                }
+                else
+                {
+                    picQR.Image?.Dispose();
+                    picQR.Image = VietQRHelper.CreateFallbackCard(bank.BankName, bank.AccountNo, bank.AccountName, currentAmount, transferContent);
+                    lblQrStatus.Text = "⚠ Không tải được ảnh online. Đã hiển thị thẻ thông tin CK.";
+                    lblQrStatus.ForeColor = Color.FromArgb(180, 83, 9);
+                }
+                btnReloadQR.Enabled = true;
+            }
+
+            btnReloadQR.Click += (s, e) => LoadQr();
+
+            paymentAmount.ValueChanged += (s, e) =>
+            {
+                if (method.SelectedItem?.ToString() == "Chuyển khoản QR")
+                    LoadQr();
+            };
+
+            void UpdateMethodLayout()
+            {
+                bool isQR = method.SelectedItem?.ToString() == "Chuyển khoản QR";
+                pnlRightQR.Visible = isQR;
+                pnlBankInfo.Visible = isQR;
+                if (isQR)
+                {
+                    dialog.ClientSize = new Size(880, 490);
+                    LoadQr();
+                }
+                else
+                {
+                    dialog.ClientSize = new Size(460, 360);
+                }
+                dialog.Location = new Point(Math.Max(0, this.Left + (this.Width - dialog.Width) / 2), Math.Max(0, this.Top + (this.Height - dialog.Height) / 2));
+            }
+
+            btnChangeBank.LinkClicked += (s, e) =>
+            {
+                if (VietQRHelper.ShowBankConfigDialog(dialog))
+                {
+                    bank = VietQRHelper.GetConfig();
+                    lblBName.Text = $"Ngân hàng: {bank.BankName}";
+                    lblBAcc.Text = $"Số TK: {bank.AccountNo}";
+                    lblBHolder.Text = $"Chủ TK: {bank.AccountName}";
+                    LoadQr();
+                }
+            };
+
+            method.SelectedIndexChanged += (s, e) => UpdateMethodLayout();
+            UpdateMethodLayout();
+
             confirm.Click += (s, e) =>
             {
                 try
@@ -2185,6 +2466,41 @@ namespace QlyPhongKham.Forms
                     }
                     catch { /* email/notification không được phá workflow chính */ }
 
+                    // ── LIÊN KẾT TỰ ĐỘNG: CẤP PHÁT THUỐC 1-CLICK NGAY TẠI QUẦY ──
+                    string pkCuaHoaDon = invoice.Table.Columns.Contains("MaPK") ? invoice["MaPK"]?.ToString() ?? "" : "";
+                    if (!string.IsNullOrEmpty(pkCuaHoaDon))
+                    {
+                        try
+                        {
+                            var dtThuocCheck = ClinicDAL.LayChiTietDonThuocTheoPK(pkCuaHoaDon);
+                            if (dtThuocCheck != null && dtThuocCheck.Rows.Count > 0)
+                            {
+                                var askIssue = MessageBox.Show(
+                                    $"Hóa đơn #{maHD} đã thanh toán thành công!\r\n\r\nBệnh nhân {tenBN} có đơn thuốc ({dtThuocCheck.Rows.Count} khoản thuốc).\r\nBạn có muốn XUẤT KHO & CẤP THUỐC ngay cho bệnh nhân không?",
+                                    "Cấp phát thuốc 1-Click",
+                                    MessageBoxButtons.YesNo,
+                                    MessageBoxIcon.Question);
+
+                                if (askIssue == DialogResult.Yes)
+                                {
+                                    if (ClinicDAL.CapPhatDonThuoc(pkCuaHoaDon))
+                                    {
+                                        MessageBox.Show(
+                                            $"Đã xuất kho và hoàn tất cấp phát thuốc cho bệnh nhân {tenBN}!\r\nSố lượng tồn kho dược đã được tự động cập nhật.",
+                                            "Cấp thuốc thành công",
+                                            MessageBoxButtons.OK,
+                                            MessageBoxIcon.Information);
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception exIssue)
+                        {
+                            MessageBox.Show($"Thanh toán đã hoàn tất, nhưng phát sinh lưu ý cấp thuốc: {exIssue.Message}\r\nBạn có thể vào tab 'Kho thuốc' > 'Cấp đơn' để xử lý thủ công.",
+                                "Thông báo cấp thuốc", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
+                    }
+
                     dialog.DialogResult = DialogResult.OK;
                     dialog.Close();
                 }
@@ -2193,12 +2509,7 @@ namespace QlyPhongKham.Forms
                     MessageBox.Show(ex.Message, "Lỗi thanh toán", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             };
-            actions.Controls.AddRange(new Control[] { confirm, cancel });
-            dialog.Controls.Add(actions);
-            dialog.Controls.Add(methodPanel);
-            dialog.Controls.Add(paymentAmountPanel);
-            dialog.Controls.Add(label);
-            dialog.Controls.Add(amount);
+
             dialog.AcceptButton = confirm;
             dialog.CancelButton = cancel;
             return dialog.ShowDialog(this) == DialogResult.OK;
@@ -2207,67 +2518,270 @@ namespace QlyPhongKham.Forms
         private bool ShowAdvancePayment(DataRow ticket)
         {
             string maPK = ticket["MaPK"].ToString() ?? "";
+            string tenBN = ticket["TenBN"]?.ToString() ?? "Bệnh nhân";
             var (tienDV, tienThuoc) = ClinicDAL.TinhChiPhiPhieuKham(maPK);
             decimal estimatedTotal = tienDV + tienThuoc;
+
+            var bank = VietQRHelper.GetConfig();
+            string transferContent = $"TAM UNG {maPK}";
+
             using var dialog = new Form
             {
-                Text = "Ghi nhận tạm ứng",
-                Size = new Size(480, 330),
+                Text = $"Ghi nhận tạm ứng viện phí - Phiếu {maPK}",
+                Size = new Size(880, 520),
                 StartPosition = FormStartPosition.CenterParent,
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 MaximizeBox = false,
                 MinimizeBox = false,
                 BackColor = Color.White
             };
+
+            // ── CỘT TRÁI (NHẬP LIỆU) ──
+            var pnlLeft = new Panel
+            {
+                Dock = DockStyle.Left,
+                Width = 440,
+                Padding = new Padding(16, 12, 16, 12),
+                BackColor = Color.White
+            };
+
             var heading = new Label
             {
-                Text = $"Tạm ứng cho {ticket["TenBN"]} • Phiếu {maPK}",
-                Dock = DockStyle.Top,
-                Height = 50,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Font = F_Bold
+                Text = $"TẠM ỨNG: PHIẾU KHÁM #{maPK}",
+                Font = new Font("Segoe UI", 12f, FontStyle.Bold),
+                ForeColor = C_TextDark,
+                Location = new Point(14, 10),
+                AutoSize = true
             };
-            var total = new Label
+            var lblPatient = new Label
             {
-                Text = $"Chi phí tạm tính tối đa: {estimatedTotal:N0} đ",
-                Dock = DockStyle.Top,
-                Height = 38,
-                TextAlign = ContentAlignment.MiddleCenter,
-                ForeColor = C_Blue
+                Text = $"Bệnh nhân: {tenBN}",
+                Font = F_Base,
+                ForeColor = C_TextGray,
+                Location = new Point(14, 34),
+                AutoSize = true
             };
+
+            var pnlEst = new Panel
+            {
+                Location = new Point(14, 60),
+                Size = new Size(405, 56),
+                BackColor = Color.FromArgb(239, 246, 255)
+            };
+            pnlEst.Paint += (s, e) =>
+            {
+                using var p = new Pen(C_Blue, 1);
+                e.Graphics.DrawRectangle(p, 0, 0, pnlEst.Width - 1, pnlEst.Height - 1);
+            };
+            var lblEstTitle = new Label { Text = "CHI PHÍ TẠM TÍNH TỐI ĐA", Location = new Point(10, 6), AutoSize = true, Font = new Font("Segoe UI", 7.5f, FontStyle.Bold), ForeColor = Color.FromArgb(30, 64, 175) };
+            var lblEstVal = new Label { Text = $"{estimatedTotal:N0} đ", Location = new Point(8, 22), AutoSize = true, Font = new Font("Segoe UI", 16f, FontStyle.Bold), ForeColor = C_Blue };
+            pnlEst.Controls.AddRange(new Control[] { lblEstTitle, lblEstVal });
+
+            var lblAmount = new Label { Text = "Số tiền tạm ứng thu đợt này (VNĐ):", Location = new Point(14, 124), AutoSize = true, Font = F_Bold, ForeColor = C_TextDark };
             var amount = new NumericUpDown
             {
+                Location = new Point(14, 146),
+                Size = new Size(405, 30),
+                Font = new Font("Segoe UI", 11f, FontStyle.Bold),
                 Minimum = 1,
                 Maximum = Math.Max(1, estimatedTotal),
                 Value = Math.Max(1, estimatedTotal),
                 DecimalPlaces = 0,
-                ThousandsSeparator = true,
-                Width = 250,
-                Anchor = AnchorStyles.None
+                ThousandsSeparator = true
             };
+
+            var lblMethod = new Label { Text = "Phương thức tạm ứng:", Location = new Point(14, 184), AutoSize = true, Font = F_Bold, ForeColor = C_TextDark };
             var method = new ComboBox
             {
+                Location = new Point(14, 206),
+                Size = new Size(405, 28),
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                Width = 250,
-                Anchor = AnchorStyles.None
+                Font = F_Base
             };
-            method.Items.AddRange(new object[] { "Tiền mặt", "Chuyển khoản QR", "Thẻ" });
+            method.Items.AddRange(new object[] { "Chuyển khoản QR", "Tiền mặt", "Thẻ" });
             method.SelectedIndex = 0;
-            var amountPanel = new Panel { Dock = DockStyle.Top, Height = 42 };
-            amountPanel.Controls.Add(amount);
-            amountPanel.Resize += (s, e) => amount.Location = new Point((amountPanel.ClientSize.Width - amount.Width) / 2, 5);
-            var methodPanel = new Panel { Dock = DockStyle.Top, Height = 42 };
-            methodPanel.Controls.Add(method);
-            methodPanel.Resize += (s, e) => method.Location = new Point((methodPanel.ClientSize.Width - method.Width) / 2, 5);
-            var actions = new FlowLayoutPanel
+
+            // Panel thông tin chuyển khoản ngân hàng
+            var pnlBankInfo = new Panel
+            {
+                Location = new Point(14, 244),
+                Size = new Size(405, 175),
+                BackColor = Color.FromArgb(248, 250, 252)
+            };
+            pnlBankInfo.Paint += (s, e) =>
+            {
+                using var p = new Pen(C_Border, 1);
+                e.Graphics.DrawRectangle(p, 0, 0, pnlBankInfo.Width - 1, pnlBankInfo.Height - 1);
+            };
+
+            var lblBTitle = new Label { Text = "🏦 TÀI KHOẢN NHẬN TIỀN (PHÒNG KHÁM)", Location = new Point(10, 8), AutoSize = true, Font = new Font("Segoe UI", 8f, FontStyle.Bold), ForeColor = C_TealDark };
+            var lblBName = new Label { Text = $"Ngân hàng: {bank.BankName}", Location = new Point(10, 28), Size = new Size(385, 18), AutoEllipsis = true, Font = F_Small };
+            var lblBAcc = new Label { Text = $"Số TK: {bank.AccountNo}", Location = new Point(10, 48), Size = new Size(290, 18), AutoEllipsis = true, Font = new Font("Segoe UI", 8.5f, FontStyle.Bold), ForeColor = C_TextDark };
+            var btnCopyAcc = new Button { Text = "📋 Chép STK", Location = new Point(305, 46), Size = new Size(90, 24), Font = new Font("Segoe UI", 7.5f), FlatStyle = FlatStyle.Flat };
+            btnCopyAcc.Click += (s, e) => { Clipboard.SetText(bank.AccountNo); MessageBox.Show("Đã sao chép số tài khoản!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information); };
+
+            var lblBHolder = new Label { Text = $"Chủ TK: {bank.AccountName}", Location = new Point(10, 72), Size = new Size(385, 18), AutoEllipsis = true, Font = F_Small };
+
+            var lblBContent = new Label { Text = $"Nội dung CK: {transferContent}", Location = new Point(10, 96), Size = new Size(290, 18), AutoEllipsis = true, Font = new Font("Segoe UI", 8.5f, FontStyle.Bold), ForeColor = C_Blue };
+            var btnCopyContent = new Button { Text = "📋 Chép ND", Location = new Point(305, 94), Size = new Size(90, 24), Font = new Font("Segoe UI", 7.5f), FlatStyle = FlatStyle.Flat };
+            btnCopyContent.Click += (s, e) => { Clipboard.SetText(transferContent); MessageBox.Show("Đã sao chép nội dung chuyển khoản!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information); };
+
+            var btnChangeBank = new LinkLabel { Text = "⚙ Cấu hình thông tin STK ngân hàng phòng khám", Location = new Point(10, 124), AutoSize = true, Font = F_Small, LinkColor = C_Teal };
+
+            pnlBankInfo.Controls.AddRange(new Control[] { lblBTitle, lblBName, lblBAcc, btnCopyAcc, lblBHolder, lblBContent, btnCopyContent, btnChangeBank });
+
+            // Actions
+            var pnlActions = new FlowLayoutPanel
             {
                 Dock = DockStyle.Bottom,
-                Height = 55,
+                Height = 52,
                 FlowDirection = FlowDirection.RightToLeft,
+                Padding = new Padding(0, 8, 14, 8)
+            };
+            var save = PrimaryBtn("Ghi nhận tạm ứng", 0, 0, 160, 36);
+            var cancel = new Button { Text = "Đóng", Width = 90, Height = 36, DialogResult = DialogResult.Cancel, BackColor = Color.White, FlatStyle = FlatStyle.Flat, Font = F_Base };
+            pnlActions.Controls.AddRange(new Control[] { save, cancel });
+
+            pnlLeft.Controls.AddRange(new Control[] { heading, lblPatient, pnlEst, lblAmount, amount, lblMethod, method, pnlBankInfo, pnlActions });
+
+            // ── CỘT PHẢI (MÃ VIETQR ĐỘNG) ──
+            var pnlRightQR = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(12),
+                BackColor = Color.FromArgb(249, 250, 251)
+            };
+
+            var pnlQrCard = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.White,
                 Padding = new Padding(12)
             };
-            var save = PrimaryBtn("Ghi nhận tạm ứng", 0, 0, 150, 34);
-            var cancel = new Button { Text = "Đóng", Width = 90, Height = 34, DialogResult = DialogResult.Cancel };
+            pnlQrCard.Paint += (s, e) =>
+            {
+                using var p = new Pen(Color.FromArgb(209, 213, 219), 1);
+                e.Graphics.DrawRectangle(p, 0, 0, pnlQrCard.Width - 1, pnlQrCard.Height - 1);
+            };
+
+            var lblQrTitle = new Label
+            {
+                Text = "QUÉT MÃ VIETQR TẠM ỨNG 24/7",
+                Dock = DockStyle.Top,
+                Height = 28,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                ForeColor = C_TealDark
+            };
+
+            var picQR = new PictureBox
+            {
+                Dock = DockStyle.Fill,
+                SizeMode = PictureBoxSizeMode.Zoom,
+                BackColor = Color.White
+            };
+
+            var lblQrStatus = new Label
+            {
+                Text = "Đang tải mã VietQR...",
+                Dock = DockStyle.Bottom,
+                Height = 26,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = F_Small,
+                ForeColor = C_TextGray
+            };
+
+            var pnlQrButtons = new Panel { Dock = DockStyle.Bottom, Height = 34 };
+            var btnReloadQR = SecondaryBtn("🔄 Tải lại QR", 0, 2, 110, 28, C_Blue);
+            btnReloadQR.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnReloadQR.Font = F_Small;
+            pnlQrButtons.Controls.Add(btnReloadQR);
+
+            var lblQrGuide = new Label
+            {
+                Text = "Quét bằng bất kỳ App Ngân hàng hoặc MoMo / ZaloPay",
+                Dock = DockStyle.Bottom,
+                Height = 22,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = new Font("Segoe UI", 8f, FontStyle.Italic),
+                ForeColor = C_TextGray
+            };
+
+            pnlQrCard.Controls.Add(picQR);
+            pnlQrCard.Controls.Add(lblQrStatus);
+            pnlQrCard.Controls.Add(pnlQrButtons);
+            pnlQrCard.Controls.Add(lblQrGuide);
+            pnlQrCard.Controls.Add(lblQrTitle);
+            pnlRightQR.Controls.Add(pnlQrCard);
+
+            dialog.Controls.Add(pnlRightQR);
+            dialog.Controls.Add(pnlLeft);
+
+            async void LoadQr()
+            {
+                lblQrStatus.Text = "⏳ Đang kết nối VietQR Napas...";
+                lblQrStatus.ForeColor = C_Blue;
+                btnReloadQR.Enabled = false;
+
+                decimal currentAmount = amount.Value;
+                var qrImg = await VietQRHelper.LoadQrImageAsync(bank.BankCode, bank.AccountNo, currentAmount, transferContent);
+                if (qrImg != null)
+                {
+                    picQR.Image?.Dispose();
+                    picQR.Image = qrImg;
+                    lblQrStatus.Text = $"✓ Sẵn sàng nhận {currentAmount:N0} đ qua VietQR 24/7";
+                    lblQrStatus.ForeColor = Color.FromArgb(22, 101, 52);
+                }
+                else
+                {
+                    picQR.Image?.Dispose();
+                    picQR.Image = VietQRHelper.CreateFallbackCard(bank.BankName, bank.AccountNo, bank.AccountName, currentAmount, transferContent);
+                    lblQrStatus.Text = "⚠ Không tải được ảnh online. Đã hiển thị thẻ thông tin CK.";
+                    lblQrStatus.ForeColor = Color.FromArgb(180, 83, 9);
+                }
+                btnReloadQR.Enabled = true;
+            }
+
+            btnReloadQR.Click += (s, e) => LoadQr();
+
+            amount.ValueChanged += (s, e) =>
+            {
+                if (method.SelectedItem?.ToString() == "Chuyển khoản QR")
+                    LoadQr();
+            };
+
+            void UpdateMethodLayout()
+            {
+                bool isQR = method.SelectedItem?.ToString() == "Chuyển khoản QR";
+                pnlRightQR.Visible = isQR;
+                pnlBankInfo.Visible = isQR;
+                if (isQR)
+                {
+                    dialog.ClientSize = new Size(880, 490);
+                    LoadQr();
+                }
+                else
+                {
+                    dialog.ClientSize = new Size(460, 360);
+                }
+                dialog.Location = new Point(Math.Max(0, this.Left + (this.Width - dialog.Width) / 2), Math.Max(0, this.Top + (this.Height - dialog.Height) / 2));
+            }
+
+            btnChangeBank.LinkClicked += (s, e) =>
+            {
+                if (VietQRHelper.ShowBankConfigDialog(dialog))
+                {
+                    bank = VietQRHelper.GetConfig();
+                    lblBName.Text = $"Ngân hàng: {bank.BankName}";
+                    lblBAcc.Text = $"Số TK: {bank.AccountNo}";
+                    lblBHolder.Text = $"Chủ TK: {bank.AccountName}";
+                    LoadQr();
+                }
+            };
+
+            method.SelectedIndexChanged += (s, e) => UpdateMethodLayout();
+            UpdateMethodLayout();
+
             save.Click += (sender, args) =>
             {
                 try
@@ -2282,12 +2796,6 @@ namespace QlyPhongKham.Forms
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             };
-            actions.Controls.AddRange(new Control[] { save, cancel });
-            dialog.Controls.Add(actions);
-            dialog.Controls.Add(methodPanel);
-            dialog.Controls.Add(amountPanel);
-            dialog.Controls.Add(total);
-            dialog.Controls.Add(heading);
             dialog.AcceptButton = save;
             dialog.CancelButton = cancel;
             return dialog.ShowDialog(this) == DialogResult.OK;

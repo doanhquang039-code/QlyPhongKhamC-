@@ -27,10 +27,6 @@ namespace QlyPhongKham.Forms
             DataGridView dgvKhoaPhong,
             Panel? pnlTruc = null,
             DataGridView? dgvTruc = null,
-            Panel? pnlKhamStatus = null,
-            DataGridView? dgvKhamStatus = null,
-            Panel? pnlLichHenHN = null,
-            DataGridView? dgvLichHenHN = null,
             Control? chartDT = null,
             Control? chartCD = null)
         {
@@ -40,14 +36,25 @@ namespace QlyPhongKham.Forms
                 pCards.Width = contentWidth;
                 pnlTH.Width = contentWidth;
                 dgvTH.Width = Math.Max(0, pnlTH.ClientSize.Width - 28);
-                pnlKhoaPhong.Width = contentWidth;
-                dgvKhoaPhong.Width = Math.Max(0, pnlKhoaPhong.ClientSize.Width - 28);
 
+                // Row 3: KhoaPhong (60%) + Truc (40%) side-by-side
                 if (pnlTruc != null)
                 {
-                    pnlTruc.Width = contentWidth;
+                    int khoaW = (int)Math.Round(contentWidth * 0.60) - 8;
+                    int trucW = contentWidth - khoaW - 15;
+                    pnlKhoaPhong.Location = new Point(10, pnlKhoaPhong.Top);
+                    pnlKhoaPhong.Width = khoaW;
+                    dgvKhoaPhong.Width = Math.Max(0, pnlKhoaPhong.ClientSize.Width - 28);
+
+                    pnlTruc.Location = new Point(25 + khoaW, pnlTruc.Top);
+                    pnlTruc.Width = trucW;
                     if (dgvTruc != null)
                         dgvTruc.Width = Math.Max(0, pnlTruc.ClientSize.Width - 28);
+                }
+                else
+                {
+                    pnlKhoaPhong.Width = contentWidth;
+                    dgvKhoaPhong.Width = Math.Max(0, pnlKhoaPhong.ClientSize.Width - 28);
                 }
 
                 int cardWidth = Math.Max(0, (pCards.ClientSize.Width - 45) / 4);
@@ -83,19 +90,6 @@ namespace QlyPhongKham.Forms
                 {
                     chartCD.Width = Math.Max(0, pnlCD.ClientSize.Width - 28);
                     chartCD.Invalidate();
-                }
-
-                if (pnlKhamStatus != null && pnlLichHenHN != null)
-                {
-                    pnlKhamStatus.Location = new Point(10, pnlKhamStatus.Top);
-                    pnlKhamStatus.Width = columnWidth;
-                    if (dgvKhamStatus != null)
-                        dgvKhamStatus.Width = Math.Max(0, pnlKhamStatus.ClientSize.Width - 28);
-
-                    pnlLichHenHN.Location = new Point(25 + columnWidth, pnlLichHenHN.Top);
-                    pnlLichHenHN.Width = columnWidth;
-                    if (dgvLichHenHN != null)
-                        dgvLichHenHN.Width = Math.Max(0, pnlLichHenHN.ClientSize.Width - 28);
                 }
             }
 
@@ -380,15 +374,23 @@ namespace QlyPhongKham.Forms
             dgvTH.DataSource = ClinicDAL.LayThuocSapHet(30);
             pnlTH.Controls.Add(dgvTH);
 
-            var pnlKhoaPhong = new Panel { Location = new Point(10, 665), Size = new Size(1080, 220), BackColor = C_Card };
+            var pnlKhoaPhong = new Panel { Location = new Point(10, 665), Size = new Size(648, 220), BackColor = C_Card };
             pnlKhoaPhong.Paint += PaintCardBorder;
             pnlKhoaPhong.Controls.Add(MakeLbl("LƯỢT KHÁM THEO KHOA / PHÒNG (7 NGÀY)", 14, 12, bold: true));
             var dgvKhoaPhong = MakeGrid(DockStyle.None);
             dgvKhoaPhong.Location = new Point(14, 38);
-            dgvKhoaPhong.Size = new Size(1052, 168);
+            dgvKhoaPhong.Size = new Size(620, 168);
             if (ClinicDAL.CoSchemaKhoaPhong())
             {
                 dgvKhoaPhong.DataSource = ClinicDAL.LayThongKeKhoaPhong(7);
+                dgvKhoaPhong.DataBindingComplete += (s, e) =>
+                {
+                    if (dgvKhoaPhong.Columns.Contains("TenPhong")) dgvKhoaPhong.Columns["TenPhong"]!.HeaderText = "Phòng khám";
+                    if (dgvKhoaPhong.Columns.Contains("TenKhoa")) dgvKhoaPhong.Columns["TenKhoa"]!.HeaderText = "Khoa";
+                    if (dgvKhoaPhong.Columns.Contains("SoLuotKham")) dgvKhoaPhong.Columns["SoLuotKham"]!.HeaderText = "Lượt khám";
+                    if (dgvKhoaPhong.Columns.Contains("SoBacSi")) dgvKhoaPhong.Columns["SoBacSi"]!.HeaderText = "Bác sĩ";
+                    if (dgvKhoaPhong.Columns.Contains("SoYTa")) dgvKhoaPhong.Columns["SoYTa"]!.HeaderText = "Y tá/ĐD";
+                };
                 pnlKhoaPhong.Controls.Add(dgvKhoaPhong);
             }
             else
@@ -398,47 +400,70 @@ namespace QlyPhongKham.Forms
                     14, 48);
                 lblSchemaWarning.ForeColor = C_Red;
                 lblSchemaWarning.AutoSize = false;
-                lblSchemaWarning.Size = new Size(1040, 50);
+                lblSchemaWarning.Size = new Size(620, 50);
                 pnlKhoaPhong.Controls.Add(lblSchemaWarning);
             }
 
-            // ── Nhân viên đang trực hôm nay ──
-            var pnlTruc = new Panel { Location = new Point(10, 895), Size = new Size(1080, 230), BackColor = C_Card };
+            // ── Nhân viên đang trực hôm nay (side-by-side with KhoaPhong) ──
+            var pnlTruc = new Panel { Location = new Point(673, 665), Size = new Size(417, 220), BackColor = C_Card };
             pnlTruc.Paint += PaintCardBorder;
             pnlTruc.Controls.Add(MakeLbl("👨‍⚕️ NHÂN VIÊN ĐANG TRỰC HÔM NAY", 14, 12, bold: true));
             var dgvTruc = MakeGrid(DockStyle.None);
             dgvTruc.Location = new Point(14, 38);
-            dgvTruc.Size = new Size(1052, 178);
-            try { dgvTruc.DataSource = ClinicDAL.LayNhanVienDangTruc(); } catch { }
+            dgvTruc.Size = new Size(389, 168);
+            try
+            {
+                dgvTruc.DataSource = ClinicDAL.LayNhanVienDangTruc();
+                dgvTruc.DataBindingComplete += (s, e) =>
+                {
+                    if (dgvTruc.Columns.Contains("MaNV")) dgvTruc.Columns["MaNV"]!.HeaderText = "Mã NV";
+                    if (dgvTruc.Columns.Contains("HoTen")) dgvTruc.Columns["HoTen"]!.HeaderText = "Họ tên";
+                    if (dgvTruc.Columns.Contains("ChucVu")) dgvTruc.Columns["ChucVu"]!.HeaderText = "Chức vụ";
+                    if (dgvTruc.Columns.Contains("TenPhong")) dgvTruc.Columns["TenPhong"]!.HeaderText = "Phòng";
+                    if (dgvTruc.Columns.Contains("TenKhoa")) dgvTruc.Columns["TenKhoa"]!.HeaderText = "Khoa";
+                    if (dgvTruc.Columns.Contains("CaTruc")) dgvTruc.Columns["CaTruc"]!.HeaderText = "Ca trực";
+                };
+            }
+            catch { }
             pnlTruc.Controls.Add(dgvTruc);
 
-            // ── Trạng thái khám hôm nay ──
-            var pnlKhamStatus = new Panel { Location = new Point(10, 1135), Size = new Size(525, 230), BackColor = C_Card };
-            pnlKhamStatus.Paint += PaintCardBorder;
-            pnlKhamStatus.Controls.Add(MakeLbl("🩺 TRẠNG THÁI KHÁM HÔM NAY (THEO PHÒNG)", 14, 12, bold: true));
-            var dgvKhamStatus = MakeGrid(DockStyle.None);
-            dgvKhamStatus.Location = new Point(14, 38);
-            dgvKhamStatus.Size = new Size(497, 178);
-            try { dgvKhamStatus.DataSource = ClinicDAL.LayTrangThaiKhamHienTai(); } catch { }
-            pnlKhamStatus.Controls.Add(dgvKhamStatus);
+            // Add DataBindingComplete for dgvDT (Doanh thu)
+            dgvDT.DataBindingComplete += (s, e) =>
+            {
+                if (dgvDT.Columns.Contains("Ngay")) dgvDT.Columns["Ngay"]!.HeaderText = "Ngày khám";
+                if (dgvDT.Columns.Contains("NgayKham")) dgvDT.Columns["NgayKham"]!.HeaderText = "Ngày khám";
+                if (dgvDT.Columns.Contains("DoanhThu")) dgvDT.Columns["DoanhThu"]!.HeaderText = "Doanh thu (đ)";
+                if (dgvDT.Columns.Contains("SoHoaDon")) dgvDT.Columns["SoHoaDon"]!.HeaderText = "Số HĐ";
+            };
 
-            // ── Lịch hẹn hôm nay ──
-            var pnlLichHenHN = new Panel { Location = new Point(550, 1135), Size = new Size(540, 230), BackColor = C_Card };
-            pnlLichHenHN.Paint += PaintCardBorder;
-            pnlLichHenHN.Controls.Add(MakeLbl("📅 LỊCH HẸN HÔM NAY", 14, 12, bold: true));
-            var dgvLichHenHN = MakeGrid(DockStyle.None);
-            dgvLichHenHN.Location = new Point(14, 38);
-            dgvLichHenHN.Size = new Size(512, 178);
-            try { dgvLichHenHN.DataSource = ClinicDAL.LayLichHenHomNayAdmin(); } catch { }
-            pnlLichHenHN.Controls.Add(dgvLichHenHN);
+            // Add DataBindingComplete for dgvCD (Chẩn đoán)
+            dgvCD.DataBindingComplete += (s, e) =>
+            {
+                if (dgvCD.Columns.Contains("ChanDoan")) dgvCD.Columns["ChanDoan"]!.HeaderText = "Chẩn đoán";
+                if (dgvCD.Columns.Contains("SoLuong")) dgvCD.Columns["SoLuong"]!.HeaderText = "Số lượt";
+                if (dgvCD.Columns.Contains("SoLuot")) dgvCD.Columns["SoLuot"]!.HeaderText = "Số lượt";
+            };
+
+            // Add DataBindingComplete for dgvTH (Thuốc sắp hết)
+            dgvTH.DataBindingComplete += (s, e) =>
+            {
+                if (dgvTH.Columns.Contains("MaThuoc")) dgvTH.Columns["MaThuoc"]!.HeaderText = "Mã thuốc";
+                if (dgvTH.Columns.Contains("TenThuoc")) dgvTH.Columns["TenThuoc"]!.HeaderText = "Tên thuốc";
+                if (dgvTH.Columns.Contains("SoLuongTon")) dgvTH.Columns["SoLuongTon"]!.HeaderText = "Tồn kho";
+                if (dgvTH.Columns.Contains("DonViTinh")) dgvTH.Columns["DonViTinh"]!.HeaderText = "Đơn vị";
+                if (dgvTH.Columns.Contains("GiaVon")) dgvTH.Columns["GiaVon"]!.HeaderText = "Giá vốn";
+                if (dgvTH.Columns.Contains("GiaBan")) dgvTH.Columns["GiaBan"]!.HeaderText = "Giá bán";
+                if (dgvTH.Columns.Contains("HanSuDung")) dgvTH.Columns["HanSuDung"]!.HeaderText = "Hạn sử dụng";
+                if (dgvTH.Columns.Contains("NhaCungCap")) dgvTH.Columns["NhaCungCap"]!.HeaderText = "Nhà cung cấp";
+            };
 
             // Padding panel at bottom for comfortable scrolling
-            var pnlBottomPad = new Panel { Location = new Point(10, 1375), Size = new Size(1080, 20) };
+            var pnlBottomPad = new Panel { Location = new Point(10, 900), Size = new Size(1090, 20) };
 
-            wrapper.Controls.AddRange(new Control[] { pCards, pnlDT, pnlCD, pnlTH, pnlKhoaPhong, pnlTruc, pnlKhamStatus, pnlLichHenHN, pnlBottomPad });
+            wrapper.Controls.AddRange(new Control[] { pCards, pnlDT, pnlCD, pnlTH, pnlKhoaPhong, pnlTruc, pnlBottomPad });
             panelContent.Controls.Add(wrapper);
             ConfigureAdminSummaryLayout(wrapper, pCards, pnlDT, dgvDT, pnlCD, dgvCD, pnlTH, dgvTH, pnlKhoaPhong, dgvKhoaPhong,
-                pnlTruc, dgvTruc, pnlKhamStatus, dgvKhamStatus, pnlLichHenHN, dgvLichHenHN, chartDT, chartCD);
+                pnlTruc, dgvTruc, chartDT, chartCD);
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -464,6 +489,21 @@ namespace QlyPhongKham.Forms
             var contentPanel = new Panel { Dock = DockStyle.Fill, BackColor = C_Card, Padding = new Padding(10) };
             contentPanel.Paint += PaintCardBorder;
             var dgv = MakeGrid();
+            dgv.DataBindingComplete += (sender, args) =>
+            {
+                if (dgv.Columns.Contains("MaLichHen")) dgv.Columns["MaLichHen"]!.HeaderText = "Mã LH";
+                if (dgv.Columns.Contains("NgayHen")) dgv.Columns["NgayHen"]!.HeaderText = "Ngày hẹn";
+                if (dgv.Columns.Contains("GioHen")) dgv.Columns["GioHen"]!.HeaderText = "Giờ hẹn";
+                if (dgv.Columns.Contains("MaBN")) dgv.Columns["MaBN"]!.HeaderText = "Mã BN";
+                if (dgv.Columns.Contains("TenBN")) dgv.Columns["TenBN"]!.HeaderText = "Bệnh nhân";
+                if (dgv.Columns.Contains("SoDienThoai")) dgv.Columns["SoDienThoai"]!.HeaderText = "Điện thoại";
+                if (dgv.Columns.Contains("LyDoKham")) dgv.Columns["LyDoKham"]!.HeaderText = "Lý do khám";
+                if (dgv.Columns.Contains("TrangThaiDuyet")) dgv.Columns["TrangThaiDuyet"]!.HeaderText = "Trạng thái duyệt";
+                if (dgv.Columns.Contains("TrangThai")) dgv.Columns["TrangThai"]!.HeaderText = "Trạng thái";
+                if (dgv.Columns.Contains("TenNhanVien")) dgv.Columns["TenNhanVien"]!.HeaderText = "Lễ tân duyệt";
+                if (dgv.Columns.Contains("TenPhong")) dgv.Columns["TenPhong"]!.HeaderText = "Phòng khám";
+                if (dgv.Columns.Contains("TenBacSi")) dgv.Columns["TenBacSi"]!.HeaderText = "Bác sĩ";
+            };
             contentPanel.Controls.Add(dgv);
 
             GridPageController? pageController = null;
@@ -538,6 +578,21 @@ namespace QlyPhongKham.Forms
             var contentPanel = new Panel { Dock = DockStyle.Fill, BackColor = C_Card, Padding = new Padding(10) };
             contentPanel.Paint += PaintCardBorder;
             var dgv = MakeGrid();
+            dgv.DataBindingComplete += (sender, args) =>
+            {
+                if (dgv.Columns.Contains("MaLichHen")) dgv.Columns["MaLichHen"]!.HeaderText = "Mã LH";
+                if (dgv.Columns.Contains("NgayHen")) dgv.Columns["NgayHen"]!.HeaderText = "Ngày hẹn";
+                if (dgv.Columns.Contains("GioHen")) dgv.Columns["GioHen"]!.HeaderText = "Giờ hẹn";
+                if (dgv.Columns.Contains("MaBN")) dgv.Columns["MaBN"]!.HeaderText = "Mã BN";
+                if (dgv.Columns.Contains("TenBN")) dgv.Columns["TenBN"]!.HeaderText = "Bệnh nhân";
+                if (dgv.Columns.Contains("SoDienThoai")) dgv.Columns["SoDienThoai"]!.HeaderText = "Điện thoại";
+                if (dgv.Columns.Contains("LyDoKham")) dgv.Columns["LyDoKham"]!.HeaderText = "Lý do khám";
+                if (dgv.Columns.Contains("TrangThaiDuyet")) dgv.Columns["TrangThaiDuyet"]!.HeaderText = "Trạng thái duyệt";
+                if (dgv.Columns.Contains("TrangThai")) dgv.Columns["TrangThai"]!.HeaderText = "Trạng thái";
+                if (dgv.Columns.Contains("TenNhanVien")) dgv.Columns["TenNhanVien"]!.HeaderText = "Lễ tân duyệt";
+                if (dgv.Columns.Contains("TenPhong")) dgv.Columns["TenPhong"]!.HeaderText = "Phòng khám";
+                if (dgv.Columns.Contains("TenBacSi")) dgv.Columns["TenBacSi"]!.HeaderText = "Bác sĩ";
+            };
             contentPanel.Controls.Add(dgv);
 
             GridPageController? pageController = null;
@@ -662,6 +717,23 @@ namespace QlyPhongKham.Forms
             dgvNV.RowTemplate.Height = 50;
             dgvNV.DataBindingComplete += (sender, args) =>
             {
+                StandardizeGridColumns(dgvNV);
+
+                // Vietnamese column headers
+                if (dgvNV.Columns.Contains("MaNV")) dgvNV.Columns["MaNV"]!.HeaderText = "Mã NV";
+                if (dgvNV.Columns.Contains("HoTen")) dgvNV.Columns["HoTen"]!.HeaderText = "Họ và tên";
+                if (dgvNV.Columns.Contains("HoTenNhanVien")) dgvNV.Columns["HoTenNhanVien"]!.HeaderText = "Họ và tên";
+                if (dgvNV.Columns.Contains("ChucVu")) dgvNV.Columns["ChucVu"]!.HeaderText = "Chức vụ";
+                if (dgvNV.Columns.Contains("TenKhoa")) dgvNV.Columns["TenKhoa"]!.HeaderText = "Khoa";
+                if (dgvNV.Columns.Contains("ChuyenKhoa")) dgvNV.Columns["ChuyenKhoa"]!.HeaderText = "Chuyên khoa";
+                if (dgvNV.Columns.Contains("SoDienThoai")) dgvNV.Columns["SoDienThoai"]!.HeaderText = "Điện thoại";
+                if (dgvNV.Columns.Contains("Email")) dgvNV.Columns["Email"]!.HeaderText = "Email";
+                if (dgvNV.Columns.Contains("NgayVaoLam")) dgvNV.Columns["NgayVaoLam"]!.HeaderText = "Ngày vào làm";
+                if (dgvNV.Columns.Contains("TrangThai")) dgvNV.Columns["TrangThai"]!.HeaderText = "Trạng thái";
+                // Hide sensitive columns
+                if (dgvNV.Columns.Contains("MatKhau")) dgvNV.Columns["MatKhau"]!.Visible = false;
+                if (dgvNV.Columns.Contains("MaKhoa")) dgvNV.Columns["MaKhoa"]!.Visible = false;
+
                 if (!dgvNV.Columns.Contains("AnhDaiDien"))
                     return;
 
@@ -843,6 +915,18 @@ namespace QlyPhongKham.Forms
             var roomPanel = CreateSectionPanel("DANH SÁCH PHÒNG KHÁM");
             var departments = MakeGrid(DockStyle.None);
             var rooms = MakeGrid(DockStyle.None);
+            departments.DataBindingComplete += (s, e) =>
+            {
+                if (departments.Columns.Contains("MaKhoa")) departments.Columns["MaKhoa"]!.HeaderText = "Mã khoa";
+                if (departments.Columns.Contains("TenKhoa")) departments.Columns["TenKhoa"]!.HeaderText = "Tên chuyên khoa";
+            };
+            rooms.DataBindingComplete += (s, e) =>
+            {
+                if (rooms.Columns.Contains("MaPhong")) rooms.Columns["MaPhong"]!.HeaderText = "Mã phòng";
+                if (rooms.Columns.Contains("TenPhong")) rooms.Columns["TenPhong"]!.HeaderText = "Tên phòng khám";
+                if (rooms.Columns.Contains("TenKhoa")) rooms.Columns["TenKhoa"]!.HeaderText = "Khoa phụ trách";
+                if (rooms.Columns.Contains("MaKhoa")) rooms.Columns["MaKhoa"]!.Visible = false;
+            };
             departmentPanel.Controls.Add(departments);
             roomPanel.Controls.Add(rooms);
             wrapper.Controls.Add(departmentPanel, 0, 0);
@@ -1105,6 +1189,16 @@ namespace QlyPhongKham.Forms
             SetPageHeader("Nhật ký hệ thống", "Nhật ký thao tác");
             panelContent.Controls.Clear();
             var dgv = MakeGrid(DockStyle.Fill);
+            dgv.DataBindingComplete += (s, e) =>
+            {
+                if (dgv.Columns.Contains("NgayGhi")) dgv.Columns["NgayGhi"]!.HeaderText = "Thời gian ghi";
+                if (dgv.Columns.Contains("MaNV")) dgv.Columns["MaNV"]!.HeaderText = "Mã NV";
+                if (dgv.Columns.Contains("TenDangNhap")) dgv.Columns["TenDangNhap"]!.HeaderText = "Tên tài khoản";
+                if (dgv.Columns.Contains("HanhDong")) dgv.Columns["HanhDong"]!.HeaderText = "Hành động";
+                if (dgv.Columns.Contains("DoiTuong")) dgv.Columns["DoiTuong"]!.HeaderText = "Đối tượng tác động";
+                if (dgv.Columns.Contains("ChiTiet")) dgv.Columns["ChiTiet"]!.HeaderText = "Nội dung chi tiết";
+                if (dgv.Columns.Contains("MayTram")) dgv.Columns["MayTram"]!.HeaderText = "Máy trạm";
+            };
             dgv.DataSource = ClinicDAL.LayNhatKyHeThong(DateTime.Today.AddDays(-30), DateTime.Today);
             panelContent.Controls.Add(dgv);
         }

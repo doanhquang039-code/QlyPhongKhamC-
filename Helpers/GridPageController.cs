@@ -9,7 +9,7 @@ namespace QlyPhongKham.Helpers
         private readonly DataGridView _grid;
         private readonly Func<int, int, DataTable> _loadPage;
         private readonly TableLayoutPanel _layout;
-        private readonly FlowLayoutPanel _details;
+
         private readonly Label _pageLabel;
         private readonly Button _previousButton;
         private readonly Button _nextButton;
@@ -21,7 +21,6 @@ namespace QlyPhongKham.Helpers
             DataGridView grid,
             Func<int, int, DataTable> loadPage,
             TableLayoutPanel layout,
-            FlowLayoutPanel details,
             Label pageLabel,
             Button previousButton,
             Button nextButton)
@@ -29,12 +28,10 @@ namespace QlyPhongKham.Helpers
             _grid = grid;
             _loadPage = loadPage;
             _layout = layout;
-            _details = details;
             _pageLabel = pageLabel;
             _previousButton = previousButton;
             _nextButton = nextButton;
 
-            _grid.SelectionChanged += UpdateDetails;
             _grid.SizeChanged += GridSizeChanged;
             _previousButton.Click += (sender, args) =>
             {
@@ -102,21 +99,6 @@ namespace QlyPhongKham.Helpers
             footer.Controls.Add(pageLabel);
             footer.Controls.Add(previousButton);
 
-            var details = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                AutoScroll = true,
-                WrapContents = true,
-                Padding = new Padding(8, 5, 8, 5),
-                BackColor = Color.White
-            };
-            var detailHost = new Panel
-            {
-                Dock = DockStyle.Fill,
-                Padding = new Padding(0, 1, 0, 1),
-                BackColor = Color.FromArgb(229, 231, 235)
-            };
-            detailHost.Controls.Add(details);
 
             var layout = new TableLayoutPanel
             {
@@ -127,25 +109,23 @@ namespace QlyPhongKham.Helpers
                 Margin = grid.Margin,
                 Padding = Padding.Empty,
                 ColumnCount = 1,
-                RowCount = 3,
+                RowCount = 2,
                 BackColor = Color.White
             };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 112F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38F));
 
             int childIndex = parent.Controls.GetChildIndex(grid);
             parent.Controls.Remove(grid);
             grid.Dock = DockStyle.Fill;
             grid.Margin = Padding.Empty;
             layout.Controls.Add(grid, 0, 0);
-            layout.Controls.Add(detailHost, 0, 1);
-            layout.Controls.Add(footer, 0, 2);
+            layout.Controls.Add(footer, 0, 1);
             parent.Controls.Add(layout);
             parent.Controls.SetChildIndex(layout, Math.Min(childIndex, parent.Controls.Count - 1));
 
-            return new GridPageController(grid, loadPage, layout, details, pageLabel, previousButton, nextButton);
+            return new GridPageController(grid, loadPage, layout, pageLabel, previousButton, nextButton);
         }
 
         internal void Reload(bool resetPage = true)
@@ -190,7 +170,6 @@ namespace QlyPhongKham.Helpers
             }
 
             _grid.DataSource = rows;
-            UpdateDetails(this, EventArgs.Empty);
             int firstRow = _totalCount == 0 ? 0 : _pageIndex * _pageSize + 1;
             int lastRow = Math.Min((_pageIndex + 1) * _pageSize, _totalCount);
             int pageCount = Math.Max(1, (int)Math.Ceiling(_totalCount / (double)_pageSize));
@@ -199,65 +178,6 @@ namespace QlyPhongKham.Helpers
                 : $"Trang {_pageIndex + 1}/{pageCount}  •  {firstRow}-{lastRow} / {_totalCount}";
             _previousButton.Enabled = _pageIndex > 0;
             _nextButton.Enabled = lastRow < _totalCount;
-        }
-
-        private void UpdateDetails(object? sender, EventArgs e)
-        {
-            _details.SuspendLayout();
-            while (_details.Controls.Count > 0)
-                _details.Controls[0].Dispose();
-
-            if (_grid.SelectedRows.Count > 0
-                && _grid.SelectedRows[0].DataBoundItem is DataRowView selected)
-            {
-                foreach (DataColumn column in selected.Row.Table.Columns)
-                {
-                    object value = selected.Row[column];
-                    string displayValue = column.DataType == typeof(byte[])
-                        ? value == DBNull.Value ? "Chưa có ảnh" : "Có ảnh đại diện"
-                        : value == DBNull.Value
-                            ? "—"
-                            : value is Image ? "Có ảnh đại diện" : Convert.ToString(value) ?? "";
-                    var item = new Panel
-                    {
-                        Width = 238,
-                        Height = 42,
-                        Margin = new Padding(4, 1, 4, 3),
-                        BackColor = Color.White
-                    };
-                    item.Controls.Add(new Label
-                    {
-                        Text = column.Caption,
-                        Location = new Point(2, 0),
-                        AutoSize = true,
-                        Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
-                        ForeColor = Color.FromArgb(107, 114, 128)
-                    });
-                    item.Controls.Add(new Label
-                    {
-                        Text = displayValue,
-                        Location = new Point(2, 17),
-                        Size = new Size(230, 22),
-                        AutoEllipsis = true,
-                        Font = new Font("Segoe UI", 8.5F),
-                        ForeColor = Color.FromArgb(15, 32, 54)
-                    });
-                    _details.Controls.Add(item);
-                }
-            }
-            else
-            {
-                _details.Controls.Add(new Label
-                {
-                    Text = "Chọn một dòng trong bảng để xem đầy đủ thông tin",
-                    AutoSize = true,
-                    Margin = new Padding(6, 8, 0, 0),
-                    Font = new Font("Segoe UI", 8.5F),
-                    ForeColor = Color.FromArgb(107, 114, 128)
-                });
-            }
-
-            _details.ResumeLayout();
         }
     }
 }

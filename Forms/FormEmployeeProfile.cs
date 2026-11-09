@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
 using System.Windows.Forms;
@@ -86,6 +87,12 @@ namespace QlyPhongKham.Forms
             string role = Value(profile, "ChucVu", "");
             if (string.IsNullOrWhiteSpace(specialty))
                 specialty = "Chưa cập nhật";
+            bool hasRoomAssignments = role is "LeTan" or "BacSi";
+            int cardHeight = hasRoomAssignments ? 430 : 354;
+            int formHeight = hasRoomAssignments ? 616 : 540;
+            ClientSize = new Size(520, formHeight);
+            card.Size = new Size(472, cardHeight);
+
             var roleLabel = new Label
             {
                 Text = string.IsNullOrWhiteSpace(specialty) || specialty == "Chưa cập nhật"
@@ -105,10 +112,31 @@ namespace QlyPhongKham.Forms
             AddField(card, "Điện thoại", Value(profile, "SoDienThoai", "Chưa cập nhật"), 20, 283);
             AddField(card, "Email", Value(profile, "Email", "Chưa cập nhật"), 20, 321);
 
+            if (hasRoomAssignments)
+            {
+                var assignments = ClinicDAL.LayPhanCongPhongNhanVien(maNV, role);
+                var rooms = new List<string>();
+                var departments = new List<string>();
+                foreach (DataRow assignment in assignments.Rows)
+                {
+                    string room = Value(assignment, "TenPhong", "");
+                    string department = Value(assignment, "TenKhoa", "");
+                    if (!string.IsNullOrWhiteSpace(room) && !rooms.Contains(room))
+                        rooms.Add(room);
+                    if (!string.IsNullOrWhiteSpace(department) && !departments.Contains(department))
+                        departments.Add(department);
+                }
+
+                string roomValue = rooms.Count > 0 ? string.Join(", ", rooms) : "Chưa được phân công";
+                string departmentValue = departments.Count > 0 ? string.Join(", ", departments) : "Chưa được phân công";
+                AddField(card, "Phòng khám", roomValue, 20, 359);
+                AddField(card, "Khoa", departmentValue, 20, 397);
+            }
+
             var close = new ModernButton
             {
                 Text = "Đóng",
-                Location = new Point(205, 477),
+                Location = new Point(205, hasRoomAssignments ? 553 : 477),
                 Size = new Size(110, 40),
                 BackColor = Color.FromArgb(0, 145, 134),
                 HoverColor = Color.FromArgb(0, 119, 111),

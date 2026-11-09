@@ -12,7 +12,10 @@ namespace QlyPhongKham.Forms
         public FormCapPhatThuoc(DataTable pending)
         {
             Text="Đơn thuốc chờ cấp phát"; StartPosition=FormStartPosition.CenterParent; Size=new Size(850,480); MinimumSize=new Size(700,360);
-            grid.DataSource=pending; Controls.Add(grid);
+            grid.DataBindingComplete += (s, e) => FormMain.StandardizeGridColumns(grid);
+            grid.DataSource=pending;
+            FormMain.StandardizeGridColumns(grid);
+            Controls.Add(grid);
             var bar=new Panel { Dock=DockStyle.Bottom,Height=52 };
             var issue=new Button { Text="Cấp thuốc (FEFO)",Dock=DockStyle.Right,Width=150 };
             var outside=new Button { Text="Bệnh nhân mua ngoài",Dock=DockStyle.Right,Width=155 };

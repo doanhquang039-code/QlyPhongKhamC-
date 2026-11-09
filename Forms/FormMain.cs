@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Data;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Microsoft.Data.SqlClient;
@@ -117,6 +118,10 @@ namespace QlyPhongKham.Forms
         private  Panel  topBar          = null!;
         private Button btnRefreshPage = null!;
         private Action? _refreshPageAction;
+        private Button _btnLanguageVi = null!;
+        private Button _btnLanguageEn = null!;
+        private Label _lblDate = null!;
+        private Action? _positionTopBarRightControls;
 
         // ── Bell notification ──
         private Button _btnBell = null!;
@@ -151,6 +156,8 @@ namespace QlyPhongKham.Forms
             ClinicDAL.EnsurePharmacySchema();
             Resize += (s, e) => ApplyResponsiveLayout();
             ApplyRolePermissions();
+            UiText.Apply(this);
+            UpdateLanguageButtons();
         }
 
         private void InitializeComponent()
@@ -204,16 +211,16 @@ namespace QlyPhongKham.Forms
 
             // Nav buttons
             btnNavTongQuan  = CreateNavBtn("🏠", "Tổng quan",         32);
-            btnNavLichHen   = CreateNavBtn("📋", "Lịch hẹn hôm nay",  78);
+            btnNavLichHen   = CreateNavBtn("📋", "Lịch hẹn",          78);
             btnNavBenhNhan  = CreateNavBtn("👤", "Bệnh nhân",         124);
-            btnNavKhamBenh  = CreateNavBtn("🩺", "Phòng khám",        170);
+            btnNavKhamBenh  = CreateNavBtn("🩺", "Phiếu khám",        170);
             btnNavKhoThuoc  = CreateNavBtn("💊", "Kho thuốc",         216);
             btnNavDichVu    = CreateNavBtn("🔬", "Bảng giá dịch vụ",   262);
-            btnNavThuNgan   = CreateNavBtn("💰", "Thu ngân & HĐ",     308);
+            btnNavThuNgan   = CreateNavBtn("💰", "Hóa đơn & Thu ngân", 308);
             btnNavNhanVien  = CreateNavBtn("👥", "Nhân sự",            354);
-            btnNavBaoCao    = CreateNavBtn("📊", "Báo cáo",            400);
-            btnNavKhoaPhong = CreateNavBtn("🏥", "Khoa / Phòng khám",  446);
-            btnNavNhatKy    = CreateNavBtn("📜", "Nhật ký",            492);
+            btnNavKhoaPhong = CreateNavBtn("🏥", "Khoa & Phòng khám",  400);
+            btnNavBaoCao    = CreateNavBtn("📊", "Báo cáo thống kê",   446);
+            btnNavNhatKy    = CreateNavBtn("📜", "Nhật ký hệ thống",   492);
 
             btnNavTongQuan.Click += (s, e) =>
             {
@@ -426,7 +433,7 @@ namespace QlyPhongKham.Forms
 
             lblBreadcrumb = new Label { Text = "Quản trị viên  ›  Tổng quan", Font = F_Small, ForeColor = C_TextGray, Location = new Point(24, 12), AutoSize = true };
             lblPageTitle  = new Label { Text = "Tổng quan", Font = new Font("Segoe UI", 12f, FontStyle.Bold), ForeColor = C_TextDark, Location = new Point(24, 30), AutoSize = true };
-            var lblDate   = new Label { Text = $"📅  {DateTime.Now:dddd, dd/MM/yyyy}", Font = F_Small, ForeColor = C_TextGray, AutoSize = true };
+            _lblDate = new Label { Text = GetDateLabel(), Font = F_Small, ForeColor = C_TextGray, AutoSize = true };
 
             btnRefreshPage = SecondaryBtn("↻ Làm mới", 0, 15, 100, 34, C_Blue);
             btnRefreshPage.Click += (s, e) => _refreshPageAction?.Invoke();
@@ -458,24 +465,31 @@ namespace QlyPhongKham.Forms
 
             _btnBell.Click += (s, e) => ShowNotificationPanel();
 
+            _btnLanguageVi = CreateLanguageButton("VI");
+            _btnLanguageEn = CreateLanguageButton("EN");
+            _btnLanguageVi.Click += (s, e) => SetLanguage(false);
+            _btnLanguageEn.Click += (s, e) => SetLanguage(true);
+
             void PositionTopBarRightControls()
             {
-                // Sắp xếp thứ tự từ phải qua trái với khoảng cách hợp lý:
-                // [lblDate]  (cách 20px)  [btnRefreshPage]  (cách 12px)  [🔔 icon]  (cách lề phải 20px)
                 int rightEdge = topBar.ClientSize.Width - 20;
 
-                _btnBell.Location      = new Point(rightEdge - _btnBell.Width, (topBar.ClientSize.Height - _btnBell.Height) / 2);
+                _btnLanguageEn.Location = new Point(rightEdge - _btnLanguageEn.Width, (topBar.ClientSize.Height - _btnLanguageEn.Height) / 2);
+                _btnLanguageVi.Location = new Point(_btnLanguageEn.Left - 2 - _btnLanguageVi.Width, _btnLanguageEn.Top);
+                _btnBell.Location      = new Point(_btnLanguageVi.Left - 8 - _btnBell.Width, (topBar.ClientSize.Height - _btnBell.Height) / 2);
                 _lblBellBadge.Location = new Point(_btnBell.Right - 14, _btnBell.Top - 2);
 
                 btnRefreshPage.Location = new Point(_btnBell.Left - 12 - btnRefreshPage.Width, (topBar.ClientSize.Height - btnRefreshPage.Height) / 2);
 
-                lblDate.Location = new Point(btnRefreshPage.Left - 20 - lblDate.Width, (topBar.ClientSize.Height - lblDate.Height) / 2);
+                _lblDate.Location = new Point(btnRefreshPage.Left - 20 - _lblDate.Width, (topBar.ClientSize.Height - _lblDate.Height) / 2);
             }
+            _positionTopBarRightControls = PositionTopBarRightControls;
             topBar.SizeChanged += (s, e) => PositionTopBarRightControls();
             PositionTopBarRightControls();
 
-            topBar.Controls.AddRange(new Control[] { lblBreadcrumb, lblPageTitle, btnRefreshPage, lblDate, _btnBell, _lblBellBadge });
+            topBar.Controls.AddRange(new Control[] { lblBreadcrumb, lblPageTitle, btnRefreshPage, _lblDate, _btnBell, _lblBellBadge, _btnLanguageVi, _btnLanguageEn });
             this.Controls.Add(topBar);
+            UpdateLanguageButtons();
 
             // Poll thông báo mỗi 30 giây
             if (SessionState.CurrentUser != null)
@@ -487,6 +501,51 @@ namespace QlyPhongKham.Forms
                 RefreshBellBadge();
                 FormClosed += (s, e) => { _notifTimer?.Stop(); _notifTimer?.Dispose(); };
             }
+        }
+
+        private static Button CreateLanguageButton(string text)
+        {
+            var button = new Button
+            {
+                Text = text,
+                Size = new Size(42, 32),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+            button.FlatAppearance.BorderSize = 1;
+            return button;
+        }
+
+        private void SetLanguage(bool english)
+        {
+            UiText.IsEnglish = english;
+            UiText.Apply(this);
+            UpdateLanguageButtons();
+            if (_lblDate != null)
+            {
+                _lblDate.Text = GetDateLabel();
+                _positionTopBarRightControls?.Invoke();
+            }
+        }
+
+        private static string GetDateLabel()
+        {
+            var culture = CultureInfo.GetCultureInfo(UiText.IsEnglish ? "en-US" : "vi-VN");
+            return $"📅  {DateTime.Now.ToString("dddd, dd/MM/yyyy", culture)}";
+        }
+
+        private void UpdateLanguageButtons()
+        {
+            if (_btnLanguageVi == null || _btnLanguageEn == null)
+                return;
+
+            _btnLanguageVi.BackColor = UiText.IsEnglish ? Color.White : C_Teal;
+            _btnLanguageVi.ForeColor = UiText.IsEnglish ? C_TextGray : Color.White;
+            _btnLanguageVi.FlatAppearance.BorderColor = UiText.IsEnglish ? C_Border : C_Teal;
+            _btnLanguageEn.BackColor = UiText.IsEnglish ? C_Teal : Color.White;
+            _btnLanguageEn.ForeColor = UiText.IsEnglish ? Color.White : C_TextGray;
+            _btnLanguageEn.FlatAppearance.BorderColor = UiText.IsEnglish ? C_Teal : C_Border;
         }
 
         private void RefreshBellBadge()
@@ -635,8 +694,8 @@ namespace QlyPhongKham.Forms
 
         internal void SetPageHeader(string breadcrumb, string title)
         {
-            lblBreadcrumb.Text = breadcrumb;
-            lblPageTitle.Text  = title;
+            UiText.SetText(lblBreadcrumb, breadcrumb);
+            UiText.SetText(lblPageTitle, title);
         }
 
         // ════════════════════════════════════════════════════════
@@ -645,6 +704,7 @@ namespace QlyPhongKham.Forms
         private void BuildContentArea()
         {
             panelContent = new Panel { Dock = DockStyle.Fill, BackColor = C_Bg, Padding = new Padding(20, 16, 20, 16) };
+            UiText.Watch(panelContent);
             this.Controls.Add(panelContent);
         }
 
@@ -778,17 +838,49 @@ namespace QlyPhongKham.Forms
             else // Admin
             {
                 btnNavTongQuan.Visible = true;
+                btnNavTongQuan.Text = "  🏠  Tổng quan";
+                btnNavTongQuan.Location = new Point(8, 32);
+
                 btnNavLichHen.Visible = true;
+                btnNavLichHen.Text = "  📋  Lịch hẹn";
+                btnNavLichHen.Location = new Point(8, 78);
+
                 btnNavBenhNhan.Visible = true;
+                btnNavBenhNhan.Text = "  👤  Bệnh nhân";
+                btnNavBenhNhan.Location = new Point(8, 124);
+
                 btnNavKhamBenh.Visible = true;
                 btnNavKhamBenh.Text = "  🩺  Phiếu khám";
+                btnNavKhamBenh.Location = new Point(8, 170);
+
                 btnNavKhoThuoc.Visible = true;
+                btnNavKhoThuoc.Text = "  💊  Kho thuốc";
+                btnNavKhoThuoc.Location = new Point(8, 216);
+
                 btnNavDichVu.Visible   = true;
+                btnNavDichVu.Text = "  🔬  Bảng giá dịch vụ";
+                btnNavDichVu.Location  = new Point(8, 262);
+
                 btnNavThuNgan.Visible = true;
+                btnNavThuNgan.Text = "  💰  Hóa đơn & Thu ngân";
+                btnNavThuNgan.Location = new Point(8, 308);
+
                 btnNavNhanVien.Visible = true;
-                btnNavBaoCao.Visible = true;
+                btnNavNhanVien.Text = "  👥  Nhân sự";
+                btnNavNhanVien.Location = new Point(8, 354);
+
                 btnNavKhoaPhong.Visible = true;
+                btnNavKhoaPhong.Text = "  🏥  Khoa & Phòng khám";
+                btnNavKhoaPhong.Location = new Point(8, 400);
+
+                btnNavBaoCao.Visible = true;
+                btnNavBaoCao.Text = "  📊  Báo cáo thống kê";
+                btnNavBaoCao.Location = new Point(8, 446);
+
                 btnNavNhatKy.Visible   = true;
+                btnNavNhatKy.Text = "  📜  Nhật ký hệ thống";
+                btnNavNhatKy.Location = new Point(8, 492);
+
                 ApplyResponsiveLayout();
                 ShowDashboard();
             }
@@ -847,7 +939,205 @@ namespace QlyPhongKham.Forms
             g.AlternatingRowsDefaultCellStyle.BackColor       = Color.FromArgb(250, 252, 255);
             g.RowTemplate.Height  = 38;
             g.EnableHeadersVisualStyles = false;
+            g.DataBindingComplete += (sender, args) => StandardizeGridColumns(g);
             return g;
+        }
+
+        private static readonly Dictionary<string, string> ColumnHeaderMap = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // Bệnh nhân & Hồ sơ
+            { "MaBN", "Mã BN" },
+            { "TenBN", "Họ tên bệnh nhân" },
+            { "HoTen", "Họ và tên" },
+            { "HoTenNhanVien", "Họ và tên" },
+            { "GioiTinh", "Giới tính" },
+            { "Phai", "Phái" },
+            { "Tuoi", "Tuổi" },
+            { "NgaySinh", "Ngày sinh" },
+            { "NamSinh", "Năm sinh" },
+            { "DiaChi", "Địa chỉ" },
+            { "SoDienThoai", "Số điện thoại" },
+            { "SDT", "Số điện thoại" },
+            { "Email", "Email" },
+            { "CCCD", "CCCD / CMND" },
+            { "SoCCCD", "CCCD / CMND" },
+            { "BHYT", "Số BHYT" },
+            { "MaBHYT", "Số BHYT" },
+            { "SoBHYT", "Số BHYT" },
+            { "NgheNghiep", "Nghề nghiệp" },
+            { "GhiChu", "Ghi chú" },
+            { "TrangThai", "Trạng thái" },
+            { "TrangThaiKham", "Trạng thái khám" },
+
+            // Khám bệnh & Phiếu khám
+            { "MaPK", "Mã phiếu khám" },
+            { "STT", "STT" },
+            { "GioKham", "Giờ khám" },
+            { "NgayKham", "Ngày khám" },
+            { "Ngay", "Ngày" },
+            { "LyDoKham", "Lý do khám" },
+            { "TrieuChung", "Triệu chứng" },
+            { "ChanDoan", "Chẩn đoán" },
+            { "ChanDoanChinh", "Chẩn đoán chính" },
+            { "ChanDoanPhu", "Chẩn đoán phụ" },
+            { "LoiDan", "Lời dặn bác sĩ" },
+            { "KhamLamSang", "Khám lâm sàng" },
+            { "SinhHieu", "Sinh hiệu" },
+            { "Mach", "Mạch" },
+            { "HuyetAp", "Huyết áp" },
+            { "NhietDo", "Nhiệt độ" },
+            { "NhipTho", "Nhịp thở" },
+            { "CanNang", "Cân nặng (kg)" },
+            { "ChieuCao", "Chiều cao (cm)" },
+            { "BMI", "BMI" },
+            { "Spo2", "SpO2 (%)" },
+            { "TenBacSi", "Bác sĩ phụ trách" },
+            { "BacSiKham", "Bác sĩ khám" },
+            { "MaBacSi", "Mã bác sĩ" },
+
+            // Lịch hẹn
+            { "MaLichHen", "Mã lịch hẹn" },
+            { "NgayHen", "Ngày hẹn" },
+            { "GioHen", "Giờ hẹn" },
+            { "ThoiGianHen", "Thời gian hẹn" },
+            { "TrangThaiDuyet", "Trạng thái duyệt" },
+            { "SoLanVangMat", "Số lần vắng" },
+            { "TenNhanVien", "Lễ tân tiếp nhận" },
+            { "NguoiTiepNhan", "Người tiếp nhận" },
+
+            // Nhân sự & Phân công
+            { "MaNV", "Mã nhân viên" },
+            { "ChucVu", "Chức vụ" },
+            { "ChuyenKhoa", "Chuyên khoa" },
+            { "NgayVaoLam", "Ngày vào làm" },
+            { "CaTruc", "Ca làm việc" },
+            { "TenPhong", "Phòng khám" },
+            { "MaPhong", "Mã phòng" },
+            { "TenKhoa", "Khoa / Chuyên khoa" },
+            { "MaKhoa", "Mã khoa" },
+            { "SoLuotKham", "Số lượt khám" },
+            { "SoBacSi", "Bác sĩ phụ trách" },
+            { "SoYTa", "Điều dưỡng / Y tá" },
+            { "SoCaKham", "Số ca khám" },
+
+            // Dược phẩm & Kho thuốc
+            { "MaThuoc", "Mã thuốc" },
+            { "TenThuoc", "Tên thuốc / Biệt dược" },
+            { "DonViTinh", "Đơn vị tính" },
+            { "DVT", "ĐVT" },
+            { "SoLuong", "Số lượng" },
+            { "SoLuongTon", "Tồn kho" },
+            { "SoLuongKe", "Số lượng kê" },
+            { "GiaBan", "Đơn giá (đ)" },
+            { "GiaVon", "Giá vốn (đ)" },
+            { "DonGia", "Đơn giá (đ)" },
+            { "DonGiaBan", "Đơn giá bán (đ)" },
+            { "DonGiaNhap", "Đơn giá nhập (đ)" },
+            { "DonGiaThoiDiem", "Đơn giá (đ)" },
+            { "ThanhTien", "Thành tiền (đ)" },
+            { "CachDung", "Cách dùng / Liều lượng" },
+            { "CachDungMacDinh", "Cách dùng mặc định" },
+            { "HanSuDung", "Hạn sử dụng" },
+            { "HSD", "Hạn SD" },
+            { "NhaCungCap", "Nhà cung cấp" },
+            { "HoatChat", "Hoạt chất" },
+            { "HamLuong", "Hàm lượng" },
+            { "DuongDung", "Đường dùng" },
+            { "QuyCach", "Quy cách đóng gói" },
+            { "CanhBao", "Cảnh báo" },
+            { "LoSanXuat", "Lô sản xuất" },
+            { "SoLo", "Số lô" },
+            { "MaLoThuoc", "Mã lô thuốc" },
+            { "NgayNhap", "Ngày nhập" },
+            { "NgayHetHan", "Ngày hết hạn" },
+            { "SoNgayConLai", "Số ngày còn lại" },
+
+            // Dịch vụ CLS
+            { "MaDV", "Mã dịch vụ" },
+            { "TenDV", "Tên dịch vụ kỹ thuật" },
+            { "LoaiDV", "Loại dịch vụ" },
+            { "KetQua", "Kết quả cận lâm sàng" },
+            { "ChiDinh", "Chỉ định" },
+            { "MaChiDinh", "Mã chỉ định" },
+
+            // Tài chính, Hóa đơn & Thu ngân
+            { "MaHD", "Mã hóa đơn" },
+            { "MaHoaDon", "Mã hóa đơn" },
+            { "NgayLap", "Ngày lập hóa đơn" },
+            { "TongTien", "Tổng chi phí (đ)" },
+            { "DaThu", "Đã thu (đ)" },
+            { "TienDaThu", "Đã thu (đ)" },
+            { "ConNo", "Còn nợ (đ)" },
+            { "TienConNo", "Còn nợ (đ)" },
+            { "TienBaoHiem", "Bảo hiểm chi trả (đ)" },
+            { "PhanTramBaoHiem", "% Bảo hiểm" },
+            { "TienKham", "Tiền khám (đ)" },
+            { "TienThuoc", "Tiền thuốc (đ)" },
+            { "TienDichVu", "Tiền dịch vụ (đ)" },
+            { "GiamGia", "Giảm trừ (đ)" },
+            { "PhuongThucTT", "Phương thức thanh toán" },
+            { "HinhThucTT", "Hình thức thanh toán" },
+            { "HinhThucThanhToan", "Hình thức thanh toán" },
+            { "HinhThuc", "Hình thức" },
+            { "NguoiThu", "Người thu ngân" },
+            { "ThuNgan", "Thu ngân" },
+            { "DoanhThu", "Doanh thu (đ)" },
+            { "SoHoaDon", "Số hóa đơn" },
+            { "SoTien", "Số tiền (đ)" },
+            { "ThoiGian", "Thời gian" },
+            { "TenHang", "Tên mặt hàng / Dịch vụ" },
+            { "MaGiaoDich", "Mã giao dịch" },
+            { "MaCa", "Mã ca làm việc" },
+
+            // Thống kê & Nhật ký
+            { "SoLuot", "Số lượt" },
+            { "NgayGhi", "Thời gian ghi nhận" },
+            { "TenDangNhap", "Tài khoản" },
+            { "HanhDong", "Hành động" },
+            { "DoiTuong", "Đối tượng tác động" },
+            { "ChiTiet", "Nội dung chi tiết" },
+            { "MayTram", "Máy trạm" },
+            { "MaTaiLieu", "Mã tài liệu" },
+            { "TenTep", "Tên tệp tin" },
+            { "LoaiTep", "Định dạng" },
+            { "NgayTao", "Ngày tạo" }
+        };
+
+        internal static void StandardizeGridColumns(DataGridView g)
+        {
+            if (g == null || g.Columns.Count == 0) return;
+            foreach (DataGridViewColumn col in g.Columns)
+            {
+                if (col == null) continue;
+                string colName = col.Name ?? "";
+
+                // Ẩn các cột nhạy cảm hoặc khóa kỹ thuật nội bộ
+                if (colName.Equals("MatKhau", StringComparison.OrdinalIgnoreCase) ||
+                    colName.Equals("Password", StringComparison.OrdinalIgnoreCase) ||
+                    colName.Equals("MaNV_BacSi", StringComparison.OrdinalIgnoreCase))
+                {
+                    col.Visible = false;
+                    continue;
+                }
+
+                // Nếu tên cột nằm trong danh mục chuẩn hóa
+                if (ColumnHeaderMap.TryGetValue(colName, out var vnHeader))
+                {
+                    // Đổi nếu tiêu đề bằng chính tên cột gốc (chưa dịch) hoặc chưa có dấu tiếng Việt
+                    if (string.Equals(col.HeaderText, colName, StringComparison.OrdinalIgnoreCase) ||
+                        !HasVietnameseDiacritics(col.HeaderText))
+                    {
+                        col.HeaderText = vnHeader;
+                    }
+                }
+            }
+        }
+
+        private static bool HasVietnameseDiacritics(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+            const string vnChars = "áàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬÉÈẺẼẸÊẾỀỂỄỆÍÌỈĨỊÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÚÙỦŨỤƯỨỪỬỮỰÝỲỶỸỴĐ";
+            return text.IndexOfAny(vnChars.ToCharArray()) >= 0;
         }
 
         internal static void SafeFormatCol(DataGridView g, string colName, string headerText, int? minWidth = null, bool visible = true, float fillWeight = 100f)

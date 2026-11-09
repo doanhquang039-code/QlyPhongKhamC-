@@ -35,7 +35,9 @@ namespace QlyPhongKham.Forms
             dgv.ColumnHeadersHeight = 36;
             dgv.EnableHeadersVisualStyles = false;
             dgv.RowTemplate.Height = 34;
+            dgv.DataBindingComplete += (s, e) => FormMain.StandardizeGridColumns(dgv);
             dgv.DataSource = ClinicDAL.LayLichSuKhamBenhNhan(maBN);
+            FormMain.StandardizeGridColumns(dgv);
 
             pnlGrid.Controls.Add(dgv);
             Controls.AddRange(new Control[] { pnlGrid, pnlTop });

@@ -1160,11 +1160,14 @@ EnsureBenhNhanEmailColumn();
                     LyDoXuLy=COALESCE(NULLIF(LTRIM(RTRIM(LyDoXuLy)),N''),N'Tự động đánh dấu sau thời gian chờ 60 phút.')
                 FROM LichHen lh
                 WHERE lh.TrangThai=N'Đã xác nhận'
-                  AND DATEADD(MINUTE,@GraceMinutes,lh.NgayHen)<=GETDATE()
+                  AND DATEADD(MINUTE,@GraceMinutes,lh.NgayHen)<GETDATE()
                   AND (@MaLeTan IS NULL OR EXISTS(
                       SELECT 1 FROM PhanCongPhong rp
                       INNER JOIN PhanCongPhong dp ON dp.MaPhong=rp.MaPhong AND dp.VaiTro=N'BacSi'
                       WHERE rp.MaNV=@MaLeTan AND rp.VaiTro=N'LeTan' AND dp.MaNV=lh.MaNV_BacSi
+                  ) OR NOT EXISTS(
+                      SELECT 1 FROM PhanCongPhong rp
+                      WHERE rp.MaNV=@MaLeTan AND rp.VaiTro=N'LeTan'
                   ))";
             return DatabaseHelper.ExecuteNonQuery(sql, new[]
             {
@@ -1235,6 +1238,9 @@ EnsureBenhNhanEmailColumn();
             }) > 0;
         }
 
+        public const int CheckInEarlyWindowMinutes = 30;
+        public const int CheckInLateWindowMinutes = 60;
+
         public static (string maPK, int stt) CheckInLichHen(int maLichHen, string maLeTan, SinhHieu? sinhHieu = null)
         {
             if (!SessionState.IsReceptionist || SessionState.CurrentUser?.MaNV != maLeTan)
@@ -1248,20 +1254,81 @@ EnsureBenhNhanEmailColumn();
             try
             {
                 string maBN, maBS, maPhong, lyDo;
-                using (var appointment = new SqlCommand(@"SELECT TOP 1 lh.MaBN,lh.MaNV_BacSi,lh.LyDoKham,pc.MaPhong
+                using (var appointment = new SqlCommand(@"SELECT TOP 1
+                        lh.MaBN, lh.MaNV_BacSi, lh.LyDoKham, lh.NgayHen, lh.TrangThai,
+                        doctorRoom.MaPhong, receptionRoom.MaPhong,
+                        CASE WHEN EXISTS (
+                            SELECT 1 FROM PhanCongPhong assigned
+                            WHERE assigned.MaNV=@MaLeTan AND assigned.VaiTro=N'LeTan'
+                        ) THEN 1 ELSE 0 END,
+                        GETDATE(),
+                        CASE WHEN bs.MaNV IS NULL THEN 0 ELSE 1 END,
+                        CASE WHEN le.MaNV IS NULL THEN 0 ELSE 1 END
                     FROM LichHen lh WITH (UPDLOCK,HOLDLOCK)
-                    INNER JOIN PhanCongPhong pc ON pc.MaNV=@MaLeTan AND pc.VaiTro=N'LeTan' AND pc.MaPhong IN
-                        (SELECT MaPhong FROM PhanCongPhong WHERE MaNV=lh.MaNV_BacSi AND VaiTro=N'BacSi')
-                    INNER JOIN NhanVien le ON le.MaNV=pc.MaNV AND le.ChucVu=N'LeTan' AND le.TrangThai=1
-                    INNER JOIN NhanVien bs ON bs.MaNV=lh.MaNV_BacSi AND bs.ChucVu=N'BacSi' AND bs.TrangThai=1
-                    WHERE lh.MaLichHen=@MaLichHen AND lh.TrangThai=N'Đã xác nhận' AND lh.NgayHen<=GETDATE()
-                    ORDER BY pc.MaPhong", conn, tx))
+                    LEFT JOIN NhanVien bs ON bs.MaNV=lh.MaNV_BacSi
+                        AND bs.ChucVu=N'BacSi' AND bs.TrangThai=1
+                    LEFT JOIN NhanVien le ON le.MaNV=@MaLeTan
+                        AND le.ChucVu=N'LeTan' AND le.TrangThai=1
+                    OUTER APPLY (
+                        SELECT TOP 1 doctorAssignment.MaPhong
+                        FROM PhanCongPhong doctorAssignment
+                        WHERE doctorAssignment.MaNV=lh.MaNV_BacSi AND doctorAssignment.VaiTro=N'BacSi'
+                        ORDER BY doctorAssignment.MaPhong
+                    ) doctorRoom
+                    OUTER APPLY (
+                        SELECT TOP 1 receptionistAssignment.MaPhong
+                        FROM PhanCongPhong receptionistAssignment
+                        INNER JOIN NhanVien receptionist ON receptionist.MaNV=receptionistAssignment.MaNV
+                            AND receptionist.ChucVu=N'LeTan' AND receptionist.TrangThai=1
+                        WHERE receptionistAssignment.MaNV=@MaLeTan
+                          AND receptionistAssignment.VaiTro=N'LeTan'
+                          AND EXISTS (
+                              SELECT 1 FROM PhanCongPhong doctorAssignment
+                              WHERE doctorAssignment.MaNV=lh.MaNV_BacSi
+                                AND doctorAssignment.VaiTro=N'BacSi'
+                                AND doctorAssignment.MaPhong=receptionistAssignment.MaPhong
+                          )
+                        ORDER BY receptionistAssignment.MaPhong
+                    ) receptionRoom
+                    WHERE lh.MaLichHen=@MaLichHen", conn, tx))
                 {
                     appointment.Parameters.AddWithValue("@MaLichHen", maLichHen);
                     appointment.Parameters.AddWithValue("@MaLeTan", maLeTan);
                     using var reader = appointment.ExecuteReader();
-                    if (!reader.Read()) throw new InvalidOperationException("Lịch không còn ở trạng thái đã xác nhận hoặc không thuộc phòng được phân công.");
-                    maBN = reader.GetString(0); maBS = reader.GetString(1); lyDo = reader.IsDBNull(2) ? "" : reader.GetString(2); maPhong = reader.GetString(3);
+                    if (!reader.Read())
+                        throw new InvalidOperationException("Không tìm thấy lịch hẹn cần check-in.");
+
+                    maBN = reader.GetString(0);
+                    maBS = reader.GetString(1);
+                    lyDo = reader.IsDBNull(2) ? "" : reader.GetString(2);
+                    DateTime appointmentTime = reader.GetDateTime(3);
+                    string appointmentStatus = reader.GetString(4);
+                    string? doctorRoom = reader.IsDBNull(5) ? null : reader.GetString(5);
+                    string? receptionRoom = reader.IsDBNull(6) ? null : reader.GetString(6);
+                    bool hasReceptionAssignments = reader.GetInt32(7) != 0;
+                    DateTime serverNow = reader.GetDateTime(8);
+                    bool doctorIsActive = reader.GetInt32(9) != 0;
+                    bool receptionistIsActive = reader.GetInt32(10) != 0;
+
+                    if (appointmentStatus != "Đã xác nhận")
+                        throw new InvalidOperationException(
+                            $"Lịch hẹn đang ở trạng thái '{appointmentStatus}', chỉ lịch đã xác nhận mới được check-in.");
+                    if (!receptionistIsActive)
+                        throw new UnauthorizedAccessException("Tài khoản lễ tân không còn hoạt động.");
+                    if (serverNow < appointmentTime.AddMinutes(-CheckInEarlyWindowMinutes))
+                        throw new InvalidOperationException(
+                            $"Chỉ được check-in trong vòng {CheckInEarlyWindowMinutes} phút trước giờ hẹn ({appointmentTime:HH:mm}).");
+                    if (serverNow > appointmentTime.AddMinutes(CheckInLateWindowMinutes))
+                        throw new InvalidOperationException(
+                            $"Đã quá thời hạn check-in {CheckInLateWindowMinutes} phút sau giờ hẹn. Vui lòng liên hệ quản lý để xử lý ngoại lệ.");
+                    if (!doctorIsActive)
+                        throw new InvalidOperationException("Bác sĩ của lịch hẹn không còn hoạt động.");
+                    if (hasReceptionAssignments && receptionRoom == null)
+                        throw new InvalidOperationException(
+                            "Bác sĩ của lịch hẹn không thuộc phòng được phân công cho lễ tân đang đăng nhập.");
+
+                    maPhong = receptionRoom ?? doctorRoom
+                        ?? throw new InvalidOperationException("Bác sĩ của lịch hẹn chưa được phân công phòng khám.");
                 }
                 using (var locks = new SqlCommand("SELECT COUNT(*) FROM PhieuKham WITH (UPDLOCK,HOLDLOCK)", conn, tx)) locks.ExecuteScalar();
                 int code;
@@ -3405,6 +3472,26 @@ EnsureBenhNhanEmailColumn();
             return result.Rows.Count > 0 ? result.Rows[0] : null;
         }
 
+        public static DataTable LayPhanCongPhongNhanVien(string maNV, string vaiTro)
+        {
+            if (vaiTro is not ("LeTan" or "BacSi"))
+                throw new ArgumentOutOfRangeException(nameof(vaiTro), "Chỉ hỗ trợ tra cứu phân công lễ tân hoặc bác sĩ.");
+            const string sql = @"
+                SELECT DISTINCT p.MaPhong, p.TenPhong, k.TenKhoa
+                FROM PhanCongPhong pc
+                INNER JOIN NhanVien nv ON nv.MaNV=pc.MaNV
+                    AND nv.ChucVu=@VaiTro AND nv.TrangThai=1
+                INNER JOIN PhongKham p ON p.MaPhong=pc.MaPhong
+                LEFT JOIN Khoa k ON k.MaKhoa=p.MaKhoa
+                WHERE pc.MaNV=@MaNV AND pc.VaiTro=@VaiTro
+                ORDER BY p.TenPhong, k.TenKhoa";
+            return DatabaseHelper.ExecuteQuery(sql, new[]
+            {
+                new SqlParameter("@MaNV", maNV),
+                new SqlParameter("@VaiTro", vaiTro)
+            });
+        }
+
         public static string SinhMaNhanVien()
         {
             string sql = "SELECT TOP 1 MaNV FROM NhanVien ORDER BY MaNV DESC";
@@ -4499,6 +4586,40 @@ EnsureBenhNhanEmailColumn();
                 Convert.ToDecimal(r["TongTien"]),
                 r["HinhThucTT"].ToString() ?? "Tiền mặt"
             );
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        //  PORTAL BỆNH NHÂN: Lịch trực bác sĩ hôm nay & Lịch làm việc tuần
+        // ══════════════════════════════════════════════════════════════
+        public static DataTable LayDanhSachBacSiTrucHomNayPortal()
+        {
+            EnsureAdvancedWorkflowSchema();
+            EnsureDefaultDoctorShifts();
+            try
+            {
+                return DatabaseHelper.ExecuteQuery(@"
+                    SELECT  nv.MaNV,
+                            nv.HoTen,
+                            nv.ChucVu,
+                            nv.ChuyenKhoa,
+                            CONVERT(VARCHAR(5), clv.GioBatDau, 108) AS GioBatDau,
+                            CONVERT(VARCHAR(5), clv.GioKetThuc, 108) AS GioKetThuc,
+                            ISNULL(p.TenPhong, N'Phòng khám chuyên khoa') AS TenPhong,
+                            ISNULL(k.TenKhoa, N'Khoa Khám bệnh') AS TenKhoa,
+                            CAST(CASE WHEN CONVERT(time, GETDATE()) BETWEEN clv.GioBatDau AND clv.GioKetThuc
+                                 THEN 1 ELSE 0 END AS BIT) AS DangTrongCa
+                    FROM   dbo.CaLamViecBacSi clv
+                    INNER JOIN dbo.NhanVien nv ON nv.MaNV = clv.MaNV AND nv.TrangThai = 1 AND nv.ChucVu = N'BacSi'
+                    LEFT JOIN dbo.PhanCongPhong pc ON pc.MaNV = nv.MaNV AND pc.VaiTro = N'BacSi'
+                    LEFT JOIN dbo.PhongKham p ON p.MaPhong = pc.MaPhong
+                    LEFT JOIN dbo.Khoa k ON k.MaKhoa = p.MaKhoa
+                    WHERE  clv.Thu = DATEPART(dw, GETDATE())
+                    ORDER  BY DangTrongCa DESC, clv.GioBatDau, nv.HoTen");
+            }
+            catch
+            {
+                return new DataTable();
+            }
         }
 
         // ══════════════════════════════════════════════════════════════

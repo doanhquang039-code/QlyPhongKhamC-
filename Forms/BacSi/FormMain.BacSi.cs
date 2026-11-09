@@ -405,13 +405,17 @@ namespace QlyPhongKham.Forms
                 SafeFormatCol(dgv, "STT", "STT", 40, fillWeight: 45f);
                 SafeFormatCol(dgv, "GioKham", "Giờ", 55, fillWeight: 60f);
                 SafeFormatCol(dgv, "MaBN", "Mã BN", 65, fillWeight: 80f);
-                SafeFormatCol(dgv, "TenBN", "Bệnh nhân", 100, fillWeight: 135f);
-                SafeFormatCol(dgv, "GioiTinh", "Phái", 45, fillWeight: 60f);
+                SafeFormatCol(dgv, "TenBN", "Bệnh nhân", 110, fillWeight: 140f);
+                SafeFormatCol(dgv, "GioiTinh", "Giới tính", 65, fillWeight: 65f);
                 SafeFormatCol(dgv, "Tuoi", "Tuổi", 45, fillWeight: 45f);
-                SafeFormatCol(dgv, "LyDoKham", "Lý do khám", 115, fillWeight: 180f);
-                SafeFormatCol(dgv, "TrangThai", "Trạng thái", 100, fillWeight: 120f);
+                SafeFormatCol(dgv, "LyDoKham", "Lý do khám", 120, fillWeight: 180f);
+                SafeFormatCol(dgv, "TrangThai", "Trạng thái", 105, fillWeight: 120f);
+                SafeFormatCol(dgv, "TenKhoa", "Khoa", 110, fillWeight: 110f);
+                SafeFormatCol(dgv, "TenPhong", "Phòng khám", 110, fillWeight: 110f);
                 SafeFormatCol(dgv, "TenBacSi", "Bác sĩ", null, false);
                 SafeFormatCol(dgv, "SoDienThoai", "SĐT", null, false);
+                SafeFormatCol(dgv, "MaPhong", "", null, false);
+                SafeFormatCol(dgv, "MaKhoa", "", null, false);
             };
 
             // Filter events
@@ -1153,18 +1157,40 @@ namespace QlyPhongKham.Forms
             // ── PATIENT BANNER ──
             string maPKGoc = drPK["MaPK_Goc"] == DBNull.Value ? "" : drPK["MaPK_Goc"].ToString() ?? "";
             string lyDoChuyen = drPK["LyDoChuyen"] == DBNull.Value ? "" : drPK["LyDoChuyen"].ToString() ?? "";
-            var pnlBanner = new Panel { Dock = DockStyle.Top, Height = string.IsNullOrEmpty(maPKGoc) ? 74 : 96, BackColor = C_Card, Padding = new Padding(16, 10, 16, 10) };
+            string sinhHieuRaw = drPK["SinhHieu"] == DBNull.Value ? "" : drPK["SinhHieu"]?.ToString() ?? "";
+            string sinhHieuDisplay = "";
+            if (!string.IsNullOrWhiteSpace(sinhHieuRaw))
+            {
+                var vParts = sinhHieuRaw.Split('|');
+                if (vParts.Length >= 7)
+                {
+                    sinhHieuDisplay = $"🩸 HA: {vParts[0]} mmHg  •  ❤️ Mạch: {vParts[1]} l/p  •  🌡️ {vParts[2]}°C  •  🫁 SpO2: {vParts[3]}%  •  ⚖️ {vParts[4]}kg / {vParts[5]}cm (BMI {vParts[6]})";
+                }
+                else
+                {
+                    sinhHieuDisplay = $"🩸 Sinh hiệu: {sinhHieuRaw}";
+                }
+            }
+            else
+            {
+                sinhHieuDisplay = "ℹ️ Y tá chưa ghi nhận sinh hiệu tiền khám";
+            }
+
+            int bannerHeight = 84;
+            if (!string.IsNullOrEmpty(maPKGoc)) bannerHeight += 22;
+            var pnlBanner = new Panel { Dock = DockStyle.Top, Height = bannerHeight, BackColor = C_Card, Padding = new Padding(16, 8, 16, 8) };
             pnlBanner.Paint += PaintCardBorder;
 
-            var lblPName = new Label { Text = $"{tenBN}  ({maBN})", Location = new Point(14, 12), AutoSize = true, Font = new Font("Segoe UI", 13f, FontStyle.Bold), ForeColor = C_TextDark };
-            var lblPMeta = new Label { Text = $"STT #{stt}  •  {gioi}  •  {tuoi} tuổi  •  SĐT: {sdt}", Location = new Point(14, 40), AutoSize = true, Font = F_Small, ForeColor = C_TextGray };
+            var lblPName = new Label { Text = $"{tenBN}  ({maBN})", Location = new Point(14, 8), AutoSize = true, Font = new Font("Segoe UI", 12.5f, FontStyle.Bold), ForeColor = C_TextDark };
+            var lblPMeta = new Label { Text = $"STT #{stt}  •  {gioi}  •  {tuoi} tuổi  •  SĐT: {sdt}", Location = new Point(14, 34), AutoSize = true, Font = F_Small, ForeColor = C_TextGray };
+            var lblVitalsBanner = new Label { Text = sinhHieuDisplay, Location = new Point(14, 56), AutoSize = true, Font = F_Bold, ForeColor = Color.FromArgb(13, 148, 136) };
 
             var badgeAllergy = new Label
             {
                 Text = string.IsNullOrWhiteSpace(tienSu)
                     ? "  ⚠️ Chưa khai báo tiền sử bệnh / dị ứng  "
                     : $"  ⚠️ Cảnh báo an toàn: {tienSu}  ",
-                Location = new Point(panelContent.Width - 380, 20),
+                Location = new Point(panelContent.Width - 380, 16),
                 Size = new Size(340, 28),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 BackColor = Color.FromArgb(254, 242, 242),
@@ -1172,13 +1198,13 @@ namespace QlyPhongKham.Forms
                 Font = F_Bold,
                 TextAlign = ContentAlignment.MiddleCenter
             };
-            pnlBanner.Controls.AddRange(new Control[] { lblPName, lblPMeta, badgeAllergy });
+            pnlBanner.Controls.AddRange(new Control[] { lblPName, lblPMeta, lblVitalsBanner, badgeAllergy });
             if (!string.IsNullOrEmpty(maPKGoc))
             {
                 var transferInfo = new Label
                 {
                     Text = $"Phiếu chuyển từ {maPKGoc}: {lyDoChuyen}",
-                    Location = new Point(14, 64),
+                    Location = new Point(14, 80),
                     Size = new Size(panelContent.Width - 40, 20),
                     Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                     Font = F_Small,
@@ -1917,6 +1943,18 @@ namespace QlyPhongKham.Forms
                         MessageBox.Show("Không tìm thấy phiếu khám để hoàn tất.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         return;
                     }
+
+                    // ── Bắn thông báo bell cho Y tá tiếp nhận & Thu ngân ──
+                    try
+                    {
+                        string tenBenhNhan = drPK?["TenBN"]?.ToString() ?? "Bệnh nhân";
+                        Helpers.NotificationHelper.Push(
+                            "LeTan",
+                            $"Ca khám {_currentDoctorMaPK} đã hoàn tất",
+                            $"Bệnh nhân: {tenBenhNhan} đã khám xong và được chuyển sang hàng chờ thanh toán / cấp thuốc.",
+                            "Khám bệnh");
+                    }
+                    catch { /* không ngắt luồng */ }
                     if (MessageBox.Show("Đã hoàn tất ca khám. Bạn có muốn tạo lịch tái khám nháp cho bệnh nhân không?",
                         "Tạo lịch tái khám", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
                     {

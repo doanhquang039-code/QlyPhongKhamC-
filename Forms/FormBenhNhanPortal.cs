@@ -926,8 +926,8 @@ namespace QlyPhongKham.Forms
                     DropDownStyle = ComboBoxStyle.DropDownList,
                     Font = Font
                 };
-                string[] specialties = doctors.AsEnumerable()
-                    .Select(row => row["ChuyenKhoa"].ToString() ?? "")
+                string[] specialties = ClinicDAL.LayDanhSachKhoa().AsEnumerable()
+                    .Select(row => row["TenKhoa"].ToString() ?? "")
                     .Where(value => !string.IsNullOrWhiteSpace(value))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(value => value)
@@ -1009,7 +1009,11 @@ namespace QlyPhongKham.Forms
                     }
                     else
                     {
-                        lblDoctorShiftInfo.Text = "Chọn bác sĩ để xem lịch trực và phòng làm việc.";
+                        lblDoctorShiftInfo.Text = specialty.SelectedItem is string selectedSpecialty
+                            && !string.IsNullOrWhiteSpace(selectedSpecialty)
+                            && doctor.Items.Count == 0
+                                ? "Chuyên khoa này hiện chưa có bác sĩ được phân công để đặt lịch."
+                                : "Chọn bác sĩ để xem lịch trực và phòng làm việc.";
                     }
                 }
 
@@ -1089,6 +1093,8 @@ namespace QlyPhongKham.Forms
                     doctor.DataSource = filtered;
                     doctor.DisplayMember = "TenHienThi";
                     doctor.ValueMember = "MaNV";
+                    doctor.Enabled = filtered.Rows.Count > 0;
+                    save.Enabled = filtered.Rows.Count > 0;
                 }
 
                 // Nếu có chỉ định bác sĩ ưu tiên
@@ -1154,7 +1160,7 @@ namespace QlyPhongKham.Forms
                     ForeColor = Color.Firebrick,
                     Visible = doctors.Rows.Count == 0
                 };
-                save.Enabled = doctors.Rows.Count > 0;
+                save.Enabled = doctor.Items.Count > 0;
                 save.Click += (s, e) =>
                 {
                     if (doctor.SelectedValue == null)
@@ -1241,8 +1247,8 @@ namespace QlyPhongKham.Forms
                     DropDownStyle = ComboBoxStyle.DropDownList,
                     Font = Font
                 };
-                var specialties = doctors.AsEnumerable()
-                    .Select(row => row["ChuyenKhoa"].ToString() ?? "")
+                var specialties = ClinicDAL.LayDanhSachKhoa().AsEnumerable()
+                    .Select(row => row["TenKhoa"].ToString() ?? "")
                     .Where(value => !string.IsNullOrWhiteSpace(value))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(value => value)
@@ -1362,6 +1368,8 @@ namespace QlyPhongKham.Forms
                     doctor.DataSource = filtered;
                     doctor.DisplayMember = "TenHienThi";
                     doctor.ValueMember = "MaNV";
+                    doctor.Enabled = filtered.Rows.Count > 0;
+                    submit.Enabled = filtered.Rows.Count > 0;
                     UpdateDoctorInfo();
                 }
 
@@ -1375,9 +1383,14 @@ namespace QlyPhongKham.Forms
                         doctorInfo.Text = $"👨‍⚕️ Bác sĩ: {row["HoTen"]}\r\n🏥 {phong} ({khoa})\r\n⏰ Ca trực hôm nay: {caHienTai}\r\n📅 Lịch tuần: {lichTuan}";
                     }
                     else
-                        doctorInfo.Text = doctors.Rows.Count == 0
-                            ? "Hiện chưa có bác sĩ được phân công phòng khám."
-                            : "Chọn bác sĩ để xem phòng khám và ca trực.";
+                    {
+                        string selectedSpecialty = specialty.SelectedItem?.ToString() ?? "";
+                        doctorInfo.Text = doctor.Items.Count == 0 && !string.IsNullOrWhiteSpace(selectedSpecialty)
+                            ? "Chuyên khoa này hiện chưa có bác sĩ được phân công để đặt lịch."
+                            : doctors.Rows.Count == 0
+                                ? "Hiện chưa có bác sĩ được phân công phòng khám."
+                                : "Chọn bác sĩ để xem phòng khám và ca trực.";
+                    }
                 }
 
                 specialty.SelectedIndexChanged += (s, e) => LoadDoctors();
@@ -1419,16 +1432,16 @@ namespace QlyPhongKham.Forms
 
                 submit.Click += (s, e) =>
                 {
-                    if (time.SelectedItem == null)
-                    {
-                        ShowMessage("Bác sĩ không có slot 15 phút khả dụng. Vui lòng chọn ngày khác.",
-                            "Không còn giờ khám", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        return;
-                    }
                     if (doctor.SelectedValue == null)
                     {
                         ShowMessage("Hiện chưa có bác sĩ phù hợp để đặt lịch.", "Chưa có bác sĩ",
                             MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+                    if (time.SelectedItem == null)
+                    {
+                        ShowMessage("Bác sĩ không có slot 15 phút khả dụng. Vui lòng chọn ngày khác.",
+                            "Không còn giờ khám", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         return;
                     }
                     DateTime appointmentTime = date.Value.Date.Add(TimeSpan.Parse(time.SelectedItem?.ToString() ?? "08:00"));

@@ -22,106 +22,166 @@ namespace QlyPhongKham.Forms
         public FormDangKyBenhNhan()
         {
             Text = "Đăng ký tài khoản bệnh nhân";
-            Size = new Size(500, 570);
+            ClientSize = new Size(540, 690);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
-            BackColor = Color.White;
+            BackColor = Color.FromArgb(245, 248, 252);
             Font = new Font("Segoe UI", 9.5F);
 
-            var title = new Label
+            var header = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 100,
+                BackColor = Color.FromArgb(10, 80, 160)
+            };
+            header.Controls.Add(new Label
             {
                 Text = "TẠO TÀI KHOẢN BỆNH NHÂN",
-                Location = new Point(24, 18),
+                Location = new Point(26, 20),
                 AutoSize = true,
-                Font = new Font("Segoe UI", 13F, FontStyle.Bold),
-                ForeColor = Color.FromArgb(15, 32, 54)
-            };
-            var note = new Label
+                Font = new Font("Segoe UI", 15F, FontStyle.Bold),
+                ForeColor = Color.White
+            });
+            header.Controls.Add(new Label
             {
-                Text = "Tài khoản đăng ký sẽ có quyền Bệnh nhân và được liên kết với hồ sơ mới.",
-                Location = new Point(26, 49),
-                Size = new Size(440, 34),
-                ForeColor = Color.DimGray
+                Text = "Đăng ký hồ sơ để đặt lịch và theo dõi khám chữa bệnh.",
+                Location = new Point(28, 57),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9.5F),
+                ForeColor = Color.FromArgb(218, 234, 255)
+            });
+
+            var card = new Panel
+            {
+                Location = new Point(20, 118),
+                Size = new Size(500, 500),
+                BackColor = Color.White,
+                Padding = new Padding(20)
+            };
+            card.Paint += (s, e) =>
+            {
+                using var pen = new Pen(Color.FromArgb(224, 232, 241));
+                e.Graphics.DrawRectangle(pen, 0, 0, card.Width - 1, card.Height - 1);
             };
 
-            _username = AddTextBox("Tên đăng nhập (*):", 95);
-            _password = AddTextBox("Mật khẩu (*):", 135, password: true);
-            _confirmPassword = AddTextBox("Nhập lại mật khẩu (*):", 175, password: true);
-            _fullName = AddTextBox("Họ và tên (*):", 215);
+            AddSectionTitle(card, "THÔNG TIN ĐĂNG NHẬP", 17);
+            AddLabel(card, "Tên đăng nhập *", 49);
+            _username = AddTextBox(card, 72, 450);
+            AddLabel(card, "Mật khẩu *", 117);
+            _password = AddTextBox(card, 140, 215, password: true);
+            AddLabel(card, "Nhập lại mật khẩu *", 117, 255);
+            _confirmPassword = AddTextBox(card, 140, 215, left: 255, password: true);
 
+            AddSectionTitle(card, "HỒ SƠ BỆNH NHÂN", 190);
+            AddLabel(card, "Họ và tên *", 222);
+            _fullName = AddTextBox(card, 245, 450);
+            AddLabel(card, "Ngày sinh", 290);
             _dateOfBirth = new DateTimePicker
             {
-                Location = new Point(175, 255),
-                Size = new Size(260, 28),
+                Location = new Point(25, 313),
+                Size = new Size(215, 30),
                 Format = DateTimePickerFormat.Custom,
                 CustomFormat = "dd/MM/yyyy",
                 ShowCheckBox = true,
                 Checked = false,
-                MaxDate = DateTime.Today
+                MaxDate = DateTime.Today,
+                Font = Font
             };
-            AddLabel("Ngày sinh:", 255);
-
+            AddLabel(card, "Giới tính", 290, 255);
             _gender = new ComboBox
             {
-                Location = new Point(175, 295),
-                Size = new Size(160, 28),
-                DropDownStyle = ComboBoxStyle.DropDownList
+                Location = new Point(255, 313),
+                Size = new Size(215, 30),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = Font
             };
             _gender.Items.AddRange(new object[] { "Nam", "Nữ" });
             _gender.SelectedIndex = 0;
-            AddLabel("Giới tính:", 295);
+            AddLabel(card, "Số điện thoại", 357);
+            _phone = AddTextBox(card, 380, 215);
+            AddLabel(card, "Email", 357, 255);
+            _email = AddTextBox(card, 380, 215, left: 255);
+            AddLabel(card, "Địa chỉ", 425);
+            _address = AddTextBox(card, 448, 450);
 
-            _phone = AddTextBox("Số điện thoại:", 335);
-            _email = AddTextBox("Email nhận thông báo:", 375);
-            _address = AddTextBox("Địa chỉ:", 415);
+            card.Controls.AddRange(new Control[] { _dateOfBirth, _gender });
 
-            var btnRegister = new Button
+            var note = new Label
             {
-                Text = "ĐĂNG KÝ",
-                Location = new Point(175, 465),
-                Size = new Size(125, 38),
-                BackColor = Color.FromArgb(0, 150, 136),
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI", 10F, FontStyle.Bold),
-                FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand
+                Text = "* Thông tin bắt buộc. Ngày sinh và thông tin liên hệ có thể bổ sung sau.",
+                Location = new Point(24, 628),
+                Size = new Size(492, 22),
+                ForeColor = Color.FromArgb(100, 116, 139),
+                Font = new Font("Segoe UI", 8.5F)
             };
             var btnCancel = new Button
             {
                 Text = "Hủy",
-                Location = new Point(310, 465),
-                Size = new Size(90, 38),
-                DialogResult = DialogResult.Cancel
+                Location = new Point(296, 652),
+                Size = new Size(100, 34),
+                DialogResult = DialogResult.Cancel,
+                BackColor = Color.White,
+                ForeColor = Color.FromArgb(51, 65, 85),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
             };
-
+            btnCancel.FlatAppearance.BorderColor = Color.FromArgb(203, 213, 225);
+            var btnRegister = new Button
+            {
+                Text = "TẠO TÀI KHOẢN",
+                Location = new Point(404, 652),
+                Size = new Size(112, 34),
+                BackColor = Color.FromArgb(0, 137, 123),
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            btnRegister.FlatAppearance.BorderSize = 0;
             btnRegister.Click += (s, e) => Register();
-            Controls.AddRange(new Control[] { title, note, _dateOfBirth, _gender, btnRegister, btnCancel });
+
+            Controls.AddRange(new Control[] { header, card, note, btnCancel, btnRegister });
             AcceptButton = btnRegister;
             CancelButton = btnCancel;
         }
 
-        private TextBox AddTextBox(string label, int top, bool password = false)
+        private static void AddSectionTitle(Control parent, string text, int top)
         {
-            AddLabel(label, top);
+            parent.Controls.Add(new Label
+            {
+                Text = text,
+                Location = new Point(25, top),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(10, 80, 160)
+            });
+        }
+
+        private static TextBox AddTextBox(Control parent, int top, int width, int left = 25, bool password = false)
+        {
             var textBox = new TextBox
             {
-                Location = new Point(175, top),
-                Size = new Size(260, 28),
-                UseSystemPasswordChar = password
+                Location = new Point(left, top),
+                Size = new Size(width, 30),
+                UseSystemPasswordChar = password,
+                BorderStyle = BorderStyle.FixedSingle,
+                Font = new Font("Segoe UI", 10F)
             };
-            Controls.Add(textBox);
+            parent.Controls.Add(textBox);
             return textBox;
         }
 
-        private void AddLabel(string text, int top)
+        private static void AddLabel(Control parent, string text, int top, int left = 25)
         {
-            Controls.Add(new Label
+            parent.Controls.Add(new Label
             {
                 Text = text,
-                Location = new Point(28, top + 4),
-                AutoSize = true
+                Location = new Point(left, top),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9F),
+                ForeColor = Color.FromArgb(51, 65, 85)
             });
         }
 

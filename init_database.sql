@@ -378,7 +378,7 @@ CREATE TABLE HoaDon (
     GiamGia DECIMAL(18,2) NOT NULL DEFAULT 0,
     TongTien DECIMAL(18,2) NOT NULL DEFAULT 0,
     HinhThucTT NVARCHAR(30) NOT NULL DEFAULT N'Tiền mặt'
-        CONSTRAINT CK_HoaDon_HinhThucTT CHECK (HinhThucTT IN (N'Tiền mặt', N'Chuyển khoản QR', N'Thẻ')),
+        CONSTRAINT CK_HoaDon_HinhThucTT CHECK (HinhThucTT IN (N'Chưa chọn', N'Tiền mặt', N'Chuyển khoản QR', N'Thẻ')),
     TrangThai NVARCHAR(30) NOT NULL DEFAULT N'Chưa thanh toán'
         CONSTRAINT CK_HoaDon_TrangThai CHECK (TrangThai IN (N'Chưa thanh toán', N'Đã thanh toán', N'Đã hủy')),
     CONSTRAINT FK_HoaDon_PhieuKham FOREIGN KEY (MaPK) REFERENCES PhieuKham(MaPK),

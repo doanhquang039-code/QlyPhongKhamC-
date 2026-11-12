@@ -1606,6 +1606,7 @@ namespace QlyPhongKham.Forms
                     "Không thể mở thanh toán", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
+            DataTable assignedRooms = ClinicDAL.LayDanhSachPhongTheoNhanVien(maLeTan);
 
             SetRefreshPageAction(ShowLeTanThanhToanView);
             SetActiveNav(btnNavThuNgan);
@@ -1614,10 +1615,20 @@ namespace QlyPhongKham.Forms
 
             var wrapper = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12) };
             var toolbar = new Panel { Dock = DockStyle.Top, Height = 42, BackColor = Color.Transparent };
+            var roomLabel = MakeLbl("Phòng quản lý:", 0, 8, bold: true);
+            var roomPicker = new ComboBox
+            {
+                Location = new Point(100, 5),
+                Size = new Size(250, 30),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                DisplayMember = "TenPhong",
+                ValueMember = "MaPhong",
+                Enabled = false
+            };
             var shiftInfo = new Label
             {
-                Location = new Point(0, 8),
-                Size = new Size(Math.Max(120, toolbar.Width - 250), 26),
+                Location = new Point(362, 8),
+                Size = new Size(Math.Max(120, toolbar.Width - 612), 26),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Font = F_Base,
                 ForeColor = C_TextGray,
@@ -1631,9 +1642,14 @@ namespace QlyPhongKham.Forms
             {
                 refresh.Location = new Point(toolbar.ClientSize.Width - refresh.Width, 4);
                 shiftButton.Location = new Point(refresh.Left - shiftButton.Width - 8, 4);
-                shiftInfo.Width = Math.Max(120, shiftButton.Left - 16);
+                shiftInfo.Location = new Point(roomPicker.Right + 12, 8);
+                shiftInfo.Width = Math.Max(120, shiftButton.Left - shiftInfo.Left - 12);
             };
-            toolbar.Controls.AddRange(new Control[] { shiftInfo, shiftButton, refresh });
+            toolbar.Controls.AddRange(new Control[] { roomLabel, roomPicker, shiftInfo, shiftButton, refresh });
+            roomPicker.DataSource = assignedRooms;
+            roomPicker.Enabled = roomPicker.Items.Count > 0;
+            if (roomPicker.Items.Count > 0)
+                roomPicker.SelectedIndex = 0;
 
             var sections = new TableLayoutPanel
             {
@@ -1719,22 +1735,31 @@ namespace QlyPhongKham.Forms
             {
                 DataTable currentShift = ClinicDAL.LayThongTinCaThuNgan();
                 bool open = currentShift.Rows.Count > 0;
+                bool hasAssignedRoom = roomPicker.SelectedValue != null;
                 shiftButton.Text = open ? "Đóng ca" : "Mở ca";
                 shiftButton.BackColor = open ? C_Orange : C_Teal;
-                payInvoice.Enabled = open;
-                shiftInfo.Text = open
-                    ? $"Ca thu ngân đang mở: #{currentShift.Rows[0]["MaCa"]}"
-                    : "Cần mở ca trước khi ghi nhận thanh toán.";
+                shiftButton.Enabled = hasAssignedRoom;
+                createInvoice.Enabled = hasAssignedRoom;
+                payInvoice.Enabled = open && hasAssignedRoom;
+                shiftInfo.Text = !hasAssignedRoom
+                    ? "Tài khoản này chưa được phân công phòng khám."
+                    : open
+                        ? $"Ca thu ngân đang mở: #{currentShift.Rows[0]["MaCa"]}"
+                        : "Cần mở ca trước khi ghi nhận thanh toán.";
             }
 
             void LoadData()
             {
-                pendingGrid.DataSource = ClinicDAL.LayDanhSachChoThanhToan(maLeTan: maLeTan);
+                string? selectedRoom = roomPicker.SelectedValue?.ToString();
+                pendingGrid.DataSource = ClinicDAL.LayDanhSachChoThanhToan(
+                    maLeTan: maLeTan,
+                    maPhong: selectedRoom);
                 FormatPendingGrid();
                 UiText.Apply(pendingGrid);
                 invoiceGrid.DataSource = ClinicDAL.LayDanhSachHoaDon(
                     trangThai: "Chưa thanh toán",
-                    maLeTan: maLeTan);
+                    maLeTan: maLeTan,
+                    maPhong: selectedRoom);
                 FormatInvoiceGrid();
                 UiText.Apply(invoiceGrid);
                 UpdateShiftStatus();
@@ -1787,6 +1812,7 @@ namespace QlyPhongKham.Forms
             };
 
             refresh.Click += (sender, args) => LoadData();
+            roomPicker.SelectedIndexChanged += (sender, args) => LoadData();
             createInvoice.Click += (sender, args) =>
             {
                 if (pendingGrid.SelectedRows.Count == 0
@@ -2447,7 +2473,7 @@ namespace QlyPhongKham.Forms
             var pnlDue = new Panel
             {
                 Location = new Point(14, 60),
-                Size = new Size(405, 56),
+                Size = new Size(405, 112),
                 BackColor = Color.FromArgb(240, 253, 244)
             };
             pnlDue.Paint += (s, e) =>
@@ -2455,14 +2481,32 @@ namespace QlyPhongKham.Forms
                 using var p = new Pen(C_Green, 1);
                 e.Graphics.DrawRectangle(p, 0, 0, pnlDue.Width - 1, pnlDue.Height - 1);
             };
-            var lblDueTitle = new Label { Text = "SỐ TIỀN CÒN PHẢI THU", Location = new Point(10, 6), AutoSize = true, Font = new Font("Segoe UI", 7.5f, FontStyle.Bold), ForeColor = Color.FromArgb(22, 101, 52) };
-            var lblDueVal = new Label { Text = $"{balanceDue:N0} đ", Location = new Point(8, 22), AutoSize = true, Font = new Font("Segoe UI", 16f, FontStyle.Bold), ForeColor = C_Green };
-            pnlDue.Controls.AddRange(new Control[] { lblDueTitle, lblDueVal });
+            decimal serviceTotal = Convert.ToDecimal(invoice["TienDichVu"]);
+            decimal medicineTotal = Convert.ToDecimal(invoice["TienThuoc"]);
+            decimal invoiceTotal = Convert.ToDecimal(invoice["TongTien"]);
+            decimal insuranceAmount = invoice.Table.Columns.Contains("TienBaoHiem")
+                ? Convert.ToDecimal(invoice["TienBaoHiem"])
+                : 0;
+            decimal alreadyPaid = invoice.Table.Columns.Contains("DaThu")
+                ? Convert.ToDecimal(invoice["DaThu"])
+                : 0;
+            var lblInvoiceBreakdown = new Label
+            {
+                Text = $"Dịch vụ: {serviceTotal:N0} đ   •   Thuốc: {medicineTotal:N0} đ\r\n" +
+                       $"Tổng: {invoiceTotal:N0} đ   •   Bảo hiểm: -{insuranceAmount:N0} đ   •   Đã thu: {alreadyPaid:N0} đ",
+                Location = new Point(10, 8),
+                Size = new Size(385, 48),
+                Font = F_Small,
+                ForeColor = C_TextDark
+            };
+            var lblDueTitle = new Label { Text = "CÒN PHẢI THU", Location = new Point(10, 62), AutoSize = true, Font = new Font("Segoe UI", 7.5f, FontStyle.Bold), ForeColor = Color.FromArgb(22, 101, 52) };
+            var lblDueVal = new Label { Text = $"{balanceDue:N0} đ", Location = new Point(8, 76), AutoSize = true, Font = new Font("Segoe UI", 16f, FontStyle.Bold), ForeColor = C_Green };
+            pnlDue.Controls.AddRange(new Control[] { lblInvoiceBreakdown, lblDueTitle, lblDueVal });
 
-            var lblPayAmount = new Label { Text = "Số tiền thu đợt này (VNĐ):", Location = new Point(14, 124), AutoSize = true, Font = F_Bold, ForeColor = C_TextDark };
+            var lblPayAmount = new Label { Text = "Số tiền thu đợt này (VNĐ):", Location = new Point(14, 180), AutoSize = true, Font = F_Bold, ForeColor = C_TextDark };
             var paymentAmount = new NumericUpDown
             {
-                Location = new Point(14, 146),
+                Location = new Point(14, 202),
                 Size = new Size(405, 30),
                 Font = new Font("Segoe UI", 11f, FontStyle.Bold),
                 Minimum = 1,
@@ -2472,10 +2516,10 @@ namespace QlyPhongKham.Forms
                 ThousandsSeparator = true
             };
 
-            var lblMethod = new Label { Text = "Phương thức thanh toán:", Location = new Point(14, 184), AutoSize = true, Font = F_Bold, ForeColor = C_TextDark };
+            var lblMethod = new Label { Text = "Phương thức thanh toán:", Location = new Point(14, 240), AutoSize = true, Font = F_Bold, ForeColor = C_TextDark };
             var method = new ComboBox
             {
-                Location = new Point(14, 206),
+                Location = new Point(14, 262),
                 Size = new Size(405, 28),
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = F_Base
@@ -2487,8 +2531,8 @@ namespace QlyPhongKham.Forms
             // Panel thông tin chuyển khoản ngân hàng
             var pnlBankInfo = new Panel
             {
-                Location = new Point(14, 244),
-                Size = new Size(405, 175),
+                Location = new Point(14, 300),
+                Size = new Size(405, 145),
                 BackColor = Color.FromArgb(248, 250, 252)
             };
             pnlBankInfo.Paint += (s, e) =>
@@ -2641,12 +2685,12 @@ namespace QlyPhongKham.Forms
                 pnlBankInfo.Visible = isQR;
                 if (isQR)
                 {
-                    dialog.ClientSize = new Size(880, 490);
+                    dialog.ClientSize = new Size(880, 570);
                     LoadQr();
                 }
                 else
                 {
-                    dialog.ClientSize = new Size(460, 360);
+                    dialog.ClientSize = new Size(460, 455);
                 }
                 dialog.Location = new Point(Math.Max(0, this.Left + (this.Width - dialog.Width) / 2), Math.Max(0, this.Top + (this.Height - dialog.Height) / 2));
             }
@@ -2684,22 +2728,24 @@ namespace QlyPhongKham.Forms
                     try
                     {
                         var hdInfo = ClinicDAL.LayThongTinHoaDonDaThanhToan(maHD);
-                        if (!string.IsNullOrWhiteSpace(hdInfo.email))
+                        if (hdInfo.daThanhToan && !string.IsNullOrWhiteSpace(hdInfo.email))
                             Helpers.EmailHelper.SendAsync(
                                 hdInfo.email,
                                 $"[An Tâm] Hóa đơn #{maHD} đã thanh toán thành công",
                                 Helpers.EmailHelper.BuildThanhToanBody(
-                                    hdInfo.tenBN, maHD, paymentAmount.Value,
+                                    hdInfo.tenBN, maHD, hdInfo.daThu,
                                     method.SelectedItem?.ToString() ?? "Tiền mặt", DateTime.Now));
 
+                        string paymentStatus = hdInfo.daThanhToan ? "đã thanh toán đủ" : "đã ghi nhận thanh toán một phần";
+                        decimal remaining = Math.Max(0, balanceDue - paymentAmount.Value);
                         Helpers.NotificationHelper.Push(
                             SessionState.CurrentUser?.MaNV ?? "",
-                            $"Thanh toán HĐ {maHD} thành công",
-                            $"BN: {hdInfo.tenBN} | Số tiền: {paymentAmount.Value:N0} đ | {method.SelectedItem}",
+                            $"Hóa đơn {maHD} {paymentStatus}",
+                            $"BN: {hdInfo.tenBN} | Đợt này: {paymentAmount.Value:N0} đ | Còn lại: {remaining:N0} đ | {method.SelectedItem}",
                             "Thanh toán");
                         Helpers.NotificationHelper.PushToAdmins(
-                            $"Hóa đơn {maHD} đã được thanh toán",
-                            $"BN: {hdInfo.tenBN} | Số tiền: {paymentAmount.Value:N0} đ | Thu ngân: {SessionState.CurrentUser?.HoTenNhanVien}",
+                            $"Hóa đơn {maHD} {paymentStatus}",
+                            $"BN: {hdInfo.tenBN} | Đợt này: {paymentAmount.Value:N0} đ | Còn lại: {remaining:N0} đ | Thu ngân: {SessionState.CurrentUser?.HoTenNhanVien}",
                             "Thanh toán");
                     }
                     catch { /* email/notification không được phá workflow chính */ }
@@ -3050,7 +3096,7 @@ namespace QlyPhongKham.Forms
                 using var dialog = new Form
                 {
                     Text = "Lập hóa đơn",
-                    Size = new Size(460, 340),
+                    Size = new Size(500, 430),
                     StartPosition = FormStartPosition.CenterParent,
                     FormBorderStyle = FormBorderStyle.FixedDialog,
                     MaximizeBox = false,
@@ -3065,13 +3111,14 @@ namespace QlyPhongKham.Forms
                     Padding = new Padding(14, 12, 0, 0),
                     Font = new Font("Segoe UI", 10F, FontStyle.Bold)
                 };
+                decimal tongTruocBaoHiem = tienDV + tienThuoc;
                 var amount = new Label
                 {
-                    Text = $"Dịch vụ: {tienDV:N0} đ     Thuốc: {tienThuoc:N0} đ\nTỔNG CỘNG: {tienDV + tienThuoc:N0} đ",
+                    TextAlign = ContentAlignment.MiddleLeft,
+                    Padding = new Padding(16, 8, 10, 8),
                     Dock = DockStyle.Top,
-                    Height = 75,
-                    TextAlign = ContentAlignment.MiddleCenter,
-                    Font = new Font("Segoe UI", 12F, FontStyle.Bold),
+                    Height = 145,
+                    Font = new Font("Consolas", 9.5F, FontStyle.Regular),
                     ForeColor = C_Blue
                 };
                 var insuranceRate = new NumericUpDown
@@ -3099,6 +3146,21 @@ namespace QlyPhongKham.Forms
                     insurancePanel.Controls[0].Location = new Point(start, 13);
                     insuranceRate.Location = new Point(start + 110, 8);
                 };
+                void UpdateInvoicePreview()
+                {
+                    decimal insuranceAmount = decimal.Round(
+                        tongTruocBaoHiem * insuranceRate.Value / 100m, 0, MidpointRounding.AwayFromZero);
+                    decimal patientAmount = tongTruocBaoHiem - insuranceAmount;
+                    amount.Text =
+                        $"Dịch vụ:                         {tienDV:N0} đ\r\n" +
+                        $"Thuốc:                            {tienThuoc:N0} đ\r\n" +
+                        $"Tổng trước bảo hiểm:     {tongTruocBaoHiem:N0} đ\r\n" +
+                        $"Bảo hiểm ({insuranceRate.Value:0.##}%):          -{insuranceAmount:N0} đ\r\n" +
+                        $"BỆNH NHÂN CẦN THANH TOÁN:  {patientAmount:N0} đ";
+                    amount.ForeColor = C_TextDark;
+                }
+                insuranceRate.ValueChanged += (s, e) => UpdateInvoicePreview();
+                UpdateInvoicePreview();
                 var paymentNote = new Label
                 {
                     Text = "Hình thức thanh toán sẽ chọn tại bước thu ngân.",
@@ -3117,6 +3179,7 @@ namespace QlyPhongKham.Forms
                 };
                 var create = PrimaryBtn("Tạo hóa đơn", 0, 0, 130, 34);
                 var cancel = new Button { Text = "Hủy", Width = 85, Height = 34, DialogResult = DialogResult.Cancel };
+                string? createdInvoiceId = null;
                 create.Click += (s, e) =>
                 {
                     try
@@ -3135,6 +3198,7 @@ namespace QlyPhongKham.Forms
                         };
                         if (!ClinicDAL.TaoHoaDon(invoice, insuranceRate.Value))
                             throw new InvalidOperationException("Không thể tạo hóa đơn cho phiếu khám này.");
+                        createdInvoiceId = invoice.MaHD;
                         dialog.DialogResult = DialogResult.OK;
                         dialog.Close();
                     }
@@ -3151,7 +3215,45 @@ namespace QlyPhongKham.Forms
                 dialog.Controls.Add(heading);
                 dialog.AcceptButton = create;
                 dialog.CancelButton = cancel;
-                dialog.ShowDialog(this);
+                if (dialog.ShowDialog(this) == DialogResult.OK &&
+                    SessionState.IsReceptionist &&
+                    !string.IsNullOrWhiteSpace(createdInvoiceId))
+                {
+                    DataTable createdInvoice;
+                    try
+                    {
+                        createdInvoice = ClinicDAL.LayDanhSachHoaDon(
+                            keyword: createdInvoiceId,
+                            trangThai: "Chưa thanh toán",
+                            maLeTan: SessionState.CurrentUser?.MaNV);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(
+                            $"Hóa đơn {createdInvoiceId} đã được tạo nhưng chưa thể mở màn thu: {ex.Message}",
+                            "Hóa đơn đã tạo",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
+                        return;
+                    }
+                    DataRow? createdInvoiceRow = null;
+                    foreach (DataRow row in createdInvoice.Rows)
+                    {
+                        if (string.Equals(row["MaHD"]?.ToString(), createdInvoiceId, StringComparison.Ordinal))
+                        {
+                            createdInvoiceRow = row;
+                            break;
+                        }
+                    }
+                    if (createdInvoiceRow != null)
+                        ShowInvoicePayment(createdInvoiceRow);
+                    else
+                        MessageBox.Show(
+                            $"Hóa đơn {createdInvoiceId} đã được tạo nhưng chưa tìm thấy trong danh sách thu. Vui lòng tải lại danh sách hóa đơn.",
+                            "Hóa đơn đã tạo",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
+                }
             }
             catch (Exception ex)
             {

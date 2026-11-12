@@ -479,6 +479,18 @@ EnsureBenhNhanEmailColumn();
                 DatabaseHelper.ExecuteNonQuery(@"
                     IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.HoaDon') AND name=N'CK_HoaDon_PhanTramBaoHiem')
                         ALTER TABLE dbo.HoaDon ADD CONSTRAINT CK_HoaDon_PhanTramBaoHiem CHECK(PhanTramBaoHiem BETWEEN 0 AND 100);
+                    IF NOT EXISTS (SELECT 1 FROM sys.check_constraints
+                        WHERE parent_object_id=OBJECT_ID(N'dbo.HoaDon')
+                          AND name=N'CK_HoaDon_HinhThucTT'
+                          AND definition LIKE N'%Chưa chọn%')
+                    BEGIN
+                        IF EXISTS (SELECT 1 FROM sys.check_constraints
+                            WHERE parent_object_id=OBJECT_ID(N'dbo.HoaDon')
+                              AND name=N'CK_HoaDon_HinhThucTT')
+                            ALTER TABLE dbo.HoaDon DROP CONSTRAINT CK_HoaDon_HinhThucTT;
+                        ALTER TABLE dbo.HoaDon ADD CONSTRAINT CK_HoaDon_HinhThucTT
+                            CHECK(HinhThucTT IN(N'Chưa chọn',N'Tiền mặt',N'Chuyển khoản QR',N'Thẻ'));
+                    END;
                     DECLARE @uq sysname, @ddl nvarchar(1000);
                     SELECT TOP 1 @uq=i.name FROM sys.indexes i
                     INNER JOIN sys.index_columns ic ON ic.object_id=i.object_id AND ic.index_id=i.index_id
@@ -2852,13 +2864,14 @@ EnsureBenhNhanEmailColumn();
             return "HD0001";
         }
 
-        public static DataTable LayDanhSachHoaDon(string keyword = "", string? trangThai = null, int? offset = null, int? pageSize = null, string? maLeTan = null)
+        public static DataTable LayDanhSachHoaDon(string keyword = "", string? trangThai = null, int? offset = null, int? pageSize = null, string? maLeTan = null, string? maPhong = null)
         {
             if (!SessionState.IsAdmin && !SessionState.IsCashier)
                 throw new UnauthorizedAccessException("Chỉ thu ngân hoặc quản trị viên được tra cứu hóa đơn.");
             if (SessionState.IsReceptionist)
                 maLeTan = SessionState.CurrentUser!.MaNV;
             EnsureClinicRoomSchema();
+            EnsureLeTanDuocPhanCongPhong(maLeTan, maPhong);
             string sql = @"
                 SELECT hd.MaHD, hd.MaPK, bn.HoTen AS TenBN, nv.HoTen AS ThuNgan,
                        assignedNurse.HoTen AS YTaNhanBangKe,
@@ -2877,18 +2890,35 @@ EnsureBenhNhanEmailColumn();
                 WHERE (@Kw = '' OR hd.MaHD LIKE '%' + @Kw + '%'
                     OR hd.MaPK LIKE '%' + @Kw + '%' OR bn.HoTen LIKE '%' + @Kw + '%')
                   AND (@TrangThai IS NULL OR @TrangThai = N'Tất cả trạng thái' OR hd.TrangThai = @TrangThai)
-                  AND (@MaLeTan IS NULL OR pk.MaNV_LeTanDuocGiao=@MaLeTan OR (
-                      pk.MaNV_LeTanDuocGiao IS NULL AND EXISTS (
-                          SELECT 1 FROM PhanCongPhong pc
-                          WHERE pc.MaNV=@MaLeTan AND pc.MaPhong=pk.MaPhong AND pc.VaiTro=N'LeTan')))
+                  AND (@MaPhong IS NULL OR pk.MaPhong=@MaPhong)
+                  AND (@MaLeTan IS NULL OR (
+                      EXISTS (SELECT 1 FROM PhanCongPhong pc
+                          WHERE pc.MaNV=@MaLeTan AND pc.MaPhong=pk.MaPhong AND pc.VaiTro=N'LeTan')
+                      AND (pk.MaNV_LeTanDuocGiao IS NULL OR pk.MaNV_LeTanDuocGiao=@MaLeTan)))
                 ORDER BY hd.NgayLap DESC, hd.MaHD DESC";
             EnsureAdvancedWorkflowSchema();
             return ExecutePagedQuery(sql, new[]
             {
                 new SqlParameter("@Kw", keyword.Trim()),
                 new SqlParameter("@TrangThai", (object?)trangThai ?? DBNull.Value),
-                new SqlParameter("@MaLeTan", (object?)maLeTan ?? DBNull.Value)
+                new SqlParameter("@MaLeTan", (object?)maLeTan ?? DBNull.Value),
+                new SqlParameter("@MaPhong", (object?)maPhong ?? DBNull.Value)
             }, offset, pageSize);
+        }
+
+        private static void EnsureLeTanDuocPhanCongPhong(string? maLeTan, string? maPhong)
+        {
+            if (string.IsNullOrWhiteSpace(maLeTan) || string.IsNullOrWhiteSpace(maPhong))
+                return;
+            int assigned = Convert.ToInt32(DatabaseHelper.ExecuteScalar(@"
+                SELECT COUNT(*)
+                FROM dbo.PhanCongPhong pc
+                INNER JOIN dbo.NhanVien nv ON nv.MaNV=pc.MaNV
+                WHERE pc.MaNV=@MaNV AND pc.MaPhong=@MaPhong AND pc.VaiTro=N'LeTan'
+                  AND nv.ChucVu=N'LeTan' AND nv.TrangThai=1",
+                new[] { new SqlParameter("@MaNV", maLeTan), new SqlParameter("@MaPhong", maPhong) }));
+            if (assigned != 1)
+                throw new UnauthorizedAccessException("Bạn không được phân công quản lý thanh toán của phòng khám này.");
         }
 
         public static DataTable LayChiTietHoaDon(string maHD)
@@ -3051,10 +3081,10 @@ EnsureBenhNhanEmailColumn();
                       AND @GiamGia>=0 AND @GiamGia<=cost.TienDV+cost.TienThuoc
                       AND @Rate BETWEEN 0 AND 100
                       AND @HinhThuc IN(N'Chưa chọn',N'Tiền mặt',N'Chuyển khoản QR',N'Thẻ')
-                      AND (@MaLeTan IS NULL OR pk.MaNV_LeTanDuocGiao=@MaLeTan OR (
-                          pk.MaNV_LeTanDuocGiao IS NULL AND EXISTS(
-                              SELECT 1 FROM dbo.PhanCongPhong pc
-                              WHERE pc.MaNV=@MaLeTan AND pc.MaPhong=pk.MaPhong AND pc.VaiTro=N'LeTan')))
+                      AND (@MaLeTan IS NULL OR (
+                          EXISTS(SELECT 1 FROM dbo.PhanCongPhong pc
+                              WHERE pc.MaNV=@MaLeTan AND pc.MaPhong=pk.MaPhong AND pc.VaiTro=N'LeTan')
+                          AND (pk.MaNV_LeTanDuocGiao IS NULL OR pk.MaNV_LeTanDuocGiao=@MaLeTan)))
                       AND ISNULL((SELECT SUM(g.SoTien) FROM dbo.GiaoDichVienPhi g
                           WHERE g.MaPK=pk.MaPK AND g.MaHD IS NULL AND g.Loai IN(N'TamUng',N'ThuCLS')),0)
                           <= cost.TienDV+cost.TienThuoc-@GiamGia-ROUND((cost.TienDV+cost.TienThuoc-@GiamGia)*@Rate/100,0)", connection, transaction);
@@ -3125,10 +3155,10 @@ EnsureBenhNhanEmailColumn();
                     FROM dbo.HoaDon hd WITH(UPDLOCK,HOLDLOCK)
                     INNER JOIN dbo.PhieuKham pk ON pk.MaPK=hd.MaPK
                     WHERE hd.MaHD=@MaHD AND hd.TrangThai=N'Chưa thanh toán'
-                      AND (@MaLeTan IS NULL OR pk.MaNV_LeTanDuocGiao=@MaLeTan OR (
-                          pk.MaNV_LeTanDuocGiao IS NULL AND EXISTS(
-                              SELECT 1 FROM dbo.PhanCongPhong pc
-                              WHERE pc.MaNV=@MaLeTan AND pc.MaPhong=pk.MaPhong AND pc.VaiTro=N'LeTan')))", connection, transaction))
+                      AND (@MaLeTan IS NULL OR (
+                          EXISTS(SELECT 1 FROM dbo.PhanCongPhong pc
+                              WHERE pc.MaNV=@MaLeTan AND pc.MaPhong=pk.MaPhong AND pc.VaiTro=N'LeTan')
+                          AND (pk.MaNV_LeTanDuocGiao IS NULL OR pk.MaNV_LeTanDuocGiao=@MaLeTan)))", connection, transaction))
                 {
                     invoice.Parameters.AddWithValue("@MaHD", maHD);
                     invoice.Parameters.AddWithValue("@MaLeTan", SessionState.IsReceptionist
@@ -3702,13 +3732,14 @@ EnsureBenhNhanEmailColumn();
         }
 
         // 9. DANH SÁCH CHỜ THANH TOÁN (đã khám xong, chưa có hóa đơn)
-        public static DataTable LayDanhSachChoThanhToan(int? offset = null, int? pageSize = null, string? maLeTan = null)
+        public static DataTable LayDanhSachChoThanhToan(int? offset = null, int? pageSize = null, string? maLeTan = null, string? maPhong = null)
         {
             if (!SessionState.IsAdmin && !SessionState.IsCashier)
                 throw new UnauthorizedAccessException("Chỉ thu ngân hoặc quản trị viên được xem hồ sơ chờ lập hóa đơn.");
             if (SessionState.IsReceptionist)
                 maLeTan = SessionState.CurrentUser!.MaNV;
             EnsureClinicRoomSchema();
+            EnsureLeTanDuocPhanCongPhong(maLeTan, maPhong);
             string sql = @"
                 SELECT pk.MaPK, pk.STT, pk.NgayKham, bn.HoTen AS TenBN, bn.SoDienThoai,
                        nv.HoTen AS TenBacSi, assignedNurse.HoTen AS YTaNhanBangKe, pk.ChanDoan, pk.TrangThai
@@ -3718,12 +3749,17 @@ EnsureBenhNhanEmailColumn();
                 LEFT JOIN NhanVien assignedNurse ON assignedNurse.MaNV=pk.MaNV_LeTanDuocGiao
                 WHERE pk.TrangThai = N'Đã khám xong'
                   AND NOT EXISTS (SELECT 1 FROM HoaDon hd WHERE hd.MaPK = pk.MaPK AND hd.TrangThai <> N'Đã hủy')
-                  AND (@MaLeTan IS NULL OR pk.MaNV_LeTanDuocGiao=@MaLeTan OR (
-                      pk.MaNV_LeTanDuocGiao IS NULL AND EXISTS (
-                          SELECT 1 FROM PhanCongPhong pc
-                          WHERE pc.MaNV=@MaLeTan AND pc.MaPhong=pk.MaPhong AND pc.VaiTro=N'LeTan')))
+                  AND (@MaPhong IS NULL OR pk.MaPhong=@MaPhong)
+                  AND (@MaLeTan IS NULL OR (
+                      EXISTS (SELECT 1 FROM PhanCongPhong pc
+                          WHERE pc.MaNV=@MaLeTan AND pc.MaPhong=pk.MaPhong AND pc.VaiTro=N'LeTan')
+                      AND (pk.MaNV_LeTanDuocGiao IS NULL OR pk.MaNV_LeTanDuocGiao=@MaLeTan)))
                 ORDER BY pk.NgayKham ASC, pk.MaPK";
-            return ExecutePagedQuery(sql, new[] { new SqlParameter("@MaLeTan", (object?)maLeTan ?? DBNull.Value) }, offset, pageSize);
+            return ExecutePagedQuery(sql, new[]
+            {
+                new SqlParameter("@MaLeTan", (object?)maLeTan ?? DBNull.Value),
+                new SqlParameter("@MaPhong", (object?)maPhong ?? DBNull.Value)
+            }, offset, pageSize);
         }
 
         // 10. XÓA THUỐC KHỎI ĐƠN (và hoàn trả tồn kho)
@@ -4667,17 +4703,23 @@ EnsureBenhNhanEmailColumn();
             );
         }
 
-        public static (string maBN, string tenBN, string? email, string maHD, decimal tongTien, string hinhThuc)
+        public static (string maBN, string tenBN, string? email, string maHD, decimal tongTien, string hinhThuc, bool daThanhToan, decimal daThu)
             LayThongTinHoaDonDaThanhToan(string maHD)
         {
             const string sql = @"
-                SELECT hd.MaHD, bn.MaBN, bn.HoTen, bn.Email, hd.TongTien, hd.HinhThucTT
+                SELECT hd.MaHD, bn.MaBN, bn.HoTen, bn.Email, hd.TongTien, hd.HinhThucTT, hd.TrangThai,
+                       ISNULL(receipts.DaThu,0) AS DaThu
                 FROM   dbo.HoaDon hd
                 INNER JOIN dbo.PhieuKham pk ON pk.MaPK = hd.MaPK
                 INNER JOIN dbo.BenhNhan  bn ON bn.MaBN = pk.MaBN
+                OUTER APPLY (
+                    SELECT SUM(CASE WHEN gd.Loai=N'HoanTien' THEN -gd.SoTien ELSE gd.SoTien END) AS DaThu
+                    FROM dbo.GiaoDichVienPhi gd
+                    WHERE gd.MaHD=hd.MaHD
+                ) receipts
                 WHERE  hd.MaHD = @MaHD";
             var dt = DatabaseHelper.ExecuteQuery(sql, new[] { new SqlParameter("@MaHD", maHD) });
-            if (dt.Rows.Count == 0) return ("", "", null, maHD, 0, "");
+            if (dt.Rows.Count == 0) return ("", "", null, maHD, 0, "", false, 0);
             var r = dt.Rows[0];
             return (
                 r["MaBN"].ToString() ?? "",
@@ -4685,7 +4727,9 @@ EnsureBenhNhanEmailColumn();
                 r["Email"] == DBNull.Value ? null : r["Email"].ToString(),
                 r["MaHD"].ToString() ?? maHD,
                 Convert.ToDecimal(r["TongTien"]),
-                r["HinhThucTT"].ToString() ?? "Tiền mặt"
+                r["HinhThucTT"].ToString() ?? "Tiền mặt",
+                string.Equals(r["TrangThai"]?.ToString(), "Đã thanh toán", StringComparison.Ordinal),
+                Convert.ToDecimal(r["DaThu"])
             );
         }
 

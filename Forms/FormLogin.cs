@@ -11,7 +11,7 @@ namespace QlyPhongKham.Forms
         private TextBox txtPassword = null!;
         private Button btnLogin = null!;
         private Button btnConfig = null!;
-        private ComboBox cboQuickPick = null!;
+        private ComboBox cboRole = null!;
         private Label lblError = null!;
 
         public FormLogin()
@@ -22,7 +22,7 @@ namespace QlyPhongKham.Forms
         private void InitializeComponent()
         {
             this.Text = "Đăng nhập - Hệ thống Quản lý Phòng Khám";
-            this.Size = new Size(460, 480);
+            this.ClientSize = new Size(460, 500);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
@@ -56,51 +56,37 @@ namespace QlyPhongKham.Forms
             };
             headerPanel.Controls.AddRange(new Control[] { lblHeaderTitle, lblSubTitle });
 
-            // Quick Pick
-            Label lblQuick = new Label
+            Label lblRole = new Label
             {
-                Text = "Chọn nhanh tài khoản mẫu:",
+                Text = "Vai trò đăng nhập:",
                 Location = new Point(35, 105),
                 AutoSize = true,
                 ForeColor = Color.DimGray,
                 Font = new Font("Segoe UI", 9F)
             };
 
-            cboQuickPick = new ComboBox
+            cboRole = new ComboBox
             {
                 Location = new Point(35, 128),
                 Size = new Size(375, 28),
-                DropDownStyle = ComboBoxStyle.DropDownList
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = new Font("Segoe UI", 10F)
             };
-            cboQuickPick.Items.AddRange(new object[] {
-                "-- Tự nhập tài khoản --",
-                "Quản trị viên (admin / 123456)",
-                "Bác sĩ Nội P101 (bacsi_nam / 123456)",
-                "Y tá Nội P101 (letan / 123456)",
-                "Thu ngân (thungan / 123456)",
-                "TEST Admin (test_admin / 123456)",
-                "TEST Bác sĩ Nội P101 (test_bs / 123456)",
-                "TEST Bác sĩ TMH P201 (test_bs2 / 123456)",
-                "TEST Y tá TMH P201 (test_letan / 123456)",
-                "Bác sĩ Nhi P301 (demo_bs03 / 123456)",
-                "Y tá Nhi P301 (demo_letan07 / 123456)",
-                "TEST Bệnh nhân (test_bn01 / 123456)"
-            });
-            cboQuickPick.SelectedIndex = 1;
-            cboQuickPick.SelectedIndexChanged += CboQuickPick_SelectedIndexChanged;
+            cboRole.Items.AddRange(new object[] { "Quản trị viên", "Bác sĩ", "Y tá", "Bệnh nhân" });
+            cboRole.SelectedIndex = -1;
 
             // Username
             Label lblUser = new Label { Text = "Tên đăng nhập:", Location = new Point(35, 170), AutoSize = true };
-            txtUsername = new TextBox { Location = new Point(35, 195), Size = new Size(375, 28), Text = "admin" };
+            txtUsername = new TextBox { Location = new Point(35, 195), Size = new Size(375, 30) };
 
             // Password
-            Label lblPass = new Label { Text = "Mật khẩu:", Location = new Point(35, 235), AutoSize = true };
-            txtPassword = new TextBox { Location = new Point(35, 260), Size = new Size(375, 28), Text = "123456", UseSystemPasswordChar = true };
+            Label lblPass = new Label { Text = "Mật khẩu:", Location = new Point(35, 238), AutoSize = true };
+            txtPassword = new TextBox { Location = new Point(35, 263), Size = new Size(375, 30), UseSystemPasswordChar = true };
 
             lblError = new Label
             {
-                Location = new Point(35, 295),
-                Size = new Size(375, 22),
+                Location = new Point(35, 302),
+                Size = new Size(375, 34),
                 ForeColor = Color.Crimson,
                 Font = new Font("Segoe UI", 9F, FontStyle.Italic)
             };
@@ -109,8 +95,8 @@ namespace QlyPhongKham.Forms
             btnLogin = new Button
             {
                 Text = "ĐĂNG NHẬP",
-                Location = new Point(35, 325),
-                Size = new Size(240, 40),
+                Location = new Point(35, 348),
+                Size = new Size(240, 42),
                 BackColor = Color.FromArgb(10, 80, 160),
                 ForeColor = Color.White,
                 Font = new Font("Segoe UI", 10.5F, FontStyle.Bold),
@@ -122,8 +108,8 @@ namespace QlyPhongKham.Forms
             btnConfig = new Button
             {
                 Text = "⚙ Máy chủ",
-                Location = new Point(285, 325),
-                Size = new Size(125, 40),
+                Location = new Point(285, 348),
+                Size = new Size(125, 42),
                 BackColor = Color.FromArgb(238, 242, 246),
                 ForeColor = Color.FromArgb(30, 40, 60),
                 Font = new Font("Segoe UI", 9.5F, FontStyle.Regular),
@@ -138,8 +124,8 @@ namespace QlyPhongKham.Forms
             var btnRegister = new Button
             {
                 Text = "Đăng ký tài khoản bệnh nhân",
-                Location = new Point(35, 373),
-                Size = new Size(375, 34),
+                Location = new Point(35, 400),
+                Size = new Size(375, 38),
                 BackColor = Color.FromArgb(232, 246, 244),
                 ForeColor = Color.FromArgb(0, 120, 110),
                 Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
@@ -152,7 +138,7 @@ namespace QlyPhongKham.Forms
                 using var dialog = new FormDangKyBenhNhan();
                 if (dialog.ShowDialog(this) == DialogResult.OK)
                 {
-                    cboQuickPick.SelectedIndex = 0;
+                    cboRole.SelectedItem = "Bệnh nhân";
                     txtUsername.Text = dialog.RegisteredUsername;
                     txtPassword.Clear();
                     txtPassword.Focus();
@@ -161,7 +147,7 @@ namespace QlyPhongKham.Forms
 
             this.Controls.AddRange(new Control[] {
                 headerPanel,
-                lblQuick, cboQuickPick,
+                lblRole, cboRole,
                 lblUser, txtUsername,
                 lblPass, txtPassword,
                 lblError,
@@ -171,95 +157,59 @@ namespace QlyPhongKham.Forms
             this.AcceptButton = btnLogin;
         }
 
-        private void CboQuickPick_SelectedIndexChanged(object? sender, EventArgs e)
-        {
-            switch (cboQuickPick.SelectedIndex)
-            {
-                case 1:
-                    txtUsername.Text = "admin";
-                    txtPassword.Text = "123456";
-                    break;
-                case 2:
-                    txtUsername.Text = "bacsi_nam";
-                    txtPassword.Text = "123456";
-                    break;
-                case 3:
-                    txtUsername.Text = "letan";
-                    txtPassword.Text = "123456";
-                    break;
-                case 4:
-                    txtUsername.Text = "thungan";
-                    txtPassword.Text = "123456";
-                    break;
-                case 5:
-                    txtUsername.Text = "test_admin";
-                    txtPassword.Text = "123456";
-                    break;
-                case 6:
-                    txtUsername.Text = "test_bs";
-                    txtPassword.Text = "123456";
-                    break;
-                case 7:
-                    txtUsername.Text = "test_bs2";
-                    txtPassword.Text = "123456";
-                    break;
-                case 8:
-                    txtUsername.Text = "test_letan";
-                    txtPassword.Text = "123456";
-                    break;
-                case 9:
-                    txtUsername.Text = "demo_bs03";
-                    txtPassword.Text = "123456";
-                    break;
-                case 10:
-                    txtUsername.Text = "demo_letan07";
-                    txtPassword.Text = "123456";
-                    break;
-                case 11:
-                    txtUsername.Text = "test_bn01";
-                    txtPassword.Text = "123456";
-                    break;
-            }
-        }
-
         private void BtnLogin_Click(object? sender, EventArgs e)
         {
             lblError.Text = "";
             string user = txtUsername.Text.Trim();
             string pass = txtPassword.Text.Trim();
+            string? selectedRole = cboRole.SelectedItem?.ToString();
 
-            if (string.IsNullOrEmpty(user) || string.IsNullOrEmpty(pass))
+            if (string.IsNullOrWhiteSpace(selectedRole) ||
+                string.IsNullOrEmpty(user) || string.IsNullOrEmpty(pass))
             {
-                lblError.Text = "Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu!";
+                lblError.Text = "Vui lòng chọn vai trò và nhập đầy đủ tên đăng nhập, mật khẩu.";
                 return;
             }
 
             try
             {
-                var account = ClinicDAL.DangNhap(user, pass);
-                if (account != null)
+                if (selectedRole == "Bệnh nhân")
                 {
-                    SessionState.CurrentPatient = null;
-                    SessionState.CurrentUser = account;
-                    var mainForm = new FormMain();
-                    mainForm.FormClosed += (s, args) => ReturnToLogin();
-                    mainForm.Show();
+                    var patient = ClinicDAL.DangNhapBenhNhan(user, pass);
+                    if (patient == null)
+                    {
+                        lblError.Text = "Thông tin đăng nhập không hợp lệ cho vai trò Bệnh nhân.";
+                        return;
+                    }
+
+                    SessionState.CurrentUser = null;
+                    SessionState.CurrentPatient = patient;
+                    var patientForm = new FormBenhNhanPortal();
+                    patientForm.FormClosed += (s, args) => ReturnToLogin();
+                    patientForm.Show();
                     this.Hide();
                     return;
                 }
 
-                var patient = ClinicDAL.DangNhapBenhNhan(user, pass);
-                if (patient == null)
+                var account = ClinicDAL.DangNhap(user, pass);
+                string expectedRole = selectedRole switch
                 {
-                    lblError.Text = "Sai tên đăng nhập hoặc mật khẩu!";
+                    "Quản trị viên" => "Admin",
+                    "Bác sĩ" => "BacSi",
+                    "Y tá" => "LeTan",
+                    _ => ""
+                };
+                if (account == null || account.Quyen != expectedRole)
+                {
+                    lblError.Text = $"Thông tin đăng nhập không hợp lệ cho vai trò {selectedRole}.";
                     return;
                 }
 
-                SessionState.CurrentUser = null;
-                SessionState.CurrentPatient = patient;
-                var patientForm = new FormBenhNhanPortal();
-                patientForm.FormClosed += (s, args) => ReturnToLogin();
-                patientForm.Show();
+                SessionState.CurrentPatient = null;
+                SessionState.CurrentUser = account;
+                var mainForm = new FormMain();
+                mainForm.FormClosed += (s, args) => ReturnToLogin();
+                mainForm.Show();
                 this.Hide();
             }
             catch (Exception ex)
@@ -289,7 +239,7 @@ namespace QlyPhongKham.Forms
             txtUsername.Clear();
             txtPassword.Clear();
             lblError.Text = "";
-            cboQuickPick.SelectedIndex = 0;
+            cboRole.SelectedIndex = -1;
             Show();
             Activate();
             txtUsername.Focus();

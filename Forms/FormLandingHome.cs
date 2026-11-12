@@ -313,13 +313,15 @@ namespace QlyPhongKham.Forms
 
                 // Gradient background
                 using var br = new LinearGradientBrush(hero.ClientRectangle,
-                    Color.FromArgb(14, 165, 233), Color.FromArgb(59, 130, 246), 45f);
+                    Color.FromArgb(6, 182, 212), Color.FromArgb(79, 70, 229), 28f);
                 g.FillRectangle(br, hero.ClientRectangle);
 
                 // Subtle circular decors
                 using var decor = new SolidBrush(Color.FromArgb(20, 255, 255, 255));
                 g.FillEllipse(decor, hero.Width - 360, -100, 500, 500);
                 g.FillEllipse(decor, -60, 280, 280, 280);
+                using (var accent = new SolidBrush(Color.FromArgb(32, 255, 255, 255)))
+                    g.FillEllipse(accent, hero.Width * 0.48f, hero.Height * 0.55f, 90, 90);
 
                 int startX = Math.Max(50, (int)(hero.Width * 0.06));
 
@@ -411,18 +413,32 @@ namespace QlyPhongKham.Forms
                 { "🦷", "Nha khoa", "Chăm sóc, tẩy trắng và điều trị chuyên sâu răng hàm mặt." },
                 { "✨", "Da liễu", "Điều trị chuyên sâu các bệnh về da và phục hồi thẩm mỹ." }
             };
+            Color[] serviceAccents =
+            {
+                Color.FromArgb(14, 165, 233),
+                Color.FromArgb(249, 115, 22),
+                Color.FromArgb(139, 92, 246),
+                Color.FromArgb(236, 72, 153),
+                Color.FromArgb(20, 184, 166),
+                Color.FromArgb(245, 158, 11)
+            };
 
             var cards = new Panel[6];
             for (int i = 0; i < 6; i++)
             {
+                Color accentColor = serviceAccents[i];
+                Color iconTint = Color.FromArgb(24, accentColor.R, accentColor.G, accentColor.B);
                 var card = new Panel
                 {
                     BackColor = Color.White,
                     Padding = new Padding(16)
                 };
+                bool hovered = false;
                 card.Paint += (s, e) =>
                 {
-                    using var p = new Pen(C_Border, 1.5f);
+                    using var stripe = new SolidBrush(accentColor);
+                    e.Graphics.FillRectangle(stripe, 0, 0, 5, card.Height);
+                    using var p = new Pen(hovered ? accentColor : C_Border, hovered ? 2f : 1f);
                     e.Graphics.DrawRectangle(p, 0, 0, card.Width - 1, card.Height - 1);
                 };
 
@@ -430,16 +446,17 @@ namespace QlyPhongKham.Forms
                 {
                     Text = services[i, 0],
                     Font = new Font("Segoe UI", 22),
-                    Location = new Point(16, 16),
+                    Location = new Point(18, 18),
                     Size = new Size(48, 48),
-                    TextAlign = ContentAlignment.MiddleCenter
+                    TextAlign = ContentAlignment.MiddleCenter,
+                    BackColor = iconTint
                 };
                 var name = new Label
                 {
                     Text = services[i, 1],
                     Font = new Font("Segoe UI", 12, FontStyle.Bold),
-                    ForeColor = C_Dark,
-                    Location = new Point(80, 18),
+                    ForeColor = accentColor,
+                    Location = new Point(82, 18),
                     Size = new Size(200, 26),
                     AutoEllipsis = true
                 };
@@ -448,10 +465,13 @@ namespace QlyPhongKham.Forms
                     Text = services[i, 2],
                     Font = new Font("Segoe UI", 9.5F),
                     ForeColor = C_Gray,
-                    Location = new Point(80, 50),
+                    Location = new Point(82, 50),
                     Size = new Size(200, 60)
                 };
-                
+
+                card.MouseEnter += (s, e) => { hovered = true; card.Invalidate(); };
+                card.MouseLeave += (s, e) => { hovered = false; card.Invalidate(); };
+                card.Cursor = Cursors.Hand;
                 card.Controls.AddRange(new Control[] { icon, name, desc });
                 card.Resize += (s, e) =>
                 {
@@ -757,7 +777,18 @@ namespace QlyPhongKham.Forms
                 Location = new Point(0, topY),
                 Size = new Size(_scrollContent.ClientSize.Width, h),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                BackColor = Color.FromArgb(241, 245, 249)
+                BackColor = Color.FromArgb(30, 64, 175)
+            };
+            pnl.Paint += (s, e) =>
+            {
+                if (pnl.ClientSize.Width <= 0 || pnl.ClientSize.Height <= 0)
+                    return;
+                using var gradient = new LinearGradientBrush(
+                    pnl.ClientRectangle,
+                    Color.FromArgb(15, 23, 42),
+                    Color.FromArgb(13, 148, 136),
+                    0f);
+                e.Graphics.FillRectangle(gradient, pnl.ClientRectangle);
             };
             topY += h;
 
@@ -776,7 +807,7 @@ namespace QlyPhongKham.Forms
                 {
                     Text = stats[i, 0],
                     Font = new Font("Segoe UI", 36, FontStyle.Bold),
-                    ForeColor = C_Primary,
+                    ForeColor = Color.White,
                     Location = new Point(0, 0),
                     Size = new Size(200, 60),
                     TextAlign = ContentAlignment.MiddleCenter
@@ -785,7 +816,7 @@ namespace QlyPhongKham.Forms
                 {
                     Text = stats[i, 1],
                     Font = new Font("Segoe UI", 10F, FontStyle.Bold),
-                    ForeColor = C_Gray,
+                    ForeColor = Color.FromArgb(203, 213, 225),
                     Location = new Point(0, 65),
                     Size = new Size(200, 25),
                     TextAlign = ContentAlignment.MiddleCenter

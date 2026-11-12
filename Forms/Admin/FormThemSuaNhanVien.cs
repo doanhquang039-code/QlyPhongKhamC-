@@ -176,28 +176,26 @@ namespace QlyPhongKham.Forms
             txtEmail.Text = nv?.Email ?? "";
             AddField(detailsCard, "Email", txtEmail, 271, 234);
 
-            string originalSpecialty = nv?.ChuyenKhoa?.Trim() ?? "";
-            int originalSpecialtyIndex = cboSpecialty.SelectedIndex;
+            string preferredSpecialty = nv?.ChuyenKhoa?.Trim() ?? "";
             cboRole.SelectedIndexChanged += (s, e) =>
             {
                 bool isDoctor = cboRole.SelectedItem?.ToString() == "BacSi";
                 cboSpecialty.Enabled = isDoctor;
                 if (!isDoctor)
                     cboSpecialty.SelectedIndex = 0;
-                else if (nv?.ChucVu == "BacSi" && !string.IsNullOrWhiteSpace(originalSpecialty))
-                    cboSpecialty.SelectedIndex = originalSpecialtyIndex;
+                else if (!string.IsNullOrWhiteSpace(preferredSpecialty))
+                {
+                    int specialtyIndex = cboSpecialty.Items.Cast<string>()
+                        .ToList()
+                        .FindIndex(name => string.Equals(name, preferredSpecialty, StringComparison.OrdinalIgnoreCase));
+                    if (specialtyIndex >= 0)
+                        cboSpecialty.SelectedIndex = specialtyIndex;
+                }
             };
             cboSpecialty.SelectedIndexChanged += (s, e) =>
             {
-                if (cboRole.SelectedItem?.ToString() != "BacSi" ||
-                    nv?.ChucVu != "BacSi" || string.IsNullOrWhiteSpace(originalSpecialty) ||
-                    string.Equals(cboSpecialty.SelectedItem?.ToString(), originalSpecialty, StringComparison.OrdinalIgnoreCase))
-                    return;
-
-                MessageBox.Show(this,
-                    $"Bác sĩ đã có chuyên khoa chính '{originalSpecialty}' và không thể chọn chuyên khoa khác.",
-                    "Không thể đổi chuyên khoa", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                cboSpecialty.SelectedIndex = originalSpecialtyIndex;
+                if (cboRole.SelectedItem?.ToString() == "BacSi" && cboSpecialty.SelectedIndex > 0)
+                    preferredSpecialty = cboSpecialty.SelectedItem?.ToString() ?? "";
             };
 
             var btnSave = CreateButton("Lưu nhân viên", Color.FromArgb(0, 145, 134), Color.FromArgb(0, 119, 111));

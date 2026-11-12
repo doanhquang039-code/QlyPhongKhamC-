@@ -255,7 +255,9 @@ namespace QlyPhongKham.Forms
             };
             btnNavThuNgan.Click  += (s, e) =>
             {
-                if (SessionState.IsCashier || SessionState.IsAdmin)
+                if (SessionState.IsReceptionist)
+                    ShowLeTanThanhToanView();
+                else if (SessionState.IsCashier || SessionState.IsAdmin)
                     ShowThuNganView();
             };
             btnNavNhanVien.Click += (s, e) => ShowNhanVienView();
@@ -809,7 +811,9 @@ namespace QlyPhongKham.Forms
                 btnNavKhoThuoc.Text = "  💊  Kho thuốc";
                 btnNavKhoThuoc.Location = new Point(8, 216);
                 btnNavDichVu.Visible   = false;
-                btnNavThuNgan.Visible = false;
+                btnNavThuNgan.Visible = true;
+                btnNavThuNgan.Text = "  💳  Thanh toán";
+                btnNavThuNgan.Location = new Point(8, 262);
                 btnNavNhanVien.Visible = false;
                 btnNavBaoCao.Visible   = false;
                 btnNavKhoaPhong.Visible = false;

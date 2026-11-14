@@ -3,6 +3,7 @@ using System.Data;
 using System.Linq;
 using System.Collections.Generic;
 using System.Security.Cryptography;
+using System.Net.Mail;
 using Microsoft.Data.SqlClient;
 using QlyPhongKham.Models;
 using QlyPhongKham;
@@ -746,6 +747,26 @@ EnsureBenhNhanEmailColumn();
             };
         }
 
+        public static bool TaiKhoanNhanVienHoatDong(string maNV, string quyen)
+        {
+            const string sql = @"
+                SELECT CASE WHEN EXISTS (
+                    SELECT 1
+                    FROM dbo.TaiKhoan tk
+                    INNER JOIN dbo.NhanVien nv ON nv.MaNV=tk.MaNV
+                    WHERE tk.MaNV=@MaNV
+                      AND tk.TrangThai=1
+                      AND nv.TrangThai=1
+                      AND tk.Quyen=@Quyen
+                      AND nv.ChucVu=@Quyen
+                ) THEN 1 ELSE 0 END";
+            return Convert.ToBoolean(DatabaseHelper.ExecuteScalar(sql, new[]
+            {
+                new SqlParameter("@MaNV", maNV),
+                new SqlParameter("@Quyen", quyen)
+            }));
+        }
+
         public static TaiKhoanBenhNhan? DangNhapBenhNhan(string username, string password)
         {
             const string sql = @"
@@ -876,6 +897,62 @@ EnsureBenhNhanEmailColumn();
                 WHERE MaBN = @MaBN";
             var dt = DatabaseHelper.ExecuteQuery(sql, new[] { new SqlParameter("@MaBN", maBN) });
             return dt.Rows.Count > 0 ? dt.Rows[0] : null;
+        }
+
+        public static bool CapNhatHoSoBenhNhanPortal(
+            string maBN, string hoTen, DateTime? ngaySinh, string gioiTinh,
+            string? soDienThoai, string? email, string? diaChi)
+        {
+            if (!SessionState.IsPatient ||
+                !string.Equals(SessionState.CurrentPatient?.MaBN, maBN, StringComparison.OrdinalIgnoreCase))
+                throw new UnauthorizedAccessException("Bạn chỉ được cập nhật hồ sơ bệnh nhân đang đăng nhập.");
+
+            hoTen = hoTen.Trim();
+            soDienThoai = string.IsNullOrWhiteSpace(soDienThoai) ? null : soDienThoai.Trim();
+            email = string.IsNullOrWhiteSpace(email) ? null : email.Trim();
+            diaChi = string.IsNullOrWhiteSpace(diaChi) ? null : diaChi.Trim();
+
+            if (hoTen.Length == 0 || hoTen.Length > 100)
+                throw new ArgumentException("Họ tên phải có từ 1 đến 100 ký tự.", nameof(hoTen));
+            if (ngaySinh > DateTime.Today)
+                throw new ArgumentOutOfRangeException(nameof(ngaySinh), "Ngày sinh không thể ở tương lai.");
+            if (gioiTinh is not ("Nam" or "Nữ"))
+                throw new ArgumentException("Giới tính không hợp lệ.", nameof(gioiTinh));
+            if (soDienThoai?.Length > 15)
+                throw new ArgumentException("Số điện thoại không được vượt quá 15 ký tự.", nameof(soDienThoai));
+            if (email?.Length > 100)
+                throw new ArgumentException("Email không được vượt quá 100 ký tự.", nameof(email));
+            if (email != null)
+            {
+                try
+                {
+                    if (!string.Equals(new MailAddress(email).Address, email, StringComparison.OrdinalIgnoreCase))
+                        throw new FormatException();
+                }
+                catch (FormatException)
+                {
+                    throw new ArgumentException("Email không đúng định dạng.", nameof(email));
+                }
+            }
+            if (diaChi?.Length > 200)
+                throw new ArgumentException("Địa chỉ không được vượt quá 200 ký tự.", nameof(diaChi));
+
+            EnsureBenhNhanEmailColumn();
+            return DatabaseHelper.ExecuteNonQuery(@"
+                UPDATE dbo.BenhNhan
+                SET HoTen=@HoTen,NgaySinh=@NgaySinh,GioiTinh=@GioiTinh,
+                    SoDienThoai=@SoDienThoai,Email=@Email,DiaChi=@DiaChi
+                WHERE MaBN=@MaBN",
+                new[]
+                {
+                    new SqlParameter("@HoTen", hoTen),
+                    new SqlParameter("@NgaySinh", (object?)ngaySinh?.Date ?? DBNull.Value),
+                    new SqlParameter("@GioiTinh", gioiTinh),
+                    new SqlParameter("@SoDienThoai", (object?)soDienThoai ?? DBNull.Value),
+                    new SqlParameter("@Email", (object?)email ?? DBNull.Value),
+                    new SqlParameter("@DiaChi", (object?)diaChi ?? DBNull.Value),
+                    new SqlParameter("@MaBN", maBN)
+                }) > 0;
         }
 
         public static string SinhMaBenhNhan()
@@ -2286,6 +2363,9 @@ EnsureBenhNhanEmailColumn();
 
         public static void LuuPhanCongPhong(string maNV, System.Collections.Generic.IEnumerable<string> maPhongs)
         {
+            if (!SessionState.IsAdmin)
+                throw new UnauthorizedAccessException("Chỉ quản trị viên đang hoạt động được phân công phòng.");
+
             using var conn = DatabaseHelper.GetConnection();
             conn.Open();
             using var trans = conn.BeginTransaction();
@@ -2376,6 +2456,9 @@ EnsureBenhNhanEmailColumn();
 
         public static bool HuyPhanCongPhong(string maNV)
         {
+            if (!SessionState.IsAdmin)
+                throw new UnauthorizedAccessException("Chỉ quản trị viên đang hoạt động được hủy phân công phòng.");
+
             var r = DatabaseHelper.ExecuteNonQuery(
                 "DELETE FROM PhanCongPhong WHERE MaNV = @MaNV",
                 new[] { new SqlParameter("@MaNV", maNV) }) > 0;
@@ -3535,12 +3618,26 @@ EnsureBenhNhanEmailColumn();
             return "NV001";
         }
 
-        public static bool LuuNhanVien(NhanVien nv, bool isNew)
+        public static bool LuuNhanVien(NhanVien nv, bool isNew, IEnumerable<string>? maPhongs = null)
         {
             if (!SessionState.IsAdmin) throw new UnauthorizedAccessException("Chỉ quản trị viên được quản lý hồ sơ nhân viên.");
             EnsureProfileImageSchema();
             if (nv.ChucVu is not ("Admin" or "BacSi" or "LeTan" or "ThuNgan"))
                 throw new ArgumentOutOfRangeException(nameof(nv), "Chức vụ không hợp lệ.");
+
+            List<string>? assignedRooms = maPhongs?
+                .Where(room => !string.IsNullOrWhiteSpace(room))
+                .Select(room => room.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (assignedRooms != null)
+            {
+                if (nv.ChucVu != "LeTan")
+                    throw new InvalidOperationException("Chỉ có thể phân công phòng từ màn sửa nhân viên cho vai trò lễ tân.");
+                if (assignedRooms.Count == 0)
+                    throw new InvalidOperationException("Hãy phân công ít nhất một phòng cho lễ tân.");
+                EnsureClinicRoomSchema();
+            }
 
             if (nv.ChucVu == "BacSi")
             {
@@ -3573,7 +3670,7 @@ EnsureBenhNhanEmailColumn();
             {
                 string sql = @"INSERT INTO NhanVien (MaNV, HoTen, ChucVu, ChuyenKhoa, SoDienThoai, Email, AnhDaiDien, TrangThai)
                     VALUES (@MaNV, @HoTen, @ChucVu, @ChuyenKhoa, @SDT, @Email, @AnhDaiDien, 1)";
-                return DatabaseHelper.ExecuteNonQuery(sql, new[] {
+                var parameters = new[] {
                     new SqlParameter("@MaNV", nv.MaNV),
                     new SqlParameter("@HoTen", nv.HoTen),
                     new SqlParameter("@ChucVu", nv.ChucVu),
@@ -3581,12 +3678,36 @@ EnsureBenhNhanEmailColumn();
                     new SqlParameter("@SDT", (object?)nv.SoDienThoai ?? DBNull.Value),
                     new SqlParameter("@Email", (object?)nv.Email ?? DBNull.Value),
                     CreateProfileImageParameter(nv.AnhDaiDien)
-                }) > 0;
+                };
+                if (assignedRooms == null)
+                    return DatabaseHelper.ExecuteNonQuery(sql, parameters) > 0;
+
+                using var connection = DatabaseHelper.GetConnection();
+                connection.Open();
+                using var transaction = connection.BeginTransaction();
+                try
+                {
+                    using (var employee = new SqlCommand(sql, connection, transaction))
+                    {
+                        employee.Parameters.AddRange(parameters);
+                        if (employee.ExecuteNonQuery() != 1)
+                            throw new InvalidOperationException("Không thể tạo hồ sơ nhân viên.");
+                    }
+                    LuuPhanCongPhongTrongGiaoDich(connection, transaction, nv.MaNV, assignedRooms);
+                    transaction.Commit();
+                    return true;
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
             }
-            else
+
+            using (var conn = DatabaseHelper.GetConnection())
             {
-                using var conn = DatabaseHelper.GetConnection();
-                conn.Open(); using var tx = conn.BeginTransaction();
+                conn.Open();
+                using var tx = conn.BeginTransaction();
                 try
                 {
                     using (var employee = new SqlCommand(@"UPDATE NhanVien SET HoTen=@HoTen, ChucVu=@ChucVu, ChuyenKhoa=@ChuyenKhoa,
@@ -3613,9 +3734,43 @@ EnsureBenhNhanEmailColumn();
                         if (nv.ChucVu is "BacSi" or "LeTan") assignment.Parameters.AddWithValue("@VaiTro", nv.ChucVu);
                         assignment.ExecuteNonQuery();
                     }
-                    tx.Commit(); return true;
+                    if (assignedRooms != null)
+                        LuuPhanCongPhongTrongGiaoDich(conn, tx, nv.MaNV, assignedRooms);
+                    tx.Commit();
+                    return true;
                 }
-                catch { tx.Rollback(); throw; }
+                catch
+                {
+                    tx.Rollback();
+                    throw;
+                }
+            }
+        }
+
+        private static void LuuPhanCongPhongTrongGiaoDich(
+            SqlConnection connection,
+            SqlTransaction transaction,
+            string maNV,
+            IReadOnlyCollection<string> maPhongs)
+        {
+            using (var delete = new SqlCommand(
+                "DELETE FROM PhanCongPhong WHERE MaNV=@MaNV", connection, transaction))
+            {
+                delete.Parameters.AddWithValue("@MaNV", maNV);
+                delete.ExecuteNonQuery();
+            }
+
+            foreach (string maPhong in maPhongs)
+            {
+                using var insert = new SqlCommand(@"
+                    INSERT INTO PhanCongPhong (MaNV, MaPhong, VaiTro)
+                    SELECT @MaNV, p.MaPhong, N'LeTan'
+                    FROM PhongKham p
+                    WHERE p.MaPhong=@MaPhong", connection, transaction);
+                insert.Parameters.AddWithValue("@MaNV", maNV);
+                insert.Parameters.AddWithValue("@MaPhong", maPhong);
+                if (insert.ExecuteNonQuery() != 1)
+                    throw new InvalidOperationException($"Không tìm thấy phòng khám {maPhong}.");
             }
         }
 
@@ -4101,17 +4256,24 @@ EnsureBenhNhanEmailColumn();
 
         public static string SinhMaDichVu()
         {
-            string sql = "SELECT TOP 1 MaDV FROM DichVu ORDER BY MaDV DESC";
-            var result = DatabaseHelper.ExecuteScalar(sql);
-            if (result == null || result == DBNull.Value) return "DV01";
-            string current = result.ToString()!;
-            if (current.StartsWith("DV") && int.TryParse(current.Substring(2), out int num))
-                return $"DV{(num + 1):D2}";
-            return "DV01";
+            const string sql = @"
+                SELECT ISNULL(MAX(TRY_CONVERT(int, SUBSTRING(MaDV, 3, 20))), 0)
+                FROM DichVu
+                WHERE MaDV LIKE 'DV%'
+                  AND TRY_CONVERT(int, SUBSTRING(MaDV, 3, 20)) IS NOT NULL";
+            int current = Convert.ToInt32(DatabaseHelper.ExecuteScalar(sql));
+            return $"DV{current + 1:D2}";
         }
 
         public static bool LuuDichVu(DichVu dv, bool isNew)
         {
+            if (!SessionState.IsAdmin)
+                throw new UnauthorizedAccessException("Chỉ quản trị viên được quản lý danh mục dịch vụ.");
+            if (string.IsNullOrWhiteSpace(dv.MaDV) || string.IsNullOrWhiteSpace(dv.TenDV))
+                throw new ArgumentException("Mã dịch vụ và tên dịch vụ là bắt buộc.");
+            if (dv.DonGia <= 0)
+                throw new ArgumentOutOfRangeException(nameof(dv), "Đơn giá dịch vụ phải lớn hơn 0.");
+
             if (isNew)
             {
                 string sql = "INSERT INTO DichVu (MaDV, TenDV, DonGia, MoTa) VALUES (@MaDV,@TenDV,@DonGia,@MoTa)";
@@ -4127,6 +4289,40 @@ EnsureBenhNhanEmailColumn();
                     new SqlParameter("@MaDV", dv.MaDV), new SqlParameter("@TenDV", dv.TenDV),
                     new SqlParameter("@DonGia", dv.DonGia), new SqlParameter("@MoTa", (object?)dv.MoTa ?? DBNull.Value)
                 }) > 0;
+            }
+        }
+
+        public static bool XoaDichVu(string maDV)
+        {
+            if (!SessionState.IsAdmin)
+                throw new UnauthorizedAccessException("Chỉ quản trị viên được quản lý danh mục dịch vụ.");
+            if (string.IsNullOrWhiteSpace(maDV))
+                throw new ArgumentException("Mã dịch vụ không hợp lệ.", nameof(maDV));
+
+            using var connection = DatabaseHelper.GetConnection();
+            connection.Open();
+            using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+            try
+            {
+                using (var usage = new SqlCommand(
+                    "SELECT COUNT(*) FROM ChiTietChiDinhDV WITH(UPDLOCK,HOLDLOCK) WHERE MaDV=@MaDV",
+                    connection, transaction))
+                {
+                    usage.Parameters.AddWithValue("@MaDV", maDV.Trim());
+                    if (Convert.ToInt32(usage.ExecuteScalar()) > 0)
+                        throw new InvalidOperationException("Dịch vụ đã được sử dụng trong phiếu khám nên không thể xóa. Bạn có thể sửa tên hoặc đơn giá nếu cần.");
+                }
+
+                using var delete = new SqlCommand("DELETE FROM DichVu WHERE MaDV=@MaDV", connection, transaction);
+                delete.Parameters.AddWithValue("@MaDV", maDV.Trim());
+                bool deleted = delete.ExecuteNonQuery() == 1;
+                transaction.Commit();
+                return deleted;
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
             }
         }
 
@@ -4194,7 +4390,8 @@ EnsureBenhNhanEmailColumn();
                     LEFT JOIN dbo.PhanCongPhong pc ON pc.MaNV = nv.MaNV AND pc.VaiTro = N'BacSi'
                     LEFT JOIN dbo.PhongKham p ON p.MaPhong = pc.MaPhong
                     LEFT JOIN dbo.Khoa k ON k.MaKhoa = p.MaKhoa
-                    LEFT JOIN dbo.CaLamViecBacSi clv ON clv.MaNV = nv.MaNV AND clv.Thu = DATEPART(dw, GETDATE())
+                    LEFT JOIN dbo.CaLamViecBacSi clv ON clv.MaNV = nv.MaNV
+                        AND clv.Thu = (DATEDIFF(day, CONVERT(date, '19000101', 112), CONVERT(date, GETDATE())) % 7) + 1
                     WHERE nv.MaNV = @MaBS";
                 var dt = DatabaseHelper.ExecuteQuery(sql, new[] { new SqlParameter("@MaBS", maBS) });
                 if (dt.Rows.Count > 0)
@@ -4740,31 +4937,24 @@ EnsureBenhNhanEmailColumn();
         {
             EnsureAdvancedWorkflowSchema();
             EnsureDefaultDoctorShifts();
-            try
-            {
-                return DatabaseHelper.ExecuteQuery(@"
-                    SELECT  nv.MaNV,
-                            nv.HoTen,
-                            nv.ChucVu,
-                            nv.ChuyenKhoa,
-                            CONVERT(VARCHAR(5), clv.GioBatDau, 108) AS GioBatDau,
-                            CONVERT(VARCHAR(5), clv.GioKetThuc, 108) AS GioKetThuc,
-                            ISNULL(p.TenPhong, N'Phòng khám chuyên khoa') AS TenPhong,
-                            ISNULL(k.TenKhoa, N'Khoa Khám bệnh') AS TenKhoa,
-                            CAST(CASE WHEN CONVERT(time, GETDATE()) BETWEEN clv.GioBatDau AND clv.GioKetThuc
-                                 THEN 1 ELSE 0 END AS BIT) AS DangTrongCa
-                    FROM   dbo.CaLamViecBacSi clv
-                    INNER JOIN dbo.NhanVien nv ON nv.MaNV = clv.MaNV AND nv.TrangThai = 1 AND nv.ChucVu = N'BacSi'
-                    LEFT JOIN dbo.PhanCongPhong pc ON pc.MaNV = nv.MaNV AND pc.VaiTro = N'BacSi'
-                    LEFT JOIN dbo.PhongKham p ON p.MaPhong = pc.MaPhong
-                    LEFT JOIN dbo.Khoa k ON k.MaKhoa = p.MaKhoa
-                    WHERE  clv.Thu = DATEPART(dw, GETDATE())
-                    ORDER  BY DangTrongCa DESC, clv.GioBatDau, nv.HoTen");
-            }
-            catch
-            {
-                return new DataTable();
-            }
+            return DatabaseHelper.ExecuteQuery(@"
+                SELECT  nv.MaNV,
+                        nv.HoTen,
+                        nv.ChucVu,
+                        nv.ChuyenKhoa,
+                        CONVERT(VARCHAR(5), clv.GioBatDau, 108) AS GioBatDau,
+                        CONVERT(VARCHAR(5), clv.GioKetThuc, 108) AS GioKetThuc,
+                        ISNULL(p.TenPhong, N'Phòng khám chuyên khoa') AS TenPhong,
+                        ISNULL(k.TenKhoa, N'Khoa Khám bệnh') AS TenKhoa,
+                        CAST(CASE WHEN CONVERT(time, GETDATE()) BETWEEN clv.GioBatDau AND clv.GioKetThuc
+                             THEN 1 ELSE 0 END AS BIT) AS DangTrongCa
+                FROM   dbo.CaLamViecBacSi clv
+                INNER JOIN dbo.NhanVien nv ON nv.MaNV = clv.MaNV AND nv.TrangThai = 1 AND nv.ChucVu = N'BacSi'
+                LEFT JOIN dbo.PhanCongPhong pc ON pc.MaNV = nv.MaNV AND pc.VaiTro = N'BacSi'
+                LEFT JOIN dbo.PhongKham p ON p.MaPhong = pc.MaPhong
+                LEFT JOIN dbo.Khoa k ON k.MaKhoa = p.MaKhoa
+                WHERE  clv.Thu = (DATEDIFF(day, CONVERT(date, '19000101', 112), CONVERT(date, GETDATE())) % 7) + 1
+                ORDER  BY DangTrongCa DESC, clv.GioBatDau, nv.HoTen");
         }
 
         // ══════════════════════════════════════════════════════════════
@@ -4792,7 +4982,7 @@ EnsureBenhNhanEmailColumn();
                     LEFT JOIN dbo.PhanCongPhong pc ON pc.MaNV = nv.MaNV AND pc.VaiTro = N'BacSi'
                     LEFT JOIN dbo.PhongKham p ON p.MaPhong = pc.MaPhong
                     LEFT JOIN dbo.Khoa k ON k.MaKhoa = p.MaKhoa
-                    WHERE  clv.Thu = DATEPART(dw, GETDATE())
+                    WHERE  clv.Thu = (DATEDIFF(day, CONVERT(date, '19000101', 112), CONVERT(date, GETDATE())) % 7) + 1
                     ORDER  BY DangTrongCa DESC, clv.GioBatDau, nv.HoTen");
             }
             catch

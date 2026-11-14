@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
 using System.IO;
@@ -22,7 +23,7 @@ namespace QlyPhongKham.Forms
             _editing = nv;
             _profileImage = nv?.AnhDaiDien;
             Text = nv == null ? "Thêm nhân viên mới" : "Sửa thông tin nhân viên";
-            ClientSize = new Size(780, 550);
+            ClientSize = new Size(780, 575);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -167,20 +168,74 @@ namespace QlyPhongKham.Forms
                     cboSpecialty.SelectedIndex = specialtyIndex;
             }
             cboSpecialty.Enabled = cboRole.SelectedItem?.ToString() == "BacSi";
-            AddField(detailsCard, "Chuyên khoa chính", cboSpecialty, 20, 170);
+            var lblSpecialty = AddField(detailsCard, "Chuyên khoa chính", cboSpecialty, 20, 170);
+
+            var lblAssignedRooms = new Label
+            {
+                Text = "Phòng phụ trách (chọn một hoặc nhiều)",
+                Location = new Point(20, 170),
+                AutoSize = true,
+                ForeColor = Color.FromArgb(66, 87, 102),
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                Visible = false
+            };
+            var assignedRooms = new CheckedListBox
+            {
+                Location = new Point(20, 190),
+                Size = new Size(481, 80),
+                CheckOnClick = true,
+                IntegralHeight = false,
+                BorderStyle = BorderStyle.FixedSingle,
+                Font = new Font("Segoe UI", 9F),
+                Visible = false
+            };
+            var assignedRoomIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (nv != null)
+            {
+                foreach (DataRow assignedRoom in ClinicDAL.LayPhongPhanCongNhanVien(nv.MaNV).Rows)
+                    assignedRoomIds.Add(assignedRoom["MaPhong"]?.ToString() ?? "");
+            }
+            foreach (DataRow room in ClinicDAL.LayDanhSachPhongKham().Rows)
+            {
+                string roomId = room["MaPhong"]?.ToString() ?? "";
+                string specialtyName = room["TenKhoa"]?.ToString() ?? "";
+                string roomName = room["TenPhong"]?.ToString() ?? roomId;
+                int roomIndex = assignedRooms.Items.Add(new RoomOption(roomId, $"{roomName} - {specialtyName}"));
+                assignedRooms.SetItemChecked(roomIndex, assignedRoomIds.Contains(roomId));
+            }
+            detailsCard.Controls.AddRange(new Control[] { lblAssignedRooms, assignedRooms });
 
             var txtPhone = CreateInput(new Point(20, 254), new Size(210, 30));
             txtPhone.Text = nv?.SoDienThoai ?? "";
-            AddField(detailsCard, "Điện thoại", txtPhone, 20, 234);
+            var lblPhone = AddField(detailsCard, "Điện thoại", txtPhone, 20, 234);
             var txtEmail = CreateInput(new Point(271, 254), new Size(230, 30));
             txtEmail.Text = nv?.Email ?? "";
-            AddField(detailsCard, "Email", txtEmail, 271, 234);
+            var lblEmail = AddField(detailsCard, "Email", txtEmail, 271, 234);
+
+            void UpdateRoleFields()
+            {
+                bool isDoctor = cboRole.SelectedItem?.ToString() == "BacSi";
+                bool isReceptionist = cboRole.SelectedItem?.ToString() == "LeTan";
+                cboSpecialty.Enabled = isDoctor;
+                cboSpecialty.Visible = isDoctor;
+                lblSpecialty.Visible = isDoctor;
+                assignedRooms.Visible = isReceptionist;
+                lblAssignedRooms.Visible = isReceptionist;
+                if (!isDoctor)
+                    cboSpecialty.SelectedIndex = 0;
+
+                int phoneLabelY = isReceptionist ? 283 : 234;
+                int phoneInputY = isReceptionist ? 303 : 254;
+                lblPhone.Location = new Point(20, phoneLabelY);
+                lblEmail.Location = new Point(271, phoneLabelY);
+                txtPhone.Location = new Point(20, phoneInputY);
+                txtEmail.Location = new Point(271, phoneInputY);
+            }
 
             string preferredSpecialty = nv?.ChuyenKhoa?.Trim() ?? "";
             cboRole.SelectedIndexChanged += (s, e) =>
             {
                 bool isDoctor = cboRole.SelectedItem?.ToString() == "BacSi";
-                cboSpecialty.Enabled = isDoctor;
                 if (!isDoctor)
                     cboSpecialty.SelectedIndex = 0;
                 else if (!string.IsNullOrWhiteSpace(preferredSpecialty))
@@ -191,6 +246,7 @@ namespace QlyPhongKham.Forms
                     if (specialtyIndex >= 0)
                         cboSpecialty.SelectedIndex = specialtyIndex;
                 }
+                UpdateRoleFields();
             };
             cboSpecialty.SelectedIndexChanged += (s, e) =>
             {
@@ -209,6 +265,7 @@ namespace QlyPhongKham.Forms
             btnCancel.DialogResult = DialogResult.Cancel;
 
             Controls.AddRange(new Control[] { header, photoCard, detailsCard, btnSave, btnCancel });
+            UpdateRoleFields();
             AcceptButton = btnSave;
             CancelButton = btnCancel;
 
@@ -274,7 +331,22 @@ namespace QlyPhongKham.Forms
                 };
                 try
                 {
-                    ClinicDAL.LuuNhanVien(employee, _editing == null);
+                    List<string>? roomIds = null;
+                    if (role == "LeTan")
+                    {
+                        roomIds = new List<string>();
+                        foreach (RoomOption room in assignedRooms.CheckedItems)
+                            roomIds.Add(room.Id);
+                        if (roomIds.Count == 0)
+                        {
+                            MessageBox.Show(this, "Vui lòng chọn ít nhất một phòng phụ trách cho lễ tân.",
+                                "Chưa phân công phòng", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            assignedRooms.Focus();
+                            return;
+                        }
+                    }
+
+                    ClinicDAL.LuuNhanVien(employee, _editing == null, roomIds);
                     DialogResult = DialogResult.OK;
                     Close();
                 }
@@ -322,17 +394,33 @@ namespace QlyPhongKham.Forms
                 Cursor = Cursors.Hand
             };
 
-        private static void AddField(Control parent, string caption, Control input, int x, int labelY)
+        private static Label AddField(Control parent, string caption, Control input, int x, int labelY)
         {
-            parent.Controls.Add(new Label
+            var label = new Label
             {
                 Text = caption,
                 Location = new Point(x, labelY),
                 AutoSize = true,
                 ForeColor = Color.FromArgb(66, 87, 102),
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Bold)
-            });
+            };
+            parent.Controls.Add(label);
             parent.Controls.Add(input);
+            return label;
+        }
+
+        private sealed class RoomOption
+        {
+            public string Id { get; }
+            private readonly string _label;
+
+            public RoomOption(string id, string label)
+            {
+                Id = id;
+                _label = label;
+            }
+
+            public override string ToString() => _label;
         }
     }
 }

@@ -2200,11 +2200,17 @@ namespace QlyPhongKham.Forms
                             Location = new Point(18, 30),
                             Size = new Size(290, 30)
                         };
-                        days.Items.AddRange(new object[] { "Sau 7 ngày", "Sau 14 ngày", "Sau 30 ngày" });
+                        days.Items.AddRange(new object[]
+                        {
+                            UiText.Translate("Sau 7 ngày"),
+                            UiText.Translate("Sau 14 ngày"),
+                            UiText.Translate("Sau 30 ngày"),
+                            UiText.Translate("Không cần tái khám (đã khỏi)")
+                        });
                         days.SelectedIndex = 0;
                         var confirm = new Button
                         {
-                            Text = "Tạo lịch",
+                            Text = UiText.Translate("Xác nhận"),
                             DialogResult = DialogResult.OK,
                             Location = new Point(208, 76),
                             Size = new Size(100, 30)
@@ -2213,6 +2219,14 @@ namespace QlyPhongKham.Forms
                         followUpForm.AcceptButton = confirm;
                         if (followUpForm.ShowDialog(this) == DialogResult.OK)
                         {
+                            if (days.SelectedIndex == 3)
+                            {
+                                MessageBox.Show(UiText.Translate("Đã ghi nhận không cần tái khám. Ca khám đã hoàn tất và bảng kê đã được chuyển."),
+                                    UiText.Translate("Hoàn tất thành công"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                                ShowBacSiLichKhamView();
+                                return;
+                            }
+
                             try
                             {
                                 int interval = days.SelectedIndex switch { 1 => 14, 2 => 30, _ => 7 };
@@ -2763,7 +2777,7 @@ namespace QlyPhongKham.Forms
         }
 
         // ═══════════════════════════════════════════════════════════
-        //  VIEW 6: BÁC SĨ - BẢNG GIÁ DỊCH VỤ KỸ THUẬT & CLS (READ-ONLY)
+        //  VIEW 6: TRA CỨU DỊCH VỤ (BÁC SĨ READ-ONLY, ADMIN CRUD)
         // ═══════════════════════════════════════════════════════════
         public void ShowBacSiDichVuView()
         {
@@ -2811,10 +2825,17 @@ namespace QlyPhongKham.Forms
             var lblServiceName = new Label { Location = new Point(14, 42), Size = new Size(pnlRight.Width - 28, 48), Font = new Font("Segoe UI", 12f, FontStyle.Bold), ForeColor = C_Teal, Text = "Chọn dịch vụ để xem chi tiết", Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
             var lblPriceBadge = new Label { Location = new Point(14, 94), Size = new Size(200, 28), Font = new Font("Segoe UI", 10f, FontStyle.Bold), Text = "Đơn giá: --", BackColor = Color.FromArgb(220, 252, 231), ForeColor = Color.FromArgb(22, 101, 52), TextAlign = ContentAlignment.MiddleCenter };
 
-            var lblNotesTitle = MakeLbl("Hướng dẫn & Lưu ý chuẩn bị cho bệnh nhân:", 14, 136, bold: true);
-            var txtNotes = new TextBox { Location = new Point(14, 162), Size = new Size(pnlRight.Width - 28, pnlRight.Height - 177), Multiline = true, ReadOnly = true, Font = F_Base, BackColor = Color.FromArgb(248, 250, 252), Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
+            var btnAddService = PrimaryBtn("Thêm", 14, 132, 96, 32);
+            var btnEditService = SecondaryBtn("Sửa", 118, 132, 96, 32, C_Blue);
+            var btnDeleteService = SecondaryBtn("Xóa", 222, 132, 110, 32, C_Red);
+            btnAddService.Visible = SessionState.IsAdmin;
+            btnEditService.Visible = SessionState.IsAdmin;
+            btnDeleteService.Visible = SessionState.IsAdmin;
 
-            pnlRight.Controls.AddRange(new Control[] { lblDetailHeader, lblServiceName, lblPriceBadge, lblNotesTitle, txtNotes });
+            var lblNotesTitle = MakeLbl("Hướng dẫn & Lưu ý chuẩn bị cho bệnh nhân:", 14, 174, bold: true);
+            var txtNotes = new TextBox { Location = new Point(14, 200), Size = new Size(pnlRight.Width - 28, pnlRight.Height - 215), Multiline = true, ReadOnly = true, Font = F_Base, BackColor = Color.FromArgb(248, 250, 252), Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
+
+            pnlRight.Controls.AddRange(new Control[] { lblDetailHeader, lblServiceName, lblPriceBadge, btnAddService, btnEditService, btnDeleteService, lblNotesTitle, txtNotes });
 
             // Left grid
             var pnlLeft = new Panel { Dock = DockStyle.Fill, BackColor = C_Card, Padding = new Padding(10) };
@@ -2889,10 +2910,72 @@ namespace QlyPhongKham.Forms
             };
 
             GridPageController? pageController = null;
-            void LoadData()
+            void LoadData() => pageController?.Reload();
+
+            DataRowView? GetSelectedService() =>
+                dgvDichVu.SelectedRows.Count > 0
+                    ? dgvDichVu.SelectedRows[0].DataBoundItem as DataRowView
+                    : null;
+
+            btnAddService.Click += (s, e) =>
             {
-                pageController?.Reload();
-            }
+                using var dialog = new FormThemSuaDichVu(null);
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                    LoadData();
+            };
+            btnEditService.Click += (s, e) =>
+            {
+                DataRowView? selected = GetSelectedService();
+                if (selected == null)
+                {
+                    MessageBox.Show(this, "Chọn dịch vụ cần sửa.", "Chưa chọn dịch vụ",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                DataRow row = selected.Row;
+                using var dialog = new FormThemSuaDichVu(new DichVu
+                {
+                    MaDV = row["MaDV"]?.ToString() ?? "",
+                    TenDV = row["TenDV"]?.ToString() ?? "",
+                    DonGia = Convert.ToDecimal(row["DonGia"]),
+                    MoTa = row["MoTa"] == DBNull.Value ? "" : row["MoTa"]?.ToString()
+                });
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                    LoadData();
+            };
+            btnDeleteService.Click += (s, e) =>
+            {
+                DataRowView? selected = GetSelectedService();
+                if (selected == null)
+                {
+                    MessageBox.Show(this, "Chọn dịch vụ cần xóa.", "Chưa chọn dịch vụ",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                string serviceId = selected["MaDV"]?.ToString() ?? "";
+                string serviceName = selected["TenDV"]?.ToString() ?? serviceId;
+                if (MessageBox.Show(this, $"Bạn có chắc muốn xóa dịch vụ “{serviceName}”?",
+                        "Xác nhận xóa dịch vụ", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+                    return;
+
+                try
+                {
+                    if (!ClinicDAL.XoaDichVu(serviceId))
+                    {
+                        MessageBox.Show(this, "Không tìm thấy dịch vụ cần xóa.", "Không thể xóa",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+                    LoadData();
+                }
+                catch (Exception exception)
+                {
+                    MessageBox.Show(this, exception.Message, "Không thể xóa dịch vụ",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            };
 
             pageController = GridPageController.Attach(dgvDichVu, (offset, pageSize) =>
             {

@@ -2565,9 +2565,15 @@ namespace QlyPhongKham.Forms
                 FlowDirection = FlowDirection.RightToLeft,
                 Padding = new Padding(0, 8, 14, 8)
             };
-            var confirm = PrimaryBtn("✓ Xác nhận thanh toán", 0, 0, 180, 36);
+            var confirm = PrimaryBtn("✓ Xác nhận đã thanh toán xong", 0, 0, 220, 36);
             var cancel = new Button { Text = "Đóng", Width = 90, Height = 36, DialogResult = DialogResult.Cancel, BackColor = Color.White, FlatStyle = FlatStyle.Flat, Font = F_Base };
             pnlActions.Controls.AddRange(new Control[] { confirm, cancel });
+            void UpdateConfirmText()
+                => confirm.Text = paymentAmount.Value >= balanceDue
+                    ? "✓ Xác nhận đã thanh toán xong"
+                    : "✓ Ghi nhận khoản thu";
+            UpdateConfirmText();
+            paymentAmount.ValueChanged += (s, e) => UpdateConfirmText();
 
             pnlLeft.Controls.AddRange(new Control[] { lblHeading, lblPatient, pnlDue, lblPayAmount, paymentAmount, lblMethod, method, pnlBankInfo, pnlActions });
 
@@ -2724,31 +2730,67 @@ namespace QlyPhongKham.Forms
                         return;
                     }
 
-                    // ── Gửi email xác nhận thanh toán + thông báo bell ──
+                    // ── Gửi email biên lai khi hóa đơn đã được thanh toán đủ ──
                     try
                     {
                         var hdInfo = ClinicDAL.LayThongTinHoaDonDaThanhToan(maHD);
-                        if (hdInfo.daThanhToan && !string.IsNullOrWhiteSpace(hdInfo.email))
-                            Helpers.EmailHelper.SendAsync(
-                                hdInfo.email,
-                                $"[An Tâm] Hóa đơn #{maHD} đã thanh toán thành công",
-                                Helpers.EmailHelper.BuildThanhToanBody(
-                                    hdInfo.tenBN, maHD, hdInfo.daThu,
-                                    method.SelectedItem?.ToString() ?? "Tiền mặt", DateTime.Now));
-
                         string paymentStatus = hdInfo.daThanhToan ? "đã thanh toán đủ" : "đã ghi nhận thanh toán một phần";
                         decimal remaining = Math.Max(0, balanceDue - paymentAmount.Value);
-                        Helpers.NotificationHelper.Push(
-                            SessionState.CurrentUser?.MaNV ?? "",
-                            $"Hóa đơn {maHD} {paymentStatus}",
-                            $"BN: {hdInfo.tenBN} | Đợt này: {paymentAmount.Value:N0} đ | Còn lại: {remaining:N0} đ | {method.SelectedItem}",
-                            "Thanh toán");
-                        Helpers.NotificationHelper.PushToAdmins(
-                            $"Hóa đơn {maHD} {paymentStatus}",
-                            $"BN: {hdInfo.tenBN} | Đợt này: {paymentAmount.Value:N0} đ | Còn lại: {remaining:N0} đ | Thu ngân: {SessionState.CurrentUser?.HoTenNhanVien}",
-                            "Thanh toán");
+                        try
+                        {
+                            Helpers.NotificationHelper.Push(
+                                SessionState.CurrentUser?.MaNV ?? "",
+                                $"Hóa đơn {maHD} {paymentStatus}",
+                                $"BN: {hdInfo.tenBN} | Đợt này: {paymentAmount.Value:N0} đ | Còn lại: {remaining:N0} đ | {method.SelectedItem}",
+                                "Thanh toán");
+                            Helpers.NotificationHelper.PushToAdmins(
+                                $"Hóa đơn {maHD} {paymentStatus}",
+                                $"BN: {hdInfo.tenBN} | Đợt này: {paymentAmount.Value:N0} đ | Còn lại: {remaining:N0} đ | Thu ngân: {SessionState.CurrentUser?.HoTenNhanVien}",
+                                "Thanh toán");
+                        }
+                        catch (Exception notificationError)
+                        {
+                            MessageBox.Show($"Đã ghi nhận thanh toán, nhưng không thể cập nhật thông báo: {notificationError.Message}",
+                                "Thông báo thanh toán", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        }
+
+                        if (hdInfo.daThanhToan)
+                        {
+                            if (string.IsNullOrWhiteSpace(hdInfo.email))
+                            {
+                                MessageBox.Show("Hóa đơn đã thanh toán đủ nhưng hồ sơ bệnh nhân chưa có email nên chưa thể gửi biên lai.",
+                                    "Chưa có email bệnh nhân", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            }
+                            else
+                            {
+                                try
+                                {
+                                    string maPK = invoice.Table.Columns.Contains("MaPK")
+                                        ? invoice["MaPK"]?.ToString() ?? ""
+                                        : "";
+                                    DataTable invoiceDetails = ClinicDAL.LayChiTietHoaDon(maHD);
+                                    string receiptBody = Helpers.EmailHelper.BuildThanhToanBody(
+                                        hdInfo.tenBN, maHD, maPK, hdInfo.daThu,
+                                        method.SelectedItem?.ToString() ?? "Tiền mặt",
+                                        DateTime.Now, invoiceDetails);
+                                    SendPaymentReceiptAsync(
+                                        hdInfo.email,
+                                        $"[An Tâm] Hóa đơn #{maHD} đã thanh toán thành công",
+                                        receiptBody);
+                                }
+                                catch (Exception emailPreparationError)
+                                {
+                                    MessageBox.Show($"Hóa đơn đã thanh toán đủ nhưng không thể chuẩn bị email biên lai: {emailPreparationError.Message}",
+                                        "Không thể chuẩn bị email", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                                }
+                            }
+                        }
                     }
-                    catch { /* email/notification không được phá workflow chính */ }
+                    catch (Exception receiptError)
+                    {
+                        MessageBox.Show($"Đã ghi nhận thanh toán, nhưng không thể tải thông tin để gửi biên lai: {receiptError.Message}",
+                            "Thông báo thanh toán", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
 
                     // Chỉ cấp thuốc tự động khi hóa đơn được thanh toán đủ.
                     string pkCuaHoaDon = invoice.Table.Columns.Contains("MaPK") ? invoice["MaPK"]?.ToString() ?? "" : "";
@@ -2799,6 +2841,15 @@ namespace QlyPhongKham.Forms
             dialog.AcceptButton = confirm;
             dialog.CancelButton = cancel;
             return dialog.ShowDialog(this) == DialogResult.OK;
+        }
+
+        private async void SendPaymentReceiptAsync(string email, string subject, string body)
+        {
+            bool sent = await Helpers.EmailHelper.SendAsync(email, subject, body);
+            if (!sent && !IsDisposed)
+                MessageBox.Show(this,
+                    "Hóa đơn đã thanh toán đủ nhưng email biên lai không gửi được. Vui lòng kiểm tra cấu hình email hoặc thử gửi lại.",
+                    "Không gửi được email biên lai", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         private bool ShowAdvancePayment(DataRow ticket)

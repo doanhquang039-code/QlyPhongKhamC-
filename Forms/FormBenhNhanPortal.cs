@@ -30,6 +30,8 @@ namespace QlyPhongKham.Forms
         private readonly Panel _profileCard;
         private readonly Button _languageViButton;
         private readonly Button _languageEnButton;
+        private readonly Label _patientNameLabel;
+        private readonly Label _headerUserLabel;
 
         public FormBenhNhanPortal()
         {
@@ -56,7 +58,7 @@ namespace QlyPhongKham.Forms
             brand.Controls.Add(new Label
             {
                 Text = "An Tâm",
-                Location = new Point(60, 22),
+                Location = new Point(85, 22),
                 AutoSize = true,
                 Font = new Font("Segoe UI", 15F, FontStyle.Bold),
                 ForeColor = Color.White
@@ -69,7 +71,7 @@ namespace QlyPhongKham.Forms
                 BackColor = Color.FromArgb(28, 58, 79),
                 Padding = new Padding(12)
             };
-            patientCard.Controls.Add(new Label
+            _patientNameLabel = new Label
             {
                 Text = _patient.HoTen,
                 Location = new Point(12, 12),
@@ -77,7 +79,8 @@ namespace QlyPhongKham.Forms
                 Font = new Font("Segoe UI", 10F, FontStyle.Bold),
                 ForeColor = Color.White,
                 AutoEllipsis = true
-            });
+            };
+            patientCard.Controls.Add(_patientNameLabel);
             patientCard.Controls.Add(new Label
             {
                 Text = $"Mã hồ sơ: {_patient.MaBN}",
@@ -213,7 +216,7 @@ namespace QlyPhongKham.Forms
             _languageEnButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _languageViButton.Click += (s, e) => SetLanguage(false);
             _languageEnButton.Click += (s, e) => SetLanguage(true);
-            var userLabel = new Label
+            _headerUserLabel = new Label
             {
                 Text = _patient.HoTen,
                 Location = new Point(520, 25),
@@ -229,13 +232,13 @@ namespace QlyPhongKham.Forms
                 int rightEdge = header.ClientSize.Width - 16;
                 _languageEnButton.Location = new Point(rightEdge - _languageEnButton.Width, 19);
                 _languageViButton.Location = new Point(_languageEnButton.Left - 2 - _languageViButton.Width, 19);
-                userLabel.Location = new Point(_languageViButton.Left - 8 - userLabel.Width, 25);
-                _refreshButton.Location = new Point(Math.Max(_pageTitle.Right + 20, userLabel.Left - 8 - _refreshButton.Width), 19);
+                _headerUserLabel.Location = new Point(_languageViButton.Left - 8 - _headerUserLabel.Width, 25);
+                _refreshButton.Location = new Point(Math.Max(_pageTitle.Right + 20, _headerUserLabel.Left - 8 - _refreshButton.Width), 19);
             }
             header.SizeChanged += (s, e) => PositionHeaderControls();
             header.Controls.AddRange(new Control[]
             {
-                _breadcrumb, _pageTitle, _refreshButton, userLabel, _languageViButton, _languageEnButton
+                _breadcrumb, _pageTitle, _refreshButton, _headerUserLabel, _languageViButton, _languageEnButton
             });
             PositionHeaderControls();
 
@@ -376,26 +379,93 @@ namespace QlyPhongKham.Forms
                 DataRow profile = ClinicDAL.LayBenhNhanTheoMa(_patient.MaBN)
                     ?? throw new InvalidOperationException("Không tìm thấy hồ sơ bệnh nhân.");
                 var page = CreatePageFlow();
-                var card = CreateCard(360);
+                var card = CreateCard(400);
                 AddCardAccent(card);
                 card.Controls.Add(CreateLabel("Thông tin cá nhân", 20, 16, 500, 28, 16, true, Navy));
-                var profilePanel = new Panel
+                var fields = new TableLayoutPanel
                 {
                     Location = new Point(20, 58),
-                    Size = new Size(card.ClientSize.Width - 40, 290),
+                    Size = new Size(card.ClientSize.Width - 40, 240),
                     Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                    AutoScroll = true,
-                    BackColor = Color.White
+                    ColumnCount = 2,
+                    RowCount = 3,
+                    BackColor = Color.White,
+                    Margin = Padding.Empty
                 };
-                AddProfileField(profilePanel, "Họ và tên", Value(profile, "HoTen"), 15);
-                AddProfileField(profilePanel, "Mã hồ sơ", Value(profile, "MaBN"), 55);
-                AddProfileField(profilePanel, "Ngày sinh", FormatValue(profile["NgaySinh"]), 95);
-                AddProfileField(profilePanel, "Giới tính", Value(profile, "GioiTinh"), 135);
-                AddProfileField(profilePanel, "Số điện thoại", FormatValue(profile["SoDienThoai"]), 175);
-                AddProfileField(profilePanel, "Email nhận thông báo", FormatValue(profile["Email"]), 215);
-                AddProfileField(profilePanel, "Địa chỉ", FormatValue(profile["DiaChi"]), 255);
-                AddProfileField(profilePanel, "Tiền sử bệnh / dị ứng", FormatValue(profile["TienSuBenh"]), 295);
-                card.Controls.Add(profilePanel);
+                fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+                fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+                for (int i = 0; i < 3; i++)
+                    fields.RowStyles.Add(new RowStyle(SizeType.Percent, 33.333F));
+
+                var fullName = new TextBox { Dock = DockStyle.Top, Font = Font, MaxLength = 100, Text = ValueForEdit(profile, "HoTen") };
+                var birthDate = new DateTimePicker
+                {
+                    Dock = DockStyle.Top,
+                    Font = Font,
+                    Format = DateTimePickerFormat.Custom,
+                    CustomFormat = "dd/MM/yyyy",
+                    ShowCheckBox = true,
+                    Checked = profile["NgaySinh"] != DBNull.Value,
+                    MaxDate = DateTime.Today
+                };
+                if (profile["NgaySinh"] != DBNull.Value)
+                    birthDate.Value = Convert.ToDateTime(profile["NgaySinh"]);
+                var gender = new ComboBox
+                {
+                    Dock = DockStyle.Top,
+                    Font = Font,
+                    DropDownStyle = ComboBoxStyle.DropDownList
+                };
+                gender.Items.AddRange(new object[] { "Nam", "Nữ" });
+                gender.SelectedItem = ValueForEdit(profile, "GioiTinh");
+                var phone = new TextBox { Dock = DockStyle.Top, Font = Font, MaxLength = 15, Text = ValueForEdit(profile, "SoDienThoai") };
+                var email = new TextBox { Dock = DockStyle.Top, Font = Font, MaxLength = 100, Text = ValueForEdit(profile, "Email") };
+                var address = new TextBox { Dock = DockStyle.Top, Font = Font, MaxLength = 200, Text = ValueForEdit(profile, "DiaChi") };
+
+                fields.Controls.Add(CreateProfileEditField("Họ và tên", fullName), 0, 0);
+                fields.Controls.Add(CreateProfileEditField("Ngày sinh", birthDate), 1, 0);
+                fields.Controls.Add(CreateProfileEditField("Giới tính", gender), 0, 1);
+                fields.Controls.Add(CreateProfileEditField("Số điện thoại", phone), 1, 1);
+                fields.Controls.Add(CreateProfileEditField("Email nhận thông báo", email), 0, 2);
+                fields.Controls.Add(CreateProfileEditField("Địa chỉ", address), 1, 2);
+                card.Controls.Add(fields);
+                card.Controls.Add(CreateLabel(
+                    "Tiền sử bệnh và thông tin khám chỉ do nhân viên y tế cập nhật để bảo đảm chính xác.",
+                    20, 310, 700, 22, 8.5F, false, Muted));
+
+                var save = CreateButton("Lưu thay đổi", primary: true);
+                save.Size = new Size(150, 36);
+                save.Location = new Point(card.ClientSize.Width - 174, 350);
+                save.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+                save.Click += (s, e) =>
+                {
+                    try
+                    {
+                        if (!ClinicDAL.CapNhatHoSoBenhNhanPortal(
+                                _patient.MaBN,
+                                fullName.Text,
+                                birthDate.Checked ? birthDate.Value.Date : null,
+                                gender.SelectedItem?.ToString() ?? "",
+                                phone.Text,
+                                email.Text,
+                                address.Text))
+                            throw new InvalidOperationException("Không tìm thấy hồ sơ để cập nhật.");
+
+                        _patient.HoTen = fullName.Text.Trim();
+                        _patient.Email = string.IsNullOrWhiteSpace(email.Text) ? null : email.Text.Trim();
+                        _patientNameLabel.Text = _patient.HoTen;
+                        _headerUserLabel.Text = _patient.HoTen;
+                        ShowMessage("Thông tin cá nhân đã được cập nhật.", "Cập nhật hồ sơ",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        ShowPersonalProfile();
+                    }
+                    catch (Exception ex)
+                    {
+                        ShowMessage(ex.Message, "Không thể cập nhật hồ sơ",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                };
+                card.Controls.Add(save);
                 page.Controls.Add(card);
                 _content.Controls.Add(page);
             }
@@ -2080,6 +2150,29 @@ namespace QlyPhongKham.Forms
             parent.Controls.Add(CreateLabel(title, 20, top, 210, 22, 9, true, Muted));
             parent.Controls.Add(CreateLabel(value, 230, top, 540, 28, 9, false, TextColor));
         }
+
+        private static Panel CreateProfileEditField(string title, Control editor)
+        {
+            var field = new Panel { Dock = DockStyle.Fill, Padding = new Padding(6, 4, 12, 4), BackColor = Color.White };
+            var label = new Label
+            {
+                Text = title,
+                Location = new Point(6, 4),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                ForeColor = Muted
+            };
+            editor.Location = new Point(6, 28);
+            editor.Size = new Size(field.ClientSize.Width - 18, 30);
+            editor.Dock = DockStyle.None;
+            editor.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            field.SizeChanged += (s, e) => editor.Width = Math.Max(0, field.ClientSize.Width - 18);
+            field.Controls.AddRange(new Control[] { label, editor });
+            return field;
+        }
+
+        private static string ValueForEdit(DataRow row, string column)
+            => row[column] == DBNull.Value ? "" : row[column].ToString() ?? "";
 
         private static string Value(DataRow row, string column)
             => row.Table.Columns.Contains(column) ? FormatValue(row[column]) : "Chưa cập nhật";

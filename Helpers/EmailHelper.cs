@@ -1,6 +1,8 @@
 using System;
+using System.Data;
 using System.Net;
 using System.Net.Mail;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace QlyPhongKham.Helpers
@@ -42,8 +44,8 @@ namespace QlyPhongKham.Helpers
             }
         }
 
-        /// <summary>Gửi bất đồng bộ (fire-and-forget) – không block UI.</summary>
-        public static void SendAsync(string to, string subject, string body)
+        /// <summary>Gửi bất đồng bộ để không chặn giao diện; trả về kết quả gửi.</summary>
+        public static Task<bool> SendAsync(string to, string subject, string body)
             => Task.Run(() => Send(to, subject, body));
 
         // ── Template: Xác nhận lịch hẹn ──────────────────────────────
@@ -109,10 +111,32 @@ namespace QlyPhongKham.Helpers
         public static string BuildThanhToanBody(
             string tenBenhNhan,
             string maHoaDon,
+            string maPhieuKham,
             decimal soTien,
             string hinhThucTT,
-            DateTime ngayThanhToan)
+            DateTime ngayThanhToan,
+            DataTable chiTiet)
         {
+            var itemRows = new StringBuilder();
+            foreach (DataRow item in chiTiet.Rows)
+            {
+                string loai = WebUtility.HtmlEncode(item["Loai"]?.ToString() ?? "");
+                string tenHang = WebUtility.HtmlEncode(item["TenHang"]?.ToString() ?? "");
+                int soLuong = Convert.ToInt32(item["SoLuong"]);
+                decimal donGia = Convert.ToDecimal(item["DonGia"]);
+                decimal thanhTien = Convert.ToDecimal(item["ThanhTien"]);
+                itemRows.Append($@"
+      <tr>
+        <td style='padding:9px 12px;border:1px solid #e5e7eb'>{loai}</td>
+        <td style='padding:9px 12px;border:1px solid #e5e7eb'>{tenHang}</td>
+        <td style='padding:9px 12px;border:1px solid #e5e7eb;text-align:center'>{soLuong}</td>
+        <td style='padding:9px 12px;border:1px solid #e5e7eb;text-align:right'>{donGia:N0} đ</td>
+        <td style='padding:9px 12px;border:1px solid #e5e7eb;text-align:right'>{thanhTien:N0} đ</td>
+      </tr>");
+            }
+            if (itemRows.Length == 0)
+                itemRows.Append("<tr><td colspan='5' style='padding:9px 12px;border:1px solid #e5e7eb'>Không có dịch vụ hoặc thuốc trong hóa đơn.</td></tr>");
+
             return $@"
 <div style='font-family:Segoe UI,Arial,sans-serif;max-width:600px;margin:auto;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden'>
   <div style='background:#22c55e;padding:24px;text-align:center'>
@@ -120,12 +144,16 @@ namespace QlyPhongKham.Helpers
     <p style='color:#dcfce7;margin:4px 0 0'>{ClinicName}</p>
   </div>
   <div style='padding:28px'>
-    <p style='font-size:16px'>Xin chào <strong>{tenBenhNhan}</strong>,</p>
-    <p>Chúng tôi xác nhận bạn đã thanh toán viện phí thành công.</p>
+    <p style='font-size:16px'>Xin chào <strong>{WebUtility.HtmlEncode(tenBenhNhan)}</strong>,</p>
+    <p>Chúng tôi xác nhận bạn đã thanh toán thành công cho phiếu khám và các dịch vụ, thuốc được liệt kê dưới đây.</p>
     <table style='width:100%;border-collapse:collapse;margin:16px 0'>
       <tr style='background:#f8fafc'>
         <td style='padding:10px 14px;border:1px solid #e5e7eb;font-weight:bold;width:38%'>🧾 Mã hóa đơn</td>
-        <td style='padding:10px 14px;border:1px solid #e5e7eb;font-weight:bold;color:#0ea5e9'>{maHoaDon}</td>
+        <td style='padding:10px 14px;border:1px solid #e5e7eb;font-weight:bold;color:#0ea5e9'>{WebUtility.HtmlEncode(maHoaDon)}</td>
+      </tr>
+      <tr>
+        <td style='padding:10px 14px;border:1px solid #e5e7eb;font-weight:bold'>📋 Mã phiếu khám</td>
+        <td style='padding:10px 14px;border:1px solid #e5e7eb'>{WebUtility.HtmlEncode(maPhieuKham)}</td>
       </tr>
       <tr>
         <td style='padding:10px 14px;border:1px solid #e5e7eb;font-weight:bold'>💰 Số tiền</td>
@@ -133,12 +161,23 @@ namespace QlyPhongKham.Helpers
       </tr>
       <tr style='background:#f8fafc'>
         <td style='padding:10px 14px;border:1px solid #e5e7eb;font-weight:bold'>💳 Hình thức</td>
-        <td style='padding:10px 14px;border:1px solid #e5e7eb'>{hinhThucTT}</td>
+        <td style='padding:10px 14px;border:1px solid #e5e7eb'>{WebUtility.HtmlEncode(hinhThucTT)}</td>
       </tr>
       <tr>
         <td style='padding:10px 14px;border:1px solid #e5e7eb;font-weight:bold'>🕐 Thời gian</td>
         <td style='padding:10px 14px;border:1px solid #e5e7eb'>{ngayThanhToan:dd/MM/yyyy HH:mm}</td>
       </tr>
+    </table>
+    <h3 style='font-size:15px;margin:22px 0 8px'>Chi tiết dịch vụ và thuốc</h3>
+    <table style='width:100%;border-collapse:collapse;margin:8px 0'>
+      <tr style='background:#f8fafc;font-weight:bold'>
+        <td style='padding:9px 12px;border:1px solid #e5e7eb'>Loại</td>
+        <td style='padding:9px 12px;border:1px solid #e5e7eb'>Tên dịch vụ / thuốc</td>
+        <td style='padding:9px 12px;border:1px solid #e5e7eb;text-align:center'>SL</td>
+        <td style='padding:9px 12px;border:1px solid #e5e7eb;text-align:right'>Đơn giá</td>
+        <td style='padding:9px 12px;border:1px solid #e5e7eb;text-align:right'>Thành tiền</td>
+      </tr>
+      {itemRows}
     </table>
     <p style='color:#6b7280;font-size:13px;margin-top:24px'>
       Vui lòng lưu giữ email này làm biên lai. Cảm ơn bạn đã sử dụng dịch vụ của {ClinicName}.

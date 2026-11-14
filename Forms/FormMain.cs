@@ -113,6 +113,7 @@ namespace QlyPhongKham.Forms
         private Panel _sidebarFooter = null!;
         private Bitmap? _sidebarProfileAvatar;
         private System.Windows.Forms.Timer? _noShowTimer;
+        private System.Windows.Forms.Timer? _sessionValidationTimer;
         private  Label  lblPageTitle    = null!;
         private  Label  lblBreadcrumb   = null!;
         private  Panel  topBar          = null!;
@@ -151,6 +152,9 @@ namespace QlyPhongKham.Forms
         // ════════════════════════════════════════════════════════
         public FormMain()
         {
+            if (!SessionState.IsCurrentUserActive)
+                throw new UnauthorizedAccessException("Tài khoản nhân viên đã bị vô hiệu hóa hoặc không còn hoạt động.");
+
             InitializeComponent();
             ClinicDAL.EnsureClinicRoomSchema();
             ClinicDAL.EnsurePharmacySchema();
@@ -158,6 +162,44 @@ namespace QlyPhongKham.Forms
             ApplyRolePermissions();
             UiText.Apply(this);
             UpdateLanguageButtons();
+            _sessionValidationTimer = new System.Windows.Forms.Timer { Interval = 1000 };
+            _sessionValidationTimer.Tick += ValidateEmployeeSession;
+            _sessionValidationTimer.Start();
+            FormClosed += (s, e) =>
+            {
+                _sessionValidationTimer?.Stop();
+                _sessionValidationTimer?.Dispose();
+            };
+        }
+
+        private void ValidateEmployeeSession(object? sender, EventArgs e)
+        {
+            if (SessionState.CurrentUser == null)
+            {
+                _sessionValidationTimer?.Stop();
+                return;
+            }
+
+            try
+            {
+                if (SessionState.IsCurrentUserActive)
+                    return;
+
+                EndRevokedSession("Tài khoản của bạn đã bị vô hiệu hóa hoặc quyền đã thay đổi.");
+            }
+            catch (Exception exception) when (exception is SqlException or InvalidOperationException)
+            {
+                EndRevokedSession($"Không thể xác minh trạng thái tài khoản. Để bảo vệ dữ liệu, bạn đã được đăng xuất.\n\n{exception.Message}");
+            }
+        }
+
+        private void EndRevokedSession(string message)
+        {
+            _sessionValidationTimer?.Stop();
+            SessionState.CurrentUser = null;
+            MessageBox.Show(this, $"{message}\n\nVui lòng đăng nhập lại hoặc liên hệ quản trị viên.",
+                "Phiên đăng nhập đã kết thúc", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            Close();
         }
 
         private void InitializeComponent()
@@ -189,7 +231,7 @@ namespace QlyPhongKham.Forms
 
             var logoPanel = new Panel { Location = new Point(0, 0), Size = new Size(240, 72), BackColor = C_Sidebar };
             logoPanel.Controls.Add(new Label { Text = "+",      Font = new Font("Segoe UI", 22f, FontStyle.Bold), ForeColor = C_Teal,   Location = new Point(18, 16), AutoSize = true });
-            logoPanel.Controls.Add(new Label { Text = "An Tâm", Font = new Font("Segoe UI", 17f, FontStyle.Bold), ForeColor = Color.White, Location = new Point(54, 20), AutoSize = true });
+            logoPanel.Controls.Add(new Label { Text = "An Tâm", Font = new Font("Segoe UI", 17f, FontStyle.Bold), ForeColor = Color.White, Location = new Point(79, 20), AutoSize = true });
 
             var userCard  = new Panel { Location = new Point(0, 72), Size = new Size(240, 72), BackColor = C_SidebarSub };
             var avatarLbl = new Label
@@ -839,7 +881,7 @@ namespace QlyPhongKham.Forms
                 ApplyResponsiveLayout();
                 ShowThuNganView();
             }
-            else // Admin
+            else if (SessionState.IsAdmin)
             {
                 btnNavTongQuan.Visible = true;
                 btnNavTongQuan.Text = "  🏠  Tổng quan";
@@ -887,6 +929,10 @@ namespace QlyPhongKham.Forms
 
                 ApplyResponsiveLayout();
                 ShowDashboard();
+            }
+            else
+            {
+                throw new UnauthorizedAccessException("Tài khoản không còn quyền truy cập vào hệ thống.");
             }
         }
 

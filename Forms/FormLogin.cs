@@ -212,6 +212,14 @@ namespace QlyPhongKham.Forms
                 mainForm.Show();
                 this.Hide();
             }
+            catch (UnauthorizedAccessException ex)
+            {
+                SessionState.CurrentUser = null;
+                this.Show();
+                lblError.Text = "Tài khoản đã bị vô hiệu hóa hoặc không còn quyền truy cập.";
+                MessageBox.Show(this, ex.Message, "Không thể đăng nhập",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
             catch (Exception ex)
             {
                 this.Show();

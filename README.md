@@ -20,7 +20,7 @@ Link tải này có hiệu lực sau khi bản GitHub Release đầu tiên đư�
 | **Lễ tân (kiêm thu ngân)** | `letan` hoặc `thungan` | `123456` | Tiếp đón, quản lý bệnh nhân, tính chi phí và xuất hóa đơn |
 | **Bệnh nhân** | `benhnhan_mai` | `123456` | Xem hồ sơ, lịch sử khám, dịch vụ, đơn thuốc và hóa đơn của chính mình |
 
-Tại màn hình đăng nhập, chọn **Đăng ký tài khoản bệnh nhân** để tạo tài khoản cổng bệnh nhân mới. Đăng ký tạo hồ sơ bệnh nhân và tài khoản role Bệnh nhân trong cùng một giao dịch; tên đăng nhập phải chưa được tài khoản nhân viên hoặc bệnh nhân khác sử dụng.
+Tại màn hình đăng nhập, chọn vai trò **Quản trị viên**, **Bác sĩ**, **Y tá** hoặc **Bệnh nhân**, sau đó nhập tên đăng nhập và mật khẩu tương ứng. Chọn **Đăng ký tài khoản bệnh nhân** để tạo tài khoản cổng bệnh nhân mới. Đăng ký tạo hồ sơ bệnh nhân và tài khoản role Bệnh nhân trong cùng một giao dịch; tên đăng nhập phải chưa được tài khoản nhân viên hoặc bệnh nhân khác sử dụng.
 
 Hồ sơ bệnh nhân và nhân viên hỗ trợ ảnh đại diện. Ảnh được tự thu nhỏ/nén và lưu trực tiếp trong SQL Server; với database cũ, ứng dụng tự bổ sung cột ảnh khi người dùng thêm hoặc sửa hồ sơ. Admin có thể xem avatar trong danh sách nhân sự; Admin, bác sĩ và lễ tân có thể bấm **Hồ sơ cá nhân** ở cuối sidebar để xem thông tin của mình.
 
@@ -64,7 +64,7 @@ Khi làm đồ án nhóm, một máy tính sẽ làm **Máy chủ CSDL (Host)** 
 - **`QlyPhongKham/Models/`**:
   - `ClinicModels.cs`: Định nghĩa các thực thể `BenhNhan`, `PhieuKham`, `Thuoc`, `HoaDon`, `NhanVien`, `TaiKhoan`...
 - **`QlyPhongKham/Forms/`**:
-  - `FormLogin.cs`: Giao diện đăng nhập, hỗ trợ chọn nhanh tài khoản mẫu và nút cấu hình máy chủ.
+  - `FormLogin.cs`: Giao diện đăng nhập, chọn vai trò và nút cấu hình máy chủ.
   - `FormConfigDb.cs`: Giao diện cấu hình IP máy chủ SQL Server động.
   - `FormMain.cs`: Dashboard quản lý tập trung với phân quyền người dùng (Role-Based Access Control).
 

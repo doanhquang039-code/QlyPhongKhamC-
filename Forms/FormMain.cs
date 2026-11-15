@@ -106,6 +106,7 @@ namespace QlyPhongKham.Forms
     internal Button btnNavNhatKy     = null!;
         internal Button btnNavKhoaPhong = null!;
         internal Button btnNavDichVu    = null!;
+        internal Button btnNavLichTruc  = null!;
         internal Panel  panelSidebar    = null!;
         internal Panel  panelContent    = null!;
         private Panel _sidebarHeader = null!;
@@ -263,6 +264,7 @@ namespace QlyPhongKham.Forms
             btnNavKhoaPhong = CreateNavBtn("🏥", "Khoa & Phòng khám",  400);
             btnNavBaoCao    = CreateNavBtn("📊", "Báo cáo thống kê",   446);
             btnNavNhatKy    = CreateNavBtn("📜", "Nhật ký hệ thống",   492);
+            btnNavLichTruc  = CreateNavBtn("🗓", "Lịch trực tuần",     538);
 
             btnNavTongQuan.Click += (s, e) =>
             {
@@ -271,29 +273,45 @@ namespace QlyPhongKham.Forms
             };
             btnNavLichHen.Click  += (s, e) =>
             {
-                if (SessionState.IsDoctor) ShowBacSiLichKhamView();
+                if (SessionState.IsDoctor)
+                {
+                    if (_autoSaveExamDraft != null && !_autoSaveExamDraft()) return;
+                    ShowBacSiLichKhamView();
+                }
                 else if (SessionState.IsAdmin) ShowAdminAppointmentsView();
                 else if (SessionState.IsReceptionist) ShowTiepDonView();
             };
             btnNavBenhNhan.Click += (s, e) =>
             {
-                if (SessionState.IsDoctor) ShowBacSiHoSoBenhAnView();
+                if (SessionState.IsDoctor)
+                {
+                    if (_autoSaveExamDraft != null && !_autoSaveExamDraft()) return;
+                    ShowBacSiHoSoBenhAnView();
+                }
                 else if (SessionState.IsReceptionist || SessionState.IsAdmin) ShowBenhNhanView();
             };
             btnNavKhamBenh.Click += (s, e) =>
             {
-                if (SessionState.IsDoctor) ShowBacSiKhamKeDonView();
+                if (SessionState.IsDoctor) ShowBacSiKhamKeDonView(_currentDoctorMaPK, _currentDoctorActiveStep);
                 else if (SessionState.IsAdmin) ShowAdminClinicView();
                 else if (SessionState.IsReceptionist) ShowLeTanLichKhamView();
             };
             btnNavKhoThuoc.Click += (s, e) =>
             {
-                if (SessionState.IsDoctor) ShowBacSiThuocView();
+                if (SessionState.IsDoctor)
+                {
+                    if (_autoSaveExamDraft != null && !_autoSaveExamDraft()) return;
+                    ShowBacSiThuocView();
+                }
                 else if (SessionState.IsReceptionist || SessionState.IsAdmin) ShowKhoThuocView();
             };
             btnNavDichVu.Click += (s, e) =>
             {
-                ShowBacSiDichVuView();
+                if (SessionState.IsDoctor)
+                {
+                    if (_autoSaveExamDraft != null && !_autoSaveExamDraft()) return;
+                    ShowBacSiDichVuView();
+                }
             };
             btnNavThuNgan.Click  += (s, e) =>
             {
@@ -313,6 +331,16 @@ namespace QlyPhongKham.Forms
             {
                 if (SessionState.IsAdmin)
                     ShowNhatKyView();
+            };
+            btnNavLichTruc.Click += (s, e) =>
+            {
+                if (SessionState.IsDoctor)
+                {
+                    if (_autoSaveExamDraft != null && !_autoSaveExamDraft()) return;
+                    ShowEmployeeShiftView();
+                }
+                else if (SessionState.IsReceptionist)
+                    ShowEmployeeShiftView();
             };
 
             var profileCard = new Panel
@@ -381,7 +409,7 @@ namespace QlyPhongKham.Forms
             btnCfg.FlatAppearance.BorderSize = 0;
             btnCfg.Click += (s, e) => new FormConfigDb().ShowDialog();
 
-            _sidebarNavigation.Controls.AddRange(new Control[] { lblSection, btnNavTongQuan, btnNavLichHen, btnNavBenhNhan, btnNavKhamBenh, btnNavKhoThuoc, btnNavDichVu, btnNavThuNgan, btnNavNhanVien, btnNavBaoCao, btnNavKhoaPhong, btnNavNhatKy });
+            _sidebarNavigation.Controls.AddRange(new Control[] { lblSection, btnNavTongQuan, btnNavLichHen, btnNavBenhNhan, btnNavKhamBenh, btnNavKhoThuoc, btnNavDichVu, btnNavThuNgan, btnNavNhanVien, btnNavBaoCao, btnNavKhoaPhong, btnNavNhatKy, btnNavLichTruc });
             _sidebarFooter.Controls.AddRange(new Control[] { profileCard, btnLogout, btnCfg });
             panelSidebar.Controls.Add(_sidebarNavigation);
             panelSidebar.Controls.Add(_sidebarFooter);
@@ -812,6 +840,9 @@ namespace QlyPhongKham.Forms
                 btnNavBaoCao.Visible   = false;
                 btnNavKhoaPhong.Visible = false;
                 btnNavNhatKy.Visible   = false;
+                btnNavLichTruc.Visible = true;
+                btnNavLichTruc.Text = "  🗓  Lịch trực tuần";
+                btnNavLichTruc.Location = new Point(8, 262);
 
                 btnNavLichHen.Visible  = true;
                 btnNavLichHen.Text     = "  📅  Lịch khám";
@@ -853,6 +884,9 @@ namespace QlyPhongKham.Forms
                 btnNavKhoThuoc.Text = "  💊  Kho thuốc";
                 btnNavKhoThuoc.Location = new Point(8, 216);
                 btnNavDichVu.Visible   = false;
+                btnNavLichTruc.Visible = true;
+                btnNavLichTruc.Text = "  🗓  Lịch trực tuần";
+                btnNavLichTruc.Location = new Point(8, 308);
                 btnNavThuNgan.Visible = true;
                 btnNavThuNgan.Text = "  💳  Thanh toán";
                 btnNavThuNgan.Location = new Point(8, 262);
@@ -876,6 +910,7 @@ namespace QlyPhongKham.Forms
                 btnNavKhoaPhong.Visible = false;
                 btnNavNhatKy.Visible   = false;
                 btnNavThuNgan.Visible = true;
+                btnNavLichTruc.Visible = false;
                 btnNavThuNgan.Text = "  💳  Thanh toán";
                 btnNavThuNgan.Location = new Point(8, 32);
                 ApplyResponsiveLayout();
@@ -926,6 +961,7 @@ namespace QlyPhongKham.Forms
                 btnNavNhatKy.Visible   = true;
                 btnNavNhatKy.Text = "  📜  Nhật ký hệ thống";
                 btnNavNhatKy.Location = new Point(8, 492);
+                btnNavLichTruc.Visible = false;
 
                 ApplyResponsiveLayout();
                 ShowDashboard();

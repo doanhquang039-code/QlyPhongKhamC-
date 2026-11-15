@@ -22,6 +22,10 @@ Link tải này có hiệu lực sau khi bản GitHub Release đầu tiên đư�
 
 Tại màn hình đăng nhập, chọn vai trò **Quản trị viên**, **Bác sĩ**, **Y tá** hoặc **Bệnh nhân**, sau đó nhập tên đăng nhập và mật khẩu tương ứng. Chọn **Đăng ký tài khoản bệnh nhân** để tạo tài khoản cổng bệnh nhân mới. Đăng ký tạo hồ sơ bệnh nhân và tài khoản role Bệnh nhân trong cùng một giao dịch; tên đăng nhập phải chưa được tài khoản nhân viên hoặc bệnh nhân khác sử dụng.
 
+Nếu bệnh nhân đã có hồ sơ khám nhưng chưa có tài khoản, lễ tân cần xác minh trực tiếp danh tính rồi chọn hồ sơ tại **Bệnh nhân → Cấp mã kích hoạt**. Bệnh nhân chọn **Tôi đã có hồ sơ khám** trong màn hình đăng ký và nhập mã để tạo tài khoản gắn với đúng mã hồ sơ. Mã dùng một lần, hết hạn sau 7 ngày; chỉ giá trị băm được lưu trong SQL Server. Không cấp mã khi chưa xác minh bệnh nhân.
+
+Bệnh nhân không có tài khoản có thể chọn **Tra cứu phiếu khám bằng OTP** ngay tại màn hình đăng nhập. Họ cần nhập mã phiếu và đúng số điện thoại trong hồ sơ; OTP 8 chữ số sẽ gửi tới email đã đăng ký, hết hạn sau 10 phút và chỉ dùng một lần. Mỗi hồ sơ được yêu cầu tối đa 3 mã/giờ; mỗi mã được thử tối đa 5 lần. Chỉ phiếu đã hoàn tất mới tra cứu được. Hồ sơ chưa có email cần được cập nhật hoặc bệnh nhân nhận bản in tại phòng khám.
+
 Hồ sơ bệnh nhân và nhân viên hỗ trợ ảnh đại diện. Ảnh được tự thu nhỏ/nén và lưu trực tiếp trong SQL Server; với database cũ, ứng dụng tự bổ sung cột ảnh khi người dùng thêm hoặc sửa hồ sơ. Admin có thể xem avatar trong danh sách nhân sự; Admin, bác sĩ và lễ tân có thể bấm **Hồ sơ cá nhân** ở cuối sidebar để xem thông tin của mình.
 
 ---
@@ -92,7 +96,7 @@ Mỗi máy cần có SQL Server Database Engine và database riêng:
 Để tạo gói phát hành tại máy phát triển, chạy `.\publish.ps1` bằng PowerShell (yêu cầu .NET 9 SDK). Gói ZIP được tạo trong `artifacts\QlyPhongKham-win-x64.zip`. GitHub Actions tự đóng gói khi đẩy mã lên `master`; khi tạo tag dạng `v*`, workflow tạo GitHub Release kèm file ZIP.
 
 ### Ghi chú cập nhật cơ sở dữ liệu
-- Phiếu khám lưu thêm **khám lâm sàng** và **sinh hiệu**. Khi mở chức năng khám trên cơ sở dữ liệu cũ, ứng dụng tự bổ sung hai cột `KhamLamSang` và `SinhHieu` vào bảng `PhieuKham`; tài khoản SQL cần quyền `ALTER TABLE`.
+- Phiếu khám lưu **bệnh sử của lần khám**, **khám lâm sàng** và **sinh hiệu**. Khi mở chức năng khám trên cơ sở dữ liệu cũ, ứng dụng tự bổ sung các cột `BenhSu`, `KhamLamSang` và `SinhHieu` vào bảng `PhieuKham`; tài khoản SQL cần quyền `ALTER TABLE`.
 - Khi mở ứng dụng, hệ thống tự bổ sung schema khoa/phòng/phân công còn thiếu và các phòng mẫu nếu chưa có. Tài khoản SQL cần quyền `CREATE TABLE` và `ALTER TABLE`; sau đó admin có thể gán nhân viên tại **Nhân sự → Phân công phòng**.
 - Không chạy lại `init_database.sql` trên cơ sở dữ liệu đang sử dụng vì script khởi tạo sẽ xóa và tạo lại các bảng.
 - Tên database phải bắt đầu bằng chữ cái và chỉ gồm chữ cái, chữ số hoặc dấu gạch dưới; không dùng tên database hệ thống của SQL Server.

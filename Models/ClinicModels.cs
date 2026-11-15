@@ -56,6 +56,7 @@ namespace QlyPhongKham.Models
         public string TenBacSi { get; set; } = string.Empty;
         public DateTime NgayKham { get; set; } = DateTime.Now;
         public string? TrieuChung { get; set; }
+        public string? BenhSu { get; set; }
         public string? ChanDoan { get; set; }
         public string? LoiDan { get; set; }
         public string TrangThai { get; set; } = "Chờ khám";

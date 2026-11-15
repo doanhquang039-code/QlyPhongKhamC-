@@ -145,13 +145,31 @@ namespace QlyPhongKham.Forms
                 }
             };
 
+            var btnVisitLookup = new Button
+            {
+                Text = "Tra cứu phiếu khám bằng OTP (không cần tài khoản)",
+                Location = new Point(35, 446),
+                Size = new Size(375, 34),
+                BackColor = Color.White,
+                ForeColor = Color.FromArgb(0, 120, 110),
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            btnVisitLookup.FlatAppearance.BorderColor = Color.FromArgb(0, 150, 136);
+            btnVisitLookup.Click += (s, e) =>
+            {
+                using var dialog = new FormTraCuuPhieuKham();
+                dialog.ShowDialog(this);
+            };
+
             this.Controls.AddRange(new Control[] {
                 headerPanel,
                 lblRole, cboRole,
                 lblUser, txtUsername,
                 lblPass, txtPassword,
                 lblError,
-                btnLogin, btnConfig, btnRegister
+                btnLogin, btnConfig, btnRegister, btnVisitLookup
             });
 
             this.AcceptButton = btnLogin;

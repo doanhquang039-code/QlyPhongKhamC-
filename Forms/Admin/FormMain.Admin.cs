@@ -992,7 +992,7 @@ namespace QlyPhongKham.Forms
             var editRoom = SecondaryBtn("✏ Sửa", 0, 0, 72, 34, C_Orange);
             var deleteRoom = SecondaryBtn("🗑 Xóa", 0, 0, 72, 34, C_Red);
             var refreshRooms = SecondaryBtn("↻ Làm mới", 0, 0, 92, 34, C_Blue);
-            var doctorShifts = SecondaryBtn("🕒 Ca bác sĩ", 0, 0, 125, 34, C_Teal);
+            var doctorShifts = SecondaryBtn("🕒 Ca trực", 0, 0, 125, 34, C_Teal);
             roomButtons.Controls.AddRange(new Control[] { addRoom, editRoom, deleteRoom, refreshRooms, doctorShifts });
             roomPanel.Controls.Add(roomButtons);
 
@@ -1070,10 +1070,21 @@ namespace QlyPhongKham.Forms
                     RunAdminAction(() => ClinicDAL.XoaPhongKham(maPhong));
             };
             refreshRooms.Click += (s, e) => LoadData();
-            doctorShifts.Click += (s, e) =>
+            var shiftMenu = new ContextMenuStrip();
+            shiftMenu.Items.Add(UiText.Translate("Lịch bác sĩ"), null, (sender, args) =>
             {
                 using var dialog = new FormCaLamViecBacSi();
                 dialog.ShowDialog(this);
+            });
+            shiftMenu.Items.Add(UiText.Translate("Lịch y tá"), null, (sender, args) =>
+            {
+                using var dialog = new FormCaLamViecYTa();
+                dialog.ShowDialog(this);
+            });
+            doctorShifts.Disposed += (sender, args) => shiftMenu.Dispose();
+            doctorShifts.Click += (s, e) =>
+            {
+                shiftMenu.Show(doctorShifts, new Point(0, doctorShifts.Height));
             };
 
             LoadData();

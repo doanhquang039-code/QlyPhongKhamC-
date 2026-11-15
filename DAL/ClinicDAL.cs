@@ -4,6 +4,8 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Net.Mail;
+using System.Text;
+using System.Threading.Tasks;
 using Microsoft.Data.SqlClient;
 using QlyPhongKham.Models;
 using QlyPhongKham;
@@ -26,10 +28,75 @@ namespace QlyPhongKham.DAL
         private static bool _auditSchemaReady;
         private static readonly object AdvancedWorkflowSchemaLock = new();
         private static bool _advancedWorkflowSchemaReady;
+        private static readonly object NurseShiftSchemaLock = new();
+        private static bool _nurseShiftSchemaReady;
         private static readonly object VisitLineageSchemaLock = new();
         private static bool _visitLineageSchemaReady;
         private static readonly object VitalSignsSchemaLock = new();
         private static bool _vitalSignsSchemaReady;
+        private static readonly object PatientActivationSchemaLock = new();
+        private static bool _patientActivationSchemaReady;
+        private static readonly object PatientVisitOtpSchemaLock = new();
+        private static bool _patientVisitOtpSchemaReady;
+
+        private static void EnsurePatientActivationSchema()
+        {
+            if (_patientActivationSchemaReady) return;
+            lock (PatientActivationSchemaLock)
+            {
+                if (_patientActivationSchemaReady) return;
+                DatabaseHelper.ExecuteNonQuery(@"
+                    IF OBJECT_ID(N'dbo.MaKichHoatTaiKhoanBN',N'U') IS NULL
+                    BEGIN
+                        CREATE TABLE dbo.MaKichHoatTaiKhoanBN(
+                            MaBN VARCHAR(10) NOT NULL,
+                            MaCodeHash CHAR(64) NOT NULL,
+                            MaNV_Cap VARCHAR(10) NOT NULL,
+                            NgayTao DATETIME2 NOT NULL,
+                            NgayHetHan DATETIME2 NOT NULL,
+                            NgaySuDung DATETIME2 NULL,
+                            CONSTRAINT PK_MaKichHoatTaiKhoanBN PRIMARY KEY(MaBN),
+                            CONSTRAINT UQ_MaKichHoatTaiKhoanBN_CodeHash UNIQUE(MaCodeHash),
+                            CONSTRAINT FK_MaKichHoatTaiKhoanBN_BenhNhan FOREIGN KEY(MaBN)
+                                REFERENCES dbo.BenhNhan(MaBN) ON DELETE CASCADE,
+                            CONSTRAINT FK_MaKichHoatTaiKhoanBN_NhanVien FOREIGN KEY(MaNV_Cap)
+                                REFERENCES dbo.NhanVien(MaNV)
+                        );
+                    END;");
+                _patientActivationSchemaReady = true;
+            }
+        }
+
+        private static void EnsurePatientVisitOtpSchema()
+        {
+            if (_patientVisitOtpSchemaReady) return;
+            lock (PatientVisitOtpSchemaLock)
+            {
+                if (_patientVisitOtpSchemaReady) return;
+                DatabaseHelper.ExecuteNonQuery(@"
+                    IF OBJECT_ID(N'dbo.MaOTPTruyCapPhieuKham',N'U') IS NULL
+                    BEGIN
+                        CREATE TABLE dbo.MaOTPTruyCapPhieuKham(
+                            MaYeuCau UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+                            MaPK VARCHAR(10) NOT NULL,
+                            MaBN VARCHAR(10) NOT NULL,
+                            MaCodeHash CHAR(64) NOT NULL,
+                            Salt CHAR(32) NOT NULL,
+                            NgayTao DATETIME2 NOT NULL,
+                            NgayHetHan DATETIME2 NOT NULL,
+                            NgaySuDung DATETIME2 NULL,
+                            SoLanThu TINYINT NOT NULL DEFAULT 0,
+                            CONSTRAINT FK_MaOTPTruyCapPhieuKham_PhieuKham FOREIGN KEY(MaPK) REFERENCES dbo.PhieuKham(MaPK),
+                            CONSTRAINT FK_MaOTPTruyCapPhieuKham_BenhNhan FOREIGN KEY(MaBN) REFERENCES dbo.BenhNhan(MaBN)
+                        );
+                        CREATE INDEX IX_MaOTPTruyCapPhieuKham_MaBN_NgayTao
+                            ON dbo.MaOTPTruyCapPhieuKham(MaBN,NgayTao DESC);
+                        CREATE INDEX IX_MaOTPTruyCapPhieuKham_MaPK_NgayTao
+                            ON dbo.MaOTPTruyCapPhieuKham(MaPK,NgayTao DESC);
+                    END;");
+                _patientVisitOtpSchemaReady = true;
+            }
+        }
 
         private static void EnsureVitalSignsSchema()
         {
@@ -241,6 +308,29 @@ namespace QlyPhongKham.DAL
                     WHERE hd.TrangThai=N'Đã thanh toán' AND hd.TongTien-hd.TienBaoHiem>0
                       AND NOT EXISTS(SELECT 1 FROM dbo.GiaoDichVienPhi gd WHERE gd.MaHD=hd.MaHD AND gd.Loai=N'Thu');");
                 _advancedWorkflowSchemaReady = true;
+            }
+        }
+
+        private static void EnsureNurseShiftSchema()
+        {
+            if (_nurseShiftSchemaReady) return;
+            lock (NurseShiftSchemaLock)
+            {
+                if (_nurseShiftSchemaReady) return;
+                DatabaseHelper.ExecuteNonQuery(@"
+                    IF OBJECT_ID(N'dbo.CaLamViecYTa',N'U') IS NULL
+                        CREATE TABLE dbo.CaLamViecYTa(
+                            MaCa INT IDENTITY(1,1) PRIMARY KEY,
+                            MaNV VARCHAR(10) NOT NULL,
+                            Thu TINYINT NOT NULL CHECK(Thu BETWEEN 1 AND 7),
+                            GioBatDau TIME NOT NULL,
+                            GioKetThuc TIME NOT NULL,
+                            CONSTRAINT CK_CaLamViecYTa_Gio CHECK(GioBatDau<GioKetThuc),
+                            CONSTRAINT FK_CaLamViecYTa_NhanVien FOREIGN KEY(MaNV) REFERENCES dbo.NhanVien(MaNV) ON DELETE CASCADE
+                        );
+                    IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'dbo.CaLamViecYTa') AND name=N'IX_CaLamViecYTa_NhanVien_Thu')
+                        CREATE INDEX IX_CaLamViecYTa_NhanVien_Thu ON dbo.CaLamViecYTa(MaNV,Thu,GioBatDau,GioKetThuc);");
+                _nurseShiftSchemaReady = true;
             }
         }
 
@@ -709,6 +799,8 @@ EnsureBenhNhanEmailColumn();
                 const string sql = @"
                     IF COL_LENGTH('dbo.PhieuKham', 'KhamLamSang') IS NULL
                         ALTER TABLE dbo.PhieuKham ADD KhamLamSang NVARCHAR(MAX) NULL;
+                    IF COL_LENGTH('dbo.PhieuKham', 'BenhSu') IS NULL
+                        ALTER TABLE dbo.PhieuKham ADD BenhSu NVARCHAR(MAX) NULL;
                     IF COL_LENGTH('dbo.PhieuKham', 'SinhHieu') IS NULL
                         ALTER TABLE dbo.PhieuKham ADD SinhHieu NVARCHAR(200) NULL;";
                 DatabaseHelper.ExecuteNonQuery(sql);
@@ -786,6 +878,416 @@ EnsureBenhNhanEmailColumn();
                 HoTen = dt.Rows[0]["HoTen"].ToString() ?? "",
                 Email = dt.Rows[0]["Email"] != DBNull.Value ? dt.Rows[0]["Email"].ToString() : null
             };
+        }
+
+        public static (string code, DateTime expiresAt) TaoMaKichHoatTaiKhoanBenhNhan(string maBN)
+        {
+            if (!SessionState.IsReceptionist && !SessionState.IsAdmin)
+                throw new UnauthorizedAccessException("Chỉ lễ tân hoặc quản trị viên được cấp mã kích hoạt.");
+            string maNV = SessionState.CurrentUser?.MaNV
+                ?? throw new UnauthorizedAccessException("Phiên đăng nhập không hợp lệ.");
+            if (string.IsNullOrWhiteSpace(maBN))
+                throw new ArgumentException("Mã hồ sơ bệnh nhân không hợp lệ.", nameof(maBN));
+
+            EnsurePatientActivationSchema();
+            string code = TaoChuoiMaKichHoat();
+            string codeHash = HashMaKichHoat(code);
+
+            using var connection = DatabaseHelper.GetConnection();
+            connection.Open();
+            using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+            try
+            {
+                using (var patient = new SqlCommand(
+                    "SELECT COUNT(*) FROM dbo.BenhNhan WITH(UPDLOCK,HOLDLOCK) WHERE MaBN=@MaBN",
+                    connection, transaction))
+                {
+                    patient.Parameters.AddWithValue("@MaBN", maBN);
+                    if (Convert.ToInt32(patient.ExecuteScalar()) == 0)
+                        throw new InvalidOperationException("Không tìm thấy hồ sơ bệnh nhân.");
+                }
+
+                using (var account = new SqlCommand(
+                    "SELECT COUNT(*) FROM dbo.TaiKhoanBenhNhan WITH(UPDLOCK,HOLDLOCK) WHERE MaBN=@MaBN",
+                    connection, transaction))
+                {
+                    account.Parameters.AddWithValue("@MaBN", maBN);
+                    if (Convert.ToInt32(account.ExecuteScalar()) > 0)
+                        throw new InvalidOperationException("Hồ sơ này đã có tài khoản bệnh nhân. Không thể cấp mã tạo tài khoản trùng.");
+                }
+
+                using (var issue = new SqlCommand(@"
+                    UPDATE dbo.MaKichHoatTaiKhoanBN WITH(UPDLOCK,HOLDLOCK)
+                    SET MaCodeHash=@CodeHash,MaNV_Cap=@MaNV,NgayTao=GETDATE(),
+                        NgayHetHan=DATEADD(DAY,7,GETDATE()),NgaySuDung=NULL
+                    WHERE MaBN=@MaBN;
+                    IF @@ROWCOUNT=0
+                        INSERT dbo.MaKichHoatTaiKhoanBN(MaBN,MaCodeHash,MaNV_Cap,NgayTao,NgayHetHan)
+                        VALUES(@MaBN,@CodeHash,@MaNV,GETDATE(),DATEADD(DAY,7,GETDATE()));",
+                    connection, transaction))
+                {
+                    issue.Parameters.AddWithValue("@MaBN", maBN);
+                    issue.Parameters.AddWithValue("@CodeHash", codeHash);
+                    issue.Parameters.AddWithValue("@MaNV", maNV);
+                    issue.ExecuteNonQuery();
+                }
+
+                DateTime expiresAt;
+                using (var expiry = new SqlCommand(
+                    "SELECT NgayHetHan FROM dbo.MaKichHoatTaiKhoanBN WHERE MaBN=@MaBN",
+                    connection, transaction))
+                {
+                    expiry.Parameters.AddWithValue("@MaBN", maBN);
+                    expiresAt = Convert.ToDateTime(expiry.ExecuteScalar());
+                }
+
+                transaction.Commit();
+                GhiNhatKy("Cấp mã kích hoạt tài khoản bệnh nhân", maBN, "Mã có hiệu lực 7 ngày.");
+                return (code, expiresAt);
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+        }
+
+        public static void DangKyTaiKhoanBenhNhanBangMaKichHoat(
+            string username, string password, string activationCode)
+        {
+            username = username.Trim();
+            if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+                throw new ArgumentException("Tên đăng nhập và mật khẩu là bắt buộc.");
+            if (username.Length > 50 || password.Length < 6)
+                throw new ArgumentException("Tên đăng nhập tối đa 50 ký tự và mật khẩu tối thiểu 6 ký tự.");
+
+            string codeHash = HashMaKichHoat(activationCode);
+            EnsurePatientActivationSchema();
+
+            using var connection = DatabaseHelper.GetConnection();
+            connection.Open();
+            using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+            try
+            {
+                string maBN;
+                using (var activation = new SqlCommand(@"
+                    SELECT MaBN FROM dbo.MaKichHoatTaiKhoanBN WITH(UPDLOCK,HOLDLOCK)
+                    WHERE MaCodeHash=@CodeHash AND NgaySuDung IS NULL AND NgayHetHan>GETDATE()",
+                    connection, transaction))
+                {
+                    activation.Parameters.AddWithValue("@CodeHash", codeHash);
+                    maBN = activation.ExecuteScalar()?.ToString()
+                        ?? throw new InvalidOperationException("Mã kích hoạt không hợp lệ, đã dùng hoặc hết hạn. Hãy liên hệ lễ tân để xin mã mới.");
+                }
+
+                using (var usernameCheck = new SqlCommand(@"
+                    SELECT
+                        (SELECT COUNT(*) FROM dbo.TaiKhoan WITH(UPDLOCK,HOLDLOCK) WHERE TenDangNhap=@Username) +
+                        (SELECT COUNT(*) FROM dbo.TaiKhoanBenhNhan WITH(UPDLOCK,HOLDLOCK) WHERE TenDangNhap=@Username)",
+                    connection, transaction))
+                {
+                    usernameCheck.Parameters.AddWithValue("@Username", username);
+                    if (Convert.ToInt32(usernameCheck.ExecuteScalar()) > 0)
+                        throw new InvalidOperationException("Tên đăng nhập đã được sử dụng.");
+                }
+
+                using (var existingAccount = new SqlCommand(
+                    "SELECT COUNT(*) FROM dbo.TaiKhoanBenhNhan WITH(UPDLOCK,HOLDLOCK) WHERE MaBN=@MaBN",
+                    connection, transaction))
+                {
+                    existingAccount.Parameters.AddWithValue("@MaBN", maBN);
+                    if (Convert.ToInt32(existingAccount.ExecuteScalar()) > 0)
+                        throw new InvalidOperationException("Hồ sơ này đã có tài khoản cổng bệnh nhân.");
+                }
+
+                using (var account = new SqlCommand(@"
+                    INSERT dbo.TaiKhoanBenhNhan(TenDangNhap,MatKhau,MaBN,TrangThai)
+                    VALUES(@Username,@Password,@MaBN,1)", connection, transaction))
+                {
+                    account.Parameters.AddWithValue("@Username", username);
+                    account.Parameters.AddWithValue("@Password", HashPassword(password));
+                    account.Parameters.AddWithValue("@MaBN", maBN);
+                    account.ExecuteNonQuery();
+                }
+
+                using (var consume = new SqlCommand(@"
+                    UPDATE dbo.MaKichHoatTaiKhoanBN SET NgaySuDung=GETDATE()
+                    WHERE MaBN=@MaBN AND MaCodeHash=@CodeHash
+                      AND NgaySuDung IS NULL AND NgayHetHan>GETDATE()", connection, transaction))
+                {
+                    consume.Parameters.AddWithValue("@MaBN", maBN);
+                    consume.Parameters.AddWithValue("@CodeHash", codeHash);
+                    if (consume.ExecuteNonQuery() != 1)
+                        throw new InvalidOperationException("Mã kích hoạt đã được sử dụng hoặc hết hạn.");
+                }
+
+                transaction.Commit();
+                GhiNhatKy("Tạo tài khoản cổng bệnh nhân", maBN, "Liên kết bằng mã kích hoạt.");
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+        }
+
+        private static string TaoChuoiMaKichHoat()
+        {
+            const string alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+            byte[] random = RandomNumberGenerator.GetBytes(16);
+            char[] code = random.Select(value => alphabet[value & 31]).ToArray();
+            return string.Join("-", Enumerable.Range(0, 4)
+                .Select(group => new string(code, group * 4, 4)));
+        }
+
+        private static string HashMaKichHoat(string code)
+        {
+            const string alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+            string normalized = (code ?? "").Replace("-", "").Replace(" ", "").ToUpperInvariant();
+            if (normalized.Length != 16 || normalized.Any(character => !alphabet.Contains(character)))
+                throw new ArgumentException("Mã kích hoạt không đúng định dạng.", nameof(code));
+            return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)));
+        }
+
+        public static async Task<bool> YeuCauOtpTraCuuPhieuKhamAsync(string maPK, string soDienThoai)
+        {
+            maPK = (maPK ?? "").Trim();
+            string phoneDigits = new string((soDienThoai ?? "").Where(character => character >= '0' && character <= '9').ToArray());
+            if (string.IsNullOrWhiteSpace(maPK) || phoneDigits.Length < 8 || phoneDigits.Length > 15)
+                return false;
+
+            EnsurePatientVisitOtpSchema();
+            EnsureAdvancedWorkflowSchema();
+            string email;
+            string tenBenhNhan;
+            string maBN;
+            using (var connection = DatabaseHelper.GetConnection())
+            {
+                connection.Open();
+                using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+                try
+                {
+                    using var visit = new SqlCommand(@"SELECT pk.MaBN,bn.HoTen,bn.Email,bn.SoDienThoai
+                        FROM dbo.PhieuKham pk WITH(UPDLOCK,HOLDLOCK)
+                        INNER JOIN dbo.BenhNhan bn ON bn.MaBN=pk.MaBN
+                        WHERE pk.MaPK=@MaPK AND pk.TrangThai=N'Đã khám xong'", connection, transaction);
+                    visit.Parameters.AddWithValue("@MaPK", maPK);
+                    using var reader = visit.ExecuteReader();
+                    if (!reader.Read())
+                    {
+                        reader.Close();
+                        transaction.Commit();
+                        return false;
+                    }
+
+                    maBN = reader.GetString(0);
+                    tenBenhNhan = reader.GetString(1);
+                    email = reader.IsDBNull(2) ? "" : reader.GetString(2).Trim();
+                    string storedPhone = reader.IsDBNull(3) ? "" : reader.GetString(3);
+                    string storedPhoneDigits = new string(storedPhone.Where(character => character >= '0' && character <= '9').ToArray());
+                    reader.Close();
+                    if (string.IsNullOrWhiteSpace(email) ||
+                        !CryptographicOperations.FixedTimeEquals(
+                            Encoding.UTF8.GetBytes(storedPhoneDigits),
+                            Encoding.UTF8.GetBytes(phoneDigits)))
+                    {
+                        transaction.Commit();
+                        return false;
+                    }
+
+                    using (var rateLimit = new SqlCommand(@"SELECT COUNT(*) FROM dbo.MaOTPTruyCapPhieuKham WITH(UPDLOCK,HOLDLOCK)
+                        WHERE MaBN=@MaBN AND NgayTao>=DATEADD(HOUR,-1,SYSDATETIME())", connection, transaction))
+                    {
+                        rateLimit.Parameters.AddWithValue("@MaBN", maBN);
+                        if (Convert.ToInt32(rateLimit.ExecuteScalar()) >= 3)
+                        {
+                            transaction.Commit();
+                            return false;
+                        }
+                    }
+
+                    using (var cleanup = new SqlCommand(@"DELETE FROM dbo.MaOTPTruyCapPhieuKham
+                        WHERE NgayTao<DATEADD(DAY,-30,SYSDATETIME())", connection, transaction))
+                        cleanup.ExecuteNonQuery();
+
+                    using (var invalidate = new SqlCommand(@"UPDATE dbo.MaOTPTruyCapPhieuKham
+                        SET NgaySuDung=SYSDATETIME()
+                        WHERE MaPK=@MaPK AND NgaySuDung IS NULL AND NgayHetHan>SYSDATETIME()", connection, transaction))
+                    {
+                        invalidate.Parameters.AddWithValue("@MaPK", maPK);
+                        invalidate.ExecuteNonQuery();
+                    }
+
+                    string code = RandomNumberGenerator.GetInt32(10_000_000, 100_000_000).ToString("D8");
+                    string salt = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+                    string codeHash = HashVisitOtp(salt, code);
+                    Guid requestId = Guid.NewGuid();
+                    using (var insert = new SqlCommand(@"INSERT dbo.MaOTPTruyCapPhieuKham
+                        (MaYeuCau,MaPK,MaBN,MaCodeHash,Salt,NgayTao,NgayHetHan)
+                        VALUES(@MaYeuCau,@MaPK,@MaBN,@MaCodeHash,@Salt,SYSDATETIME(),DATEADD(MINUTE,10,SYSDATETIME()))",
+                        connection, transaction))
+                    {
+                        insert.Parameters.AddWithValue("@MaYeuCau", requestId);
+                        insert.Parameters.AddWithValue("@MaPK", maPK);
+                        insert.Parameters.AddWithValue("@MaBN", maBN);
+                        insert.Parameters.AddWithValue("@MaCodeHash", codeHash);
+                        insert.Parameters.AddWithValue("@Salt", salt);
+                        insert.ExecuteNonQuery();
+                    }
+
+                    transaction.Commit();
+                    connection.Close();
+                    if (!await Helpers.EmailHelper.SendAsync(email,
+                            "[An Tâm] Mã OTP tra cứu phiếu khám",
+                            Helpers.EmailHelper.BuildOtpTraCuuPhieuKhamBody(tenBenhNhan, maPK, code)))
+                    {
+                        DatabaseHelper.ExecuteNonQuery(@"UPDATE dbo.MaOTPTruyCapPhieuKham
+                            SET NgaySuDung=SYSDATETIME() WHERE MaYeuCau=@MaYeuCau AND NgaySuDung IS NULL",
+                            new[] { new SqlParameter("@MaYeuCau", requestId) });
+                        throw new InvalidOperationException("Không gửi được mã OTP. Vui lòng kiểm tra cấu hình email hoặc liên hệ phòng khám.");
+                    }
+                    return true;
+                }
+                catch
+                {
+                    if (transaction.Connection != null)
+                        transaction.Rollback();
+                    throw;
+                }
+            }
+        }
+
+        public static DataSet? XacThucOtpVaLayPhieuKham(string maPK, string otp)
+        {
+            maPK = (maPK ?? "").Trim();
+            otp = (otp ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(maPK) || otp.Length != 8 || otp.Any(character => character < '0' || character > '9'))
+                return null;
+
+            EnsurePatientVisitOtpSchema();
+            EnsureAdvancedWorkflowSchema();
+            EnsureClinicalRecordColumns();
+            using var connection = DatabaseHelper.GetConnection();
+            connection.Open();
+            using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+            try
+            {
+                Guid requestId;
+                string salt;
+                string expectedHash;
+                using (var challenge = new SqlCommand(@"SELECT TOP(1) MaYeuCau,Salt,MaCodeHash,SoLanThu
+                    FROM dbo.MaOTPTruyCapPhieuKham WITH(UPDLOCK,HOLDLOCK)
+                    WHERE MaPK=@MaPK AND NgaySuDung IS NULL AND NgayHetHan>SYSDATETIME() AND SoLanThu<5
+                    ORDER BY NgayTao DESC", connection, transaction))
+                {
+                    challenge.Parameters.AddWithValue("@MaPK", maPK);
+                    using var reader = challenge.ExecuteReader();
+                    if (!reader.Read())
+                    {
+                        reader.Close();
+                        transaction.Commit();
+                        return null;
+                    }
+                    requestId = reader.GetGuid(0);
+                    salt = reader.GetString(1);
+                    expectedHash = reader.GetString(2);
+                }
+
+                byte[] actual = Convert.FromHexString(HashVisitOtp(salt, otp));
+                byte[] expected = Convert.FromHexString(expectedHash);
+                bool valid = CryptographicOperations.FixedTimeEquals(actual, expected);
+                using (var update = new SqlCommand(valid
+                    ? @"UPDATE dbo.MaOTPTruyCapPhieuKham SET NgaySuDung=SYSDATETIME()
+                        WHERE MaYeuCau=@MaYeuCau AND NgaySuDung IS NULL AND NgayHetHan>SYSDATETIME() AND SoLanThu<5"
+                    : @"UPDATE dbo.MaOTPTruyCapPhieuKham SET SoLanThu=SoLanThu+1,
+                            NgaySuDung=CASE WHEN SoLanThu+1>=5 THEN SYSDATETIME() ELSE NgaySuDung END
+                        WHERE MaYeuCau=@MaYeuCau AND NgaySuDung IS NULL AND NgayHetHan>SYSDATETIME() AND SoLanThu<5",
+                    connection, transaction))
+                {
+                    update.Parameters.AddWithValue("@MaYeuCau", requestId);
+                    if (update.ExecuteNonQuery() != 1)
+                    {
+                        transaction.Commit();
+                        return null;
+                    }
+                }
+
+                if (!valid)
+                {
+                    transaction.Commit();
+                    return null;
+                }
+
+                var result = new DataSet();
+                FillOtpResultTable(result, connection, transaction, "Visit", @"
+                    SELECT pk.MaPK,pk.NgayKham,pk.TrangThai,pk.TrieuChung,pk.BenhSu,pk.KhamLamSang,pk.SinhHieu,
+                           pk.ChanDoan,pk.LoiDan,bn.HoTen AS TenBN,nv.HoTen AS TenBacSi,p.TenPhong
+                    FROM dbo.PhieuKham pk
+                    INNER JOIN dbo.BenhNhan bn ON bn.MaBN=pk.MaBN
+                    INNER JOIN dbo.NhanVien nv ON nv.MaNV=pk.MaNV_BacSi
+                    LEFT JOIN dbo.PhongKham p ON p.MaPhong=pk.MaPhong
+                    WHERE pk.MaPK=@MaPK AND pk.TrangThai=N'Đã khám xong'",
+                    maPK);
+                if (result.Tables["Visit"]!.Rows.Count == 0)
+                {
+                    transaction.Commit();
+                    return null;
+                }
+                FillOtpResultTable(result, connection, transaction, "Services", @"
+                    SELECT dv.TenDV,ct.DonGiaThoiDiem,ct.TrangThai,ct.KetQua
+                    FROM dbo.ChiTietChiDinhDV ct INNER JOIN dbo.DichVu dv ON dv.MaDV=ct.MaDV
+                    WHERE ct.MaPK=@MaPK ORDER BY ct.MaChiDinh", maPK);
+                FillOtpResultTable(result, connection, transaction, "Prescriptions", @"
+                    SELECT t.TenThuoc,t.DonViTinh,ct.SoLuong,ct.DonGiaThoiDiem,
+                           ct.SoLuong*ct.DonGiaThoiDiem AS ThanhTien,ct.CachDung
+                    FROM dbo.DonThuoc dt
+                    INNER JOIN dbo.ChiTietDonThuoc ct ON ct.MaDonThuoc=dt.MaDonThuoc
+                    INNER JOIN dbo.Thuoc t ON t.MaThuoc=ct.MaThuoc
+                    WHERE dt.MaPK=@MaPK ORDER BY ct.MaCTDT", maPK);
+                FillOtpResultTable(result, connection, transaction, "Invoice", @"
+                    SELECT hd.MaHD,hd.NgayLap,hd.TrangThai,hd.TongTien,hd.TienBaoHiem,hd.HinhThucTT,
+                           ISNULL(g.DaThu,0) AS DaThu,
+                           hd.TongTien-hd.TienBaoHiem-ISNULL(g.DaThu,0) AS ConNo
+                    FROM dbo.HoaDon hd
+                    OUTER APPLY(SELECT SUM(CASE WHEN gd.Loai=N'HoanTien' THEN -gd.SoTien ELSE gd.SoTien END) AS DaThu
+                        FROM dbo.GiaoDichVienPhi gd WHERE gd.MaHD=hd.MaHD) g
+                    WHERE hd.MaPK=@MaPK AND hd.TrangThai<>N'Đã hủy'", maPK);
+                FillOtpResultTable(result, connection, transaction, "InvoiceItems", @"
+                    SELECT N'Dịch vụ' AS Loai,dv.TenDV AS TenHang,1 AS SoLuong,
+                           ct.DonGiaThoiDiem AS DonGia,ct.DonGiaThoiDiem AS ThanhTien
+                    FROM dbo.ChiTietChiDinhDV ct
+                    INNER JOIN dbo.DichVu dv ON dv.MaDV=ct.MaDV
+                    WHERE ct.MaPK=@MaPK AND EXISTS(
+                        SELECT 1 FROM dbo.HoaDon hd WHERE hd.MaPK=ct.MaPK AND hd.TrangThai<>N'Đã hủy')
+                    UNION ALL
+                    SELECT N'Thuốc',t.TenThuoc,ct.SoLuong,ct.DonGiaThoiDiem,
+                           ct.SoLuong*ct.DonGiaThoiDiem
+                    FROM dbo.DonThuoc dt
+                    INNER JOIN dbo.ChiTietDonThuoc ct ON ct.MaDonThuoc=dt.MaDonThuoc
+                    INNER JOIN dbo.Thuoc t ON t.MaThuoc=ct.MaThuoc
+                    WHERE dt.MaPK=@MaPK AND EXISTS(
+                        SELECT 1 FROM dbo.HoaDon hd WHERE hd.MaPK=dt.MaPK AND hd.TrangThai<>N'Đã hủy')", maPK);
+                transaction.Commit();
+                return result;
+            }
+            catch
+            {
+                if (transaction.Connection != null)
+                    transaction.Rollback();
+                throw;
+            }
+        }
+
+        private static string HashVisitOtp(string salt, string otp)
+            => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(salt + ":" + otp)));
+
+        private static void FillOtpResultTable(DataSet dataSet, SqlConnection connection,
+            SqlTransaction transaction, string tableName, string query, string maPK)
+        {
+            using var command = new SqlCommand(query, connection, transaction);
+            command.Parameters.AddWithValue("@MaPK", maPK);
+            using var adapter = new SqlDataAdapter(command);
+            adapter.Fill(dataSet, tableName);
         }
 
         public static void DangKyTaiKhoanBenhNhan(
@@ -1508,21 +2010,26 @@ EnsureBenhNhanEmailColumn();
 
         public static DataTable LayDanhSachBacSiDatLich()
         {
+            // Lấy bác sĩ để bệnh nhân chọn đặt lịch.
+            // Sử dụng LEFT JOIN để không bỏ sót bác sĩ nào chưa được xếp phòng.
             const string sql = @"
                 WITH DoctorRooms AS (
-                    SELECT nv.MaNV, nv.HoTen, nv.ChuyenKhoa, p.MaPhong, p.TenPhong, k.TenKhoa,
+                    SELECT nv.MaNV, nv.HoTen,
+                           ISNULL(k.TenKhoa, ISNULL(NULLIF(LTRIM(RTRIM(nv.ChuyenKhoa)), N''), N'Đa khoa')) AS ChuyenKhoa,
+                           ISNULL(p.MaPhong, '') AS MaPhong,
+                           ISNULL(p.TenPhong, N'Phòng khám') AS TenPhong,
+                           ISNULL(k.TenKhoa, N'Đa khoa') AS TenKhoa,
                            ROW_NUMBER() OVER (PARTITION BY nv.MaNV ORDER BY p.MaPhong) AS RowNumber
                     FROM NhanVien nv
-                    INNER JOIN PhanCongPhong pc ON pc.MaNV = nv.MaNV AND pc.VaiTro = N'BacSi'
-                    INNER JOIN PhongKham p ON p.MaPhong = pc.MaPhong
-                    INNER JOIN Khoa k ON k.MaKhoa = p.MaKhoa
+                    LEFT JOIN PhanCongPhong pc ON pc.MaNV = nv.MaNV AND pc.VaiTro = N'BacSi'
+                    LEFT JOIN PhongKham p ON p.MaPhong = pc.MaPhong
+                    LEFT JOIN Khoa k ON k.MaKhoa = p.MaKhoa
                     WHERE nv.ChucVu = N'BacSi' AND nv.TrangThai = 1
-                      AND nv.ChuyenKhoa = k.TenKhoa
                 )
                 SELECT MaNV, HoTen, ChuyenKhoa, MaPhong, TenPhong, TenKhoa
                 FROM DoctorRooms
                 WHERE RowNumber = 1
-                ORDER BY TenKhoa, HoTen";
+                ORDER BY ChuyenKhoa, HoTen";
             return DatabaseHelper.ExecuteQuery(sql);
         }
 
@@ -1535,23 +2042,22 @@ EnsureBenhNhanEmailColumn();
                 throw new ArgumentException("Vui lòng nhập lý do khám.");
 
             EnsureAdvancedWorkflowSchema();
+            EnsureDefaultDoctorShifts();
             using var conn = DatabaseHelper.GetConnection();
             conn.Open();
             using var trans = conn.BeginTransaction(System.Data.IsolationLevel.Serializable);
             try
             {
+                // Kiểm tra bác sĩ hợp lệ: còn hoạt động
                 using var doctorCommand = new SqlCommand(@"
                     SELECT COUNT(*)
                     FROM NhanVien nv
-                    INNER JOIN PhanCongPhong pc ON pc.MaNV = nv.MaNV AND pc.VaiTro = N'BacSi'
-                    INNER JOIN PhongKham p ON p.MaPhong = pc.MaPhong
-                    INNER JOIN Khoa k ON k.MaKhoa = p.MaKhoa
                     WHERE nv.MaNV = @MaBS AND nv.ChucVu = N'BacSi'
-                      AND nv.TrangThai = 1 AND nv.ChuyenKhoa = k.TenKhoa",
+                      AND nv.TrangThai = 1",
                     conn, trans);
                 doctorCommand.Parameters.AddWithValue("@MaBS", maBS);
                 if (Convert.ToInt32(doctorCommand.ExecuteScalar()) == 0)
-                    throw new InvalidOperationException("Bác sĩ hiện chưa có phòng khám được phân công.");
+                    throw new InvalidOperationException("Bác sĩ không hợp lệ hoặc không còn hoạt động.");
 
                 using var shiftCommand = new SqlCommand(@"SELECT COUNT(*) FROM dbo.CaLamViecBacSi WITH(UPDLOCK,HOLDLOCK)
                     WHERE MaNV=@MaBS AND Thu=@Thu AND @Gio>=GioBatDau
@@ -1673,6 +2179,77 @@ EnsureBenhNhanEmailColumn();
                       AND CONVERT(time,lh.NgayHen)>=c.GioBatDau AND CONVERT(time,lh.NgayHen)<c.GioKetThuc
                       AND lh.TrangThai IN(N'Chờ xác nhận',N'Đã xác nhận',N'Đã đến'))";
             return DatabaseHelper.ExecuteNonQuery(sql, new[] { new SqlParameter("@ID", maCa) }) > 0;
+        }
+
+        public static DataTable LayDanhSachYTaChoPhanCa()
+        {
+            if (!SessionState.IsAdmin)
+                throw new UnauthorizedAccessException("Chỉ quản trị viên được phân ca y tá.");
+            return DatabaseHelper.ExecuteQuery(@"SELECT MaNV,HoTen FROM dbo.NhanVien
+                WHERE ChucVu=N'LeTan' AND TrangThai=1 ORDER BY HoTen");
+        }
+
+        public static DataTable LayCaLamViecYTa()
+        {
+            if (!SessionState.IsAdmin)
+                throw new UnauthorizedAccessException("Chỉ quản trị viên được quản lý ca y tá.");
+            EnsureNurseShiftSchema();
+            return DatabaseHelper.ExecuteQuery(@"SELECT c.MaCa,c.MaNV,nv.HoTen,
+                    CASE c.Thu WHEN 1 THEN N'Thứ 2' WHEN 2 THEN N'Thứ 3' WHEN 3 THEN N'Thứ 4'
+                        WHEN 4 THEN N'Thứ 5' WHEN 5 THEN N'Thứ 6' WHEN 6 THEN N'Thứ 7' ELSE N'Chủ nhật' END AS NgayTrongTuan,
+                    c.Thu,c.GioBatDau,c.GioKetThuc
+                FROM dbo.CaLamViecYTa c
+                INNER JOIN dbo.NhanVien nv ON nv.MaNV=c.MaNV
+                ORDER BY nv.HoTen,c.Thu,c.GioBatDau");
+        }
+
+        public static DataTable LayLichTrucYTa(string maYTa)
+        {
+            if (!SessionState.IsAdmin &&
+                (!SessionState.IsReceptionist || SessionState.CurrentUser?.MaNV != maYTa))
+                throw new UnauthorizedAccessException("Y tá chỉ được xem lịch trực của chính mình.");
+            EnsureNurseShiftSchema();
+            return DatabaseHelper.ExecuteQuery(@"SELECT Thu,GioBatDau,GioKetThuc
+                FROM dbo.CaLamViecYTa WHERE MaNV=@MaNV ORDER BY Thu,GioBatDau",
+                new[] { new SqlParameter("@MaNV", maYTa) });
+        }
+
+        public static bool LuuCaLamViecYTa(string maYTa, int thu, TimeSpan gioBatDau, TimeSpan gioKetThuc)
+        {
+            if (!SessionState.IsAdmin)
+                throw new UnauthorizedAccessException("Chỉ quản trị viên được quản lý ca y tá.");
+            if (thu is < 1 or > 7 || gioBatDau < TimeSpan.Zero || gioKetThuc >= TimeSpan.FromDays(1)
+                || gioKetThuc <= gioBatDau || gioBatDau.Ticks % TimeSpan.TicksPerMinute != 0
+                || gioKetThuc.Ticks % TimeSpan.TicksPerMinute != 0
+                || (int)gioBatDau.TotalMinutes % 15 != 0 || (int)gioKetThuc.TotalMinutes % 15 != 0
+                || (gioKetThuc - gioBatDau).TotalMinutes < 15)
+                throw new ArgumentException("Ca phải nằm trong một ngày, có thời lượng ít nhất 15 phút và khớp lưới 15 phút.");
+            EnsureNurseShiftSchema();
+            const string sql = @"
+                IF NOT EXISTS(SELECT 1 FROM dbo.NhanVien WHERE MaNV=@MaNV AND ChucVu=N'LeTan' AND TrangThai=1)
+                    THROW 50003,N'Y tá không hợp lệ hoặc đã nghỉ.',1;
+                IF EXISTS(SELECT 1 FROM dbo.CaLamViecYTa
+                    WHERE MaNV=@MaNV AND Thu=@Thu AND @GioBatDau<GioKetThuc AND @GioKetThuc>GioBatDau)
+                    THROW 50004,N'Ca làm việc bị trùng với ca đã cấu hình.',1;
+                INSERT INTO dbo.CaLamViecYTa(MaNV,Thu,GioBatDau,GioKetThuc)
+                    VALUES(@MaNV,@Thu,@GioBatDau,@GioKetThuc);
+                SELECT 1";
+            return Convert.ToInt32(DatabaseHelper.ExecuteScalar(sql, new[]
+            {
+                new SqlParameter("@MaNV", maYTa),
+                new SqlParameter("@Thu", thu),
+                new SqlParameter("@GioBatDau", System.Data.SqlDbType.Time) { Value = gioBatDau },
+                new SqlParameter("@GioKetThuc", System.Data.SqlDbType.Time) { Value = gioKetThuc }
+            })) == 1;
+        }
+
+        public static bool XoaCaLamViecYTa(int maCa)
+        {
+            if (!SessionState.IsAdmin)
+                throw new UnauthorizedAccessException("Chỉ quản trị viên được quản lý ca y tá.");
+            EnsureNurseShiftSchema();
+            return DatabaseHelper.ExecuteNonQuery("DELETE FROM dbo.CaLamViecYTa WHERE MaCa=@ID",
+                new[] { new SqlParameter("@ID", maCa) }) > 0;
         }
 
         public static DataTable LayKhungGioKhaDung(string maBacSi, DateTime ngay, int? maLichHen = null)
@@ -2514,22 +3091,26 @@ EnsureBenhNhanEmailColumn();
         }
 
         // 4. KHÁM BỆNH & CẬN LÂM SÀNG
-        public static bool CapNhatKetQuaKham(string maPK, string maBS, string trieuChung, string khamLamSang, string sinhHieu, string chanDoan, string loiDan, string trangThai)
+        public static bool CapNhatKetQuaKham(string maPK, string maBS, string trieuChung, string khamLamSang, string sinhHieu, string chanDoan, string loiDan, string trangThai, string? benhSu = null)
         {
             if (!SessionState.IsDoctor || SessionState.CurrentUser?.MaNV != maBS)
                 throw new UnauthorizedAccessException("Bác sĩ chỉ được cập nhật phiếu khám được phân công cho mình.");
             EnsureClinicalRecordColumns();
             string sql = @"
                 UPDATE PhieuKham
-                SET TrieuChung = @TrieuChung, KhamLamSang = @KhamLamSang, SinhHieu = @SinhHieu,
-                    ChanDoan = @ChanDoan, LoiDan = @LoiDan, TrangThai = N'Đang khám'
-                WHERE MaPK = @MaPK AND MaNV_BacSi = @MaBS AND TrangThai IN (N'Chờ khám', N'Đang khám')
+                SET TrieuChung = @TrieuChung, BenhSu = COALESCE(@BenhSu, BenhSu),
+                    KhamLamSang = @KhamLamSang, SinhHieu = @SinhHieu,
+                    ChanDoan = @ChanDoan, LoiDan = @LoiDan,
+                    TrangThai = CASE WHEN TrangThai = N'Chờ khám' THEN N'Đang khám' ELSE TrangThai END
+                WHERE MaPK = @MaPK AND MaNV_BacSi = @MaBS
+                  AND TrangThai IN (N'Chờ khám', N'Đang khám', N'Chờ kết quả CLS')
                   AND NOT EXISTS (SELECT 1 FROM HoaDon WHERE HoaDon.MaPK=PhieuKham.MaPK AND TrangThai<>N'Đã hủy')";
             return DatabaseHelper.ExecuteNonQuery(sql, new[]
             {
                 new SqlParameter("@MaPK", maPK),
                 new SqlParameter("@MaBS", maBS),
                 new SqlParameter("@TrieuChung", trieuChung),
+                new SqlParameter("@BenhSu", (object?)benhSu ?? DBNull.Value),
                 new SqlParameter("@KhamLamSang", (object?)khamLamSang ?? DBNull.Value),
                 new SqlParameter("@SinhHieu", (object?)sinhHieu ?? DBNull.Value),
                 new SqlParameter("@ChanDoan", chanDoan),
@@ -2819,7 +3400,7 @@ EnsureBenhNhanEmailColumn();
         {
             if (!SessionState.IsDoctor) throw new UnauthorizedAccessException("Chỉ bác sĩ được cập nhật lời dặn.");
             const string sql = @"UPDATE DonThuoc SET GhiChu = @GhiChu WHERE MaPK = @MaPK
-                AND EXISTS (SELECT 1 FROM PhieuKham WHERE PhieuKham.MaPK=DonThuoc.MaPK AND MaNV_BacSi=@MaBS AND TrangThai IN (N'Chờ khám',N'Đang khám'))
+                AND EXISTS (SELECT 1 FROM PhieuKham WHERE PhieuKham.MaPK=DonThuoc.MaPK AND MaNV_BacSi=@MaBS AND TrangThai IN (N'Chờ khám',N'Đang khám',N'Chờ kết quả CLS'))
                 AND NOT EXISTS (SELECT 1 FROM HoaDon WHERE HoaDon.MaPK=DonThuoc.MaPK AND TrangThai<>N'Đã hủy')";
             return DatabaseHelper.ExecuteNonQuery(sql, new[]
             {
@@ -2877,14 +3458,25 @@ EnsureBenhNhanEmailColumn();
             using var trans = conn.BeginTransaction();
             try
             {
-                using (var editable = new SqlCommand(@"SELECT COUNT(*) FROM PhieuKham pk WITH (UPDLOCK, HOLDLOCK)
-                    WHERE pk.MaPK=@MaPK AND pk.MaNV_BacSi=@MaBS AND pk.TrangThai IN (N'Chờ khám', N'Đang khám')
-                    AND NOT EXISTS (SELECT 1 FROM HoaDon hd WHERE hd.MaPK=pk.MaPK AND hd.TrangThai<>N'Đã hủy')", conn, trans))
+                string visitStatus;
+                bool hasInvoice;
+                using (var editable = new SqlCommand(@"SELECT pk.TrangThai,
+                    CASE WHEN EXISTS (SELECT 1 FROM HoaDon hd WHERE hd.MaPK=pk.MaPK AND hd.TrangThai<>N'Đã hủy') THEN 1 ELSE 0 END
+                    FROM PhieuKham pk WITH (UPDLOCK, HOLDLOCK)
+                    WHERE pk.MaPK=@MaPK AND pk.MaNV_BacSi=@MaBS", conn, trans))
                 {
                     editable.Parameters.AddWithValue("@MaPK", maPK);
                     editable.Parameters.AddWithValue("@MaBS", SessionState.CurrentUser!.MaNV);
-                    if (Convert.ToInt32(editable.ExecuteScalar()) != 1) throw new InvalidOperationException("Phiếu khám đã hoàn tất hoặc đã có hóa đơn.");
+                    using var reader = editable.ExecuteReader();
+                    if (!reader.Read())
+                        throw new InvalidOperationException("Không tìm thấy phiếu khám thuộc bác sĩ đang đăng nhập.");
+                    visitStatus = reader.GetString(0);
+                    hasInvoice = reader.GetInt32(1) == 1;
                 }
+                if (visitStatus == "Chờ kết quả CLS")
+                    throw new InvalidOperationException("Phiếu khám đang chờ kết quả cận lâm sàng. Chọn dịch vụ trong bảng CLS bên phải, nhấn 'Nhập kết quả CLS', rồi thử kê đơn lại.");
+                if (visitStatus is not ("Chờ khám" or "Đang khám") || hasInvoice)
+                    throw new InvalidOperationException("Phiếu khám đã hoàn tất hoặc đã có hóa đơn.");
                 // Kiểm tra xem đã có đơn thuốc cho phiếu khám này chưa
                 string sqlCheck = "SELECT MaDonThuoc FROM DonThuoc WHERE MaPK = @MaPK";
                 using var cmdCheck = new SqlCommand(sqlCheck, conn, trans);
@@ -4212,7 +4804,7 @@ EnsureBenhNhanEmailColumn();
             GhiNhatKy("Xem bệnh án", maBN, maBS == null ? "Lịch sử hồ sơ" : $"Bác sĩ {maBS} xem hồ sơ");
             EnsureClinicalRecordColumns();
             string sql = @"
-                SELECT pk.MaPK, pk.NgayKham, pk.TrieuChung, pk.KhamLamSang, pk.SinhHieu, pk.ChanDoan, pk.LoiDan,
+                SELECT pk.MaPK, pk.NgayKham, pk.TrieuChung, pk.BenhSu, pk.KhamLamSang, pk.SinhHieu, pk.ChanDoan, pk.LoiDan,
                        nv.HoTen AS TenBacSi, pk.TrangThai
                 FROM PhieuKham pk
                 INNER JOIN NhanVien nv ON pk.MaNV_BacSi = nv.MaNV
@@ -4612,7 +5204,7 @@ EnsureBenhNhanEmailColumn();
             EnsureClinicalRecordColumns();
             EnsureVisitLineageSchema();
             string sql = @"
-                SELECT pk.MaPK, pk.MaPK_Goc, pk.LyDoChuyen, pk.STT, pk.NgayKham, pk.TrieuChung, pk.KhamLamSang, pk.SinhHieu, pk.ChanDoan, pk.LoiDan, pk.TrangThai,
+                SELECT pk.MaPK, pk.MaPK_Goc, pk.LyDoChuyen, pk.STT, pk.NgayKham, pk.TrieuChung, pk.BenhSu, pk.KhamLamSang, pk.SinhHieu, pk.ChanDoan, pk.LoiDan, pk.TrangThai,
                        bn.MaBN, bn.HoTen AS TenBN, bn.GioiTinh, bn.NgaySinh, bn.SoDienThoai, bn.DiaChi, bn.TienSuBenh,
                        CASE WHEN bn.NgaySinh IS NULL THEN NULL ELSE DATEDIFF(YEAR, bn.NgaySinh, GETDATE()) - CASE WHEN DATEADD(YEAR, DATEDIFF(YEAR, bn.NgaySinh, GETDATE()), bn.NgaySinh) > CAST(GETDATE() AS DATE) THEN 1 ELSE 0 END END AS Tuoi,
                        nv.MaNV AS MaBacSi, nv.HoTen AS TenBacSi, nv.ChuyenKhoa
@@ -5128,6 +5720,110 @@ EnsureBenhNhanEmailColumn();
             }
             catch { }
             return (0, 0, 0, 0, 0, 0, 0);
+        }
+
+        // ═══════════════════════════════════════════════════════
+        //  ADMIN: QUẢN LÝ CA LÀM VIỆC THEO KHOA / PHÒNG
+        // ═══════════════════════════════════════════════════════
+
+        /// <summary>Lấy ca làm việc bác sĩ có filter theo khoa và phòng khám.</summary>
+        public static DataTable LayCaLamViecBacSiTheoKhoaPhong(string? maKhoa = null, string? maPhong = null)
+        {
+            if (!SessionState.IsAdmin)
+                throw new UnauthorizedAccessException("Chỉ quản trị viên được xem ca làm việc.");
+            EnsureAdvancedWorkflowSchema();
+            var parms = new System.Collections.Generic.List<SqlParameter>();
+            string filter = "";
+            if (!string.IsNullOrEmpty(maPhong))
+            {
+                filter = " AND pc.MaPhong = @MaPhong";
+                parms.Add(new SqlParameter("@MaPhong", maPhong));
+            }
+            else if (!string.IsNullOrEmpty(maKhoa))
+            {
+                filter = " AND k.MaKhoa = @MaKhoa";
+                parms.Add(new SqlParameter("@MaKhoa", maKhoa));
+            }
+            string sql = $@"SELECT c.MaCa, c.MaNV, nv.HoTen,
+                    ISNULL(p.TenPhong, N'(Chưa phân công)') AS TenPhong,
+                    ISNULL(k.TenKhoa, N'(Chưa phân công)') AS TenKhoa,
+                    CASE c.Thu WHEN 1 THEN N'Thứ 2' WHEN 2 THEN N'Thứ 3' WHEN 3 THEN N'Thứ 4'
+                        WHEN 4 THEN N'Thứ 5' WHEN 5 THEN N'Thứ 6' WHEN 6 THEN N'Thứ 7' ELSE N'Chủ nhật' END AS NgayTrongTuan,
+                    c.Thu, c.GioBatDau, c.GioKetThuc
+                FROM dbo.CaLamViecBacSi c
+                INNER JOIN dbo.NhanVien nv ON nv.MaNV = c.MaNV
+                LEFT JOIN dbo.PhanCongPhong pc ON pc.MaNV = nv.MaNV
+                LEFT JOIN dbo.PhongKham p ON p.MaPhong = pc.MaPhong
+                LEFT JOIN dbo.Khoa k ON k.MaKhoa = p.MaKhoa
+                WHERE 1=1{filter}
+                ORDER BY k.TenKhoa, p.TenPhong, nv.HoTen, c.Thu, c.GioBatDau";
+            return DatabaseHelper.ExecuteQuery(sql, parms.ToArray());
+        }
+
+        /// <summary>Lấy danh sách phòng khám theo khoa (cho bộ lọc).</summary>
+        public static DataTable LayDanhSachPhongTheoKhoa(string? maKhoa = null)
+        {
+            var parms = new System.Collections.Generic.List<SqlParameter>();
+            string filter = string.IsNullOrEmpty(maKhoa) ? "" : " WHERE k.MaKhoa = @MaKhoa";
+            if (!string.IsNullOrEmpty(maKhoa))
+                parms.Add(new SqlParameter("@MaKhoa", maKhoa));
+            string sql = $@"SELECT p.MaPhong, p.TenPhong, k.TenKhoa
+                FROM PhongKham p
+                INNER JOIN Khoa k ON k.MaKhoa = p.MaKhoa{filter}
+                ORDER BY k.TenKhoa, p.TenPhong";
+            return DatabaseHelper.ExecuteQuery(sql, parms.ToArray());
+        }
+
+        /// <summary>Lấy bác sĩ theo phòng hoặc khoa (cho bộ lọc và thêm ca).</summary>
+        public static DataTable LayBacSiTheoKhoaPhong(string? maKhoa = null, string? maPhong = null)
+        {
+            var parms = new System.Collections.Generic.List<SqlParameter>();
+            string filter = "";
+            if (!string.IsNullOrEmpty(maPhong))
+            {
+                filter = " AND pc.MaPhong = @MaPhong";
+                parms.Add(new SqlParameter("@MaPhong", maPhong));
+            }
+            else if (!string.IsNullOrEmpty(maKhoa))
+            {
+                filter = " AND k.MaKhoa = @MaKhoa";
+                parms.Add(new SqlParameter("@MaKhoa", maKhoa));
+            }
+            string sql = $@"SELECT DISTINCT nv.MaNV, nv.HoTen,
+                    ISNULL(k.TenKhoa, N'') AS TenKhoa,
+                    ISNULL(p.TenPhong, N'') AS TenPhong
+                FROM NhanVien nv
+                LEFT JOIN PhanCongPhong pc ON pc.MaNV = nv.MaNV
+                LEFT JOIN PhongKham p ON p.MaPhong = pc.MaPhong
+                LEFT JOIN Khoa k ON k.MaKhoa = p.MaKhoa
+                WHERE nv.ChucVu = N'BacSi' AND nv.TrangThai = 1{filter}
+                ORDER BY nv.HoTen";
+            return DatabaseHelper.ExecuteQuery(sql, parms.ToArray());
+        }
+
+        /// <summary>Sao chép toàn bộ ca làm việc từ bác sĩ nguồn sang bác sĩ đích (bỏ qua ca trùng lịch).</summary>
+        public static int SaoCepCaLamViec(string maNVNguon, string maNVDich)
+        {
+            if (!SessionState.IsAdmin)
+                throw new UnauthorizedAccessException("Chỉ quản trị viên được sao chép ca làm việc.");
+            EnsureAdvancedWorkflowSchema();
+            const string sql = @"
+                INSERT INTO dbo.CaLamViecBacSi(MaNV, Thu, GioBatDau, GioKetThuc)
+                SELECT @MaDich, src.Thu, src.GioBatDau, src.GioKetThuc
+                FROM dbo.CaLamViecBacSi src
+                WHERE src.MaNV = @MaNguon
+                  AND NOT EXISTS (
+                      SELECT 1 FROM dbo.CaLamViecBacSi dest
+                      WHERE dest.MaNV = @MaDich AND dest.Thu = src.Thu
+                        AND src.GioBatDau < dest.GioKetThuc
+                        AND src.GioKetThuc > dest.GioBatDau
+                  );
+                SELECT @@ROWCOUNT;";
+            return Convert.ToInt32(DatabaseHelper.ExecuteScalar(sql, new[]
+            {
+                new SqlParameter("@MaNguon", maNVNguon),
+                new SqlParameter("@MaDich", maNVDich)
+            }));
         }
     }
 }

@@ -189,6 +189,22 @@ namespace QlyPhongKham.Helpers
 </div>";
         }
 
+        public static string BuildOtpTraCuuPhieuKhamBody(string tenBenhNhan, string maPhieuKham, string otp)
+            => $@"
+<div style='font-family:Segoe UI,Arial,sans-serif;max-width:560px;margin:auto;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden'>
+  <div style='background:#0f766e;padding:22px;text-align:center'>
+    <h1 style='color:#fff;margin:0;font-size:21px'>Mã xác minh tra cứu hồ sơ</h1>
+    <p style='color:#ccfbf1;margin:6px 0 0'>{WebUtility.HtmlEncode(ClinicName)}</p>
+  </div>
+  <div style='padding:24px'>
+    <p>Xin chào <strong>{WebUtility.HtmlEncode(tenBenhNhan)}</strong>,</p>
+    <p>Mã dùng một lần để xem phiếu khám <strong>{WebUtility.HtmlEncode(maPhieuKham)}</strong>:</p>
+    <p style='font-size:30px;font-weight:bold;letter-spacing:8px;text-align:center;color:#0f766e'>{WebUtility.HtmlEncode(otp)}</p>
+    <p>Mã có hiệu lực trong 10 phút và chỉ dùng một lần. Không chia sẻ mã này với người khác.</p>
+    <p>Nếu bạn không yêu cầu tra cứu, hãy bỏ qua email này.</p>
+  </div>
+</div>";
+
         public static bool GuiXacNhanThanhToan(
             string emailBenhNhan,
             string tenBenhNhan,

@@ -984,7 +984,7 @@ namespace QlyPhongKham.Forms
 
             var wrapper = new Panel { Dock = DockStyle.Fill };
 
-            var toolPanel = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = C_Card, Padding = new Padding(12, 8, 12, 0) };
+            var toolPanel = new Panel { Dock = DockStyle.Top, Height = 92, BackColor = C_Card, Padding = new Padding(12, 8, 12, 0) };
             toolPanel.Paint += PaintCardBorder;
 
             var txtSearch  = MakeInput(90, 8, 180);
@@ -993,18 +993,23 @@ namespace QlyPhongKham.Forms
             var btnEdit    = SecondaryBtn("✏ Sửa", 495, 8, 75, 34, C_Orange);
             var btnDelete  = SecondaryBtn("🗑 Xóa", 580, 8, 75, 34, C_Red);
             var btnHistory = SecondaryBtn("📋 Lịch sử khám", 665, 8, 125, 34, C_Purple);
+            var btnActivationCode = SecondaryBtn("🔐 Cấp mã kích hoạt", 800, 50, 170, 34, C_Teal);
+            btnActivationCode.Enabled = false;
             var btnExportBN = SecondaryBtn("📥 Xuất Excel", 800, 8, 110, 34, C_Green);
             var btnImportBN = SecondaryBtn("📤 Nhập Excel", 920, 8, 115, 34, C_Teal);
 
             toolPanel.Controls.AddRange(new Control[] {
                 MakeLbl("Tìm kiếm:", 14, 15),
-                txtSearch, btnSearch, btnAdd, btnEdit, btnDelete, btnHistory, btnExportBN, btnImportBN
+                txtSearch, btnSearch, btnAdd, btnEdit, btnDelete, btnHistory,
+                btnActivationCode, btnExportBN, btnImportBN
             });
 
             var contentPanel = new Panel { Dock = DockStyle.Fill, BackColor = C_Card, Padding = new Padding(10) };
             contentPanel.Paint += PaintCardBorder;
             var dgvBN = MakeGrid();
             contentPanel.Controls.Add(dgvBN);
+            dgvBN.SelectionChanged += (s, e) =>
+                btnActivationCode.Enabled = dgvBN.SelectedRows.Count > 0;
 
             GridPageController? patientPageController = null;
             void LoadBN() => patientPageController?.Reload();
@@ -1074,6 +1079,38 @@ namespace QlyPhongKham.Forms
                 string tenBN = dgvBN.SelectedRows[0].Cells["HoTen"].Value?.ToString() ?? "";
                 var dlg = new FormLichSuKham(maBN, tenBN);
                 dlg.ShowDialog();
+            };
+
+            btnActivationCode.Click += (s, e) =>
+            {
+                if (dgvBN.SelectedRows.Count == 0) return;
+                string maBN = dgvBN.SelectedRows[0].Cells["MaBN"].Value?.ToString() ?? "";
+                string tenBN = dgvBN.SelectedRows[0].Cells["HoTen"].Value?.ToString() ?? "";
+                if (MessageBox.Show(
+                        UiText.Translate("Chỉ cấp mã sau khi đã xác minh trực tiếp danh tính bệnh nhân.") + "\n\n" +
+                        UiText.Translate("Mã cũ của hồ sơ sẽ bị thay thế. Mã mới chỉ dùng một lần và hết hạn sau 7 ngày.") + "\n\n" +
+                        UiText.Translate($"Cấp mã cho {tenBN} ({maBN})?"),
+                        UiText.Translate("Cấp mã kích hoạt cổng bệnh nhân"),
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning) != DialogResult.Yes)
+                    return;
+
+                try
+                {
+                    var activation = ClinicDAL.TaoMaKichHoatTaiKhoanBenhNhan(maBN);
+                    MessageBox.Show(
+                        UiText.Translate($"Mã kích hoạt cho {tenBN}:") + $"\n\n{activation.code}\n\n" +
+                        UiText.Translate("Hạn sử dụng:") + $" {activation.expiresAt:dd/MM/yyyy HH:mm}\n\n" +
+                        UiText.Translate("Đưa mã này trực tiếp cho bệnh nhân. Không gửi mã qua email hoặc ghi vào hồ sơ bệnh án."),
+                        UiText.Translate("Mã kích hoạt bệnh nhân"),
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(UiText.Translate(ex.Message), UiText.Translate("Không thể cấp mã kích hoạt"),
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
             };
 
             btnExportBN.Click += (s, e) =>
